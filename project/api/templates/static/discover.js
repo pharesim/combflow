@@ -277,7 +277,7 @@ async function init() {
 
   // Build language chips (as buttons for a11y)
   const langWrap = document.getElementById('lang-chips');
-  (langsRes.languages||[]).slice(0, 20).forEach(l => {
+  (langsRes.languages||[]).slice(0, 30).forEach(l => {
     const el = document.createElement('button');
     el.type = 'button';
     el.className = 'chip';
