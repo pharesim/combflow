@@ -330,6 +330,17 @@ const ALLOWED_CSS_PROPS = new Set([
   'top', 'left', 'width', 'max-width',
 ]);
 
+// Global delegated error handler for image proxy fallback.
+// onerror function properties don't survive innerHTML serialization,
+// so we use data-direct-src attributes + capture-phase listener instead.
+document.addEventListener('error', function(e) {
+  const img = e.target;
+  if (img.tagName === 'IMG' && img.dataset.directSrc) {
+    img.src = img.dataset.directSrc;
+    delete img.dataset.directSrc;
+  }
+}, true);
+
 function renderHiveBody(raw) {
   let md = raw;
   md = md.replace(/(^|[\s(])@([a-z0-9][a-z0-9.-]{1,15})(?=[\s,.;:!?)}\]]|$)/gim,
@@ -373,7 +384,7 @@ function renderHiveBody(raw) {
     ALLOWED_ATTR: ['href','src','alt','title','class','width','height',
                    'style','allowfullscreen','frameborder'],
     ALLOW_DATA_ATTR: false,
-    ADD_ATTR: ['target'],
+    ADD_ATTR: ['target', 'data-direct-src'],
   });
   DOMPurify.removeAllHooks();
   const div = document.createElement('div');
@@ -405,12 +416,6 @@ function renderHiveBody(raw) {
       if (!/images\.hive\.blog/.test(fixedSrc)) {
         img.src = 'https://images.hive.blog/768x0/' + fixedSrc;
       }
-      img.onerror = function() {
-        if (this.dataset.directSrc) {
-          this.src = this.dataset.directSrc;
-          delete this.dataset.directSrc;
-        }
-      };
     }
     img.removeAttribute('width');
     img.removeAttribute('height');
