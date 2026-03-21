@@ -1409,6 +1409,7 @@ async function savePreferences() {
 
     const ops = [['account_update2', {
       account: auth.username,
+      json_metadata: '',
       posting_json_metadata: JSON.stringify(postingMeta),
       extensions: [],
     }]];
@@ -1560,6 +1561,7 @@ async function saveSettings() {
         postingMeta.combflow = prefs;
         const ops = [['account_update2', {
           account: auth.username,
+          json_metadata: '',
           posting_json_metadata: JSON.stringify(postingMeta),
           extensions: [],
         }]];
