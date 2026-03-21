@@ -310,6 +310,26 @@ function esc(s) {
 
 // ── Hive markdown rendering ──
 // Requires: marked.js, DOMPurify (loaded before this script)
+const IFRAME_ALLOW = [
+  'youtube.com', 'www.youtube.com',
+  'youtube-nocookie.com', 'www.youtube-nocookie.com',
+  'player.vimeo.com',
+  'play.3speak.tv',
+  'www.instagram.com',
+  'www.skatehype.com',
+  'odysee.com',
+  'rumble.com',
+  'open.spotify.com',
+  'w.soundcloud.com',
+  'emb.d.tube',
+  'lbry.tv',
+];
+
+const ALLOWED_CSS_PROPS = new Set([
+  'position', 'padding-bottom', 'height', 'overflow',
+  'top', 'left', 'width', 'max-width',
+]);
+
 function renderHiveBody(raw) {
   let md = raw;
   md = md.replace(/(^|[\s(])@([a-z0-9][a-z0-9.-]{1,15})(?=[\s,.;:!?)}\]]|$)/gim,
@@ -322,24 +342,60 @@ function renderHiveBody(raw) {
   // marked would do the same for non-HTML-block images; this also fixes
   // images inside HTML blocks (e.g. <center>) which marked treats as raw text.
   md = md.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/gim, '<img alt="$1" src="$2">');
+  // Convert [<img src="...">](url) to <a><img></a> — marked won't parse
+  // markdown links inside HTML blocks like <center>
+  md = md.replace(/\[(<img\s[^>]*>)\]\((https?:\/\/[^)]+)\)/gim, '<a href="$2">$1</a>');
   const html = marked.parse(md, { breaks: true, gfm: true });
+  DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+    if (data.tagName === 'iframe') {
+      const src = node.getAttribute('src') || '';
+      try {
+        const host = new URL(src).hostname;
+        if (!IFRAME_ALLOW.some(d => host === d || host.endsWith('.' + d))) {
+          node.remove();
+        }
+      } catch {
+        node.remove();
+      }
+    }
+  });
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       'p','br','strong','b','em','i','u','s','del','strike',
       'h1','h2','h3','h4','h5','h6',
       'ul','ol','li',
       'blockquote','pre','code',
-      'a','img',
+      'a','img','iframe',
       'table','thead','tbody','tr','th','td',
       'hr','div','span','sub','sup',
       'center',
     ],
-    ALLOWED_ATTR: ['href','src','alt','title','class','width','height'],
+    ALLOWED_ATTR: ['href','src','alt','title','class','width','height',
+                   'style','allowfullscreen','frameborder'],
     ALLOW_DATA_ATTR: false,
     ADD_ATTR: ['target'],
   });
+  DOMPurify.removeAllHooks();
   const div = document.createElement('div');
   div.innerHTML = clean;
+  // Sandbox all inline iframes and set lazy loading
+  div.querySelectorAll('iframe').forEach(iframe => {
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
+    iframe.loading = 'lazy';
+  });
+  // Sanitize style attributes — only allow layout-related CSS properties
+  div.querySelectorAll('[style]').forEach(el => {
+    const raw = el.getAttribute('style');
+    const safe = raw.split(';').map(s => s.trim()).filter(s => {
+      const prop = s.split(':')[0]?.trim().toLowerCase();
+      return prop && ALLOWED_CSS_PROPS.has(prop);
+    }).join('; ');
+    if (safe) {
+      el.setAttribute('style', safe);
+    } else {
+      el.removeAttribute('style');
+    }
+  });
   div.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || '';
     if (src && !src.startsWith('data:')) {
