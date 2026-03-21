@@ -4,7 +4,7 @@
 
 {$CADDY_UI:honeycomb.lvh.me:80} {
 	handle /static/* {
-		header Cache-Control "public, max-age=86400, immutable"
+		header Cache-Control "public, max-age=3600"
 		encode zstd gzip
 		reverse_proxy combflow-app:8000
 	}
