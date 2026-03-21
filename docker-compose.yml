@@ -77,7 +77,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-      - /combflow/.local
+      - /combflow/.local:uid=999,gid=999
     security_opt:
       - no-new-privileges:true
     cap_drop:
