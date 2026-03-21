@@ -209,16 +209,11 @@ function setFilterBadge(id, count) {
 }
 
 function updateResultsBar() {
-  const bar = document.getElementById('results-bar');
+  const bar = document.getElementById('footer-results');
   const hasFilters = document.querySelectorAll('.chip.active').length > 0;
-  if (hasFilters || allPosts.length > 0) {
-    bar.style.display = '';
-    const filterLabel = hasFilters ? ' (filtered)' : '';
-    const displayTotal = hasFilters ? filteredTotalCount : totalPostCount;
-    bar.textContent = `Showing ${allPosts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
-  } else {
-    bar.style.display = 'none';
-  }
+  const displayTotal = hasFilters ? filteredTotalCount : totalPostCount;
+  const filterLabel = hasFilters ? ' (filtered)' : '';
+  bar.textContent = `Showing ${allPosts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
 }
 
 // ── Init ──
