@@ -881,6 +881,8 @@ def _stream() -> None:
     backfill.start()
 
     # Run the live stream in the main thread.
+    # Skip block-by-block CATCHUP — the backfill thread's catch-up phase
+    # (starting from NOW, working backwards) already covers missed posts.
     try:
         hive = Hive()
         blockchain = Blockchain(hive_instance=hive)
@@ -889,14 +891,8 @@ def _stream() -> None:
 
         if last_cursor and (head_block - last_cursor) >= _CATCHUP_THRESHOLD:
             logger.info(
-                "Gap: cursor=%d  head=%d  (%d blocks behind)",
+                "Gap: cursor=%d  head=%d  (%d blocks behind) — skipping to head, backfill covers gaps",
                 last_cursor, head_block, head_block - last_cursor,
-            )
-            _stream_range(
-                blockchain, hive, db, embedder, centroids, threshold,
-                pos_anchor, neg_anchor,
-                last_cursor + 1, head_block - 1, "CATCHUP",
-                stop_event=stop_event,
             )
             head_block = blockchain.get_current_block_num()
 
