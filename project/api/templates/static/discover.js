@@ -1489,8 +1489,26 @@ function wireSettingsOnce() {
   document.getElementById('settings-langs').addEventListener('click', handleSimpleChipClick);
 }
 
-function showSettingsModal() {
+async function showSettingsModal() {
   const modal = document.getElementById('settings-modal');
+
+  // Fetch saved on-chain defaults
+  let savedPrefs = {};
+  const auth = getStoredAuth();
+  if (auth) {
+    try {
+      const accounts = await hiveRpc('condenser_api.get_accounts', [[auth.username]]);
+      const account = accounts?.[0];
+      if (account) {
+        let meta = {};
+        try { meta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
+        savedPrefs = meta.combflow || {};
+      }
+    } catch(e) {}
+  }
+  const savedCats = savedPrefs.default_categories || [];
+  const savedLangs = savedPrefs.default_languages || [];
+  const savedSentiment = savedPrefs.default_sentiment || null;
 
   // Populate category chips from existing filter chips
   const settingsCats = document.getElementById('settings-cats');
@@ -1504,7 +1522,9 @@ function showSettingsModal() {
       btn.className = chip.classList.contains('cat-parent') ? 'chip cat-parent' : 'chip';
       btn.dataset.cat = chip.dataset.cat;
       if (chip.dataset.parent) btn.dataset.parent = chip.dataset.parent;
-      btn.setAttribute('aria-pressed', 'false');
+      const isActive = savedCats.includes(chip.dataset.cat);
+      if (isActive) btn.classList.add('active');
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       btn.textContent = chip.textContent;
       clone.appendChild(btn);
     });
@@ -1519,15 +1539,18 @@ function showSettingsModal() {
     btn.type = 'button';
     btn.className = 'chip';
     btn.dataset.lang = chip.dataset.lang;
-    btn.setAttribute('aria-pressed', 'false');
+    const isActive = savedLangs.includes(chip.dataset.lang);
+    if (isActive) btn.classList.add('active');
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     btn.textContent = chip.textContent;
     settingsLangs.appendChild(btn);
   });
 
-  // Reset sentiment chips in settings modal
+  // Set sentiment chips in settings modal
   document.querySelectorAll('#settings-sentiment .chip').forEach(c => {
-    c.classList.remove('active');
-    c.setAttribute('aria-pressed', 'false');
+    const isActive = c.dataset.sentiment === savedSentiment;
+    c.classList.toggle('active', isActive);
+    c.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
 
   wireSettingsOnce();
