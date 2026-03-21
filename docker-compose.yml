@@ -68,7 +68,7 @@ services:
     env_file: .env
     environment:
       PYTHONPATH: /combflow
-      XDG_DATA_HOME: /tmp
+      HOME: /tmp
     depends_on:
       db:
         condition: service_healthy
@@ -77,7 +77,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-      - /combflow/.local:uid=999,gid=999
     security_opt:
       - no-new-privileges:true
     cap_drop:
