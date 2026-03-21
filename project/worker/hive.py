@@ -390,7 +390,7 @@ def _classify_and_save(
         if isinstance(meta, dict):
             ml = meta.get("language")
             if isinstance(ml, str) and ml:
-                meta_langs = [ml]
+                meta_langs = [x.strip() for x in ml.split(",") if x.strip()]
             elif isinstance(ml, list):
                 meta_langs = [str(x) for x in ml if x]
     except Exception:
