@@ -18,6 +18,7 @@ const PAGE_SIZE = 60;
 
 // Hive RPC nodes with automatic fallback
 const HIVE_NODES = ['https://api.hive.blog', 'https://api.deathwing.me', 'https://rpc.ausbit.dev'];
+const PROXY_DOMAINS = /(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|cdn\.steemitimages\.com|steemitimages\.com|usermedia\.actifit\.io|imgur\.com|i\.imgur\.com)/i;
 async function hiveRpc(method, params) {
   for (const node of HIVE_NODES) {
     try {
@@ -126,12 +127,14 @@ function sentimentColor(score) {
 
 function thumbUrl(url, size = 256) {
   if (!url || !url.startsWith('http')) return '';
-  // 3Speak and YouTube CDN URLs don't work through the Hive image proxy
-  if (/3speak|img\.youtube\.com/.test(url)) return url;
   // Strip existing hive image proxy prefix to avoid double-wrapping
   const proxyRe = /^https?:\/\/images\.hive\.blog\/\d+x\d+\//;
   const raw = url.replace(proxyRe, '');
-  return `https://images.hive.blog/${size}x0/${raw}`;
+  // Only proxy domains known to work with the Hive image proxy
+  if (PROXY_DOMAINS.test(raw)) {
+    return `https://images.hive.blog/${size}x0/${raw}`;
+  }
+  return raw;
 }
 
 // ── Hex geometry helpers ──
