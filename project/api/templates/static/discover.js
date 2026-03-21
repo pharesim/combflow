@@ -241,6 +241,11 @@ async function init() {
   totalPostCount = statsRes.total_posts || 0;
   filteredTotalCount = totalPostCount;
 
+  if (statsRes.api_base_url) {
+    const apiLink = document.getElementById('footer-api-link');
+    if (apiLink) apiLink.href = statsRes.api_base_url + '/docs';
+  }
+
   // Build category chips — one row per parent (as buttons for a11y)
   // Also populate leaf category list for editor tag autocomplete
   (catsRes.categories||[]).forEach(p => {
@@ -1383,8 +1388,6 @@ async function savePreferences() {
 
     let postingMeta = {};
     try { postingMeta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
-    let jsonMeta = {};
-    try { jsonMeta = JSON.parse(account.json_metadata || '{}'); } catch(e) {}
 
     const prefs = {
       default_categories: cats,
@@ -1392,11 +1395,9 @@ async function savePreferences() {
       default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
     };
     postingMeta.combflow = prefs;
-    if (!jsonMeta.combflow) jsonMeta.combflow = prefs;
 
     const ops = [['account_update2', {
       account: auth.username,
-      json_metadata: JSON.stringify(jsonMeta),
       posting_json_metadata: JSON.stringify(postingMeta),
       extensions: [],
     }]];
@@ -1540,18 +1541,14 @@ async function saveSettings() {
       if (account) {
         let postingMeta = {};
         try { postingMeta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
-        let jsonMeta = {};
-        try { jsonMeta = JSON.parse(account.json_metadata || '{}'); } catch(e) {}
         const prefs = {
           default_categories: cats,
           default_languages: langs,
           default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
         };
         postingMeta.combflow = prefs;
-        if (!jsonMeta.combflow) jsonMeta.combflow = prefs;
         const ops = [['account_update2', {
           account: auth.username,
-          json_metadata: JSON.stringify(jsonMeta),
           posting_json_metadata: JSON.stringify(postingMeta),
           extensions: [],
         }]];

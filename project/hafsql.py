@@ -207,25 +207,33 @@ def get_community(community_id: str) -> dict | None:
 
 
 def _fetch_posting_key(username: str) -> str | None:
-    """Fetch posting key from HAFSQL (no cache)."""
-    try:
-        import json as _json
+    """Fetch posting key from Hive API."""
+    import httpx
 
-        with _cursor() as cur:
-            cur.execute(
-                "SELECT posting FROM hafsql.accounts WHERE name = %s",
-                (username,),
+    nodes = [
+        "https://api.hive.blog",
+        "https://api.deathwing.me",
+        "https://rpc.ausbit.dev",
+    ]
+    for node in nodes:
+        try:
+            resp = httpx.post(
+                node,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "condenser_api.get_accounts",
+                    "params": [[username]],
+                    "id": 1,
+                },
+                timeout=5,
             )
-            row = cur.fetchone()
-            if row and row["posting"]:
-                auth = (
-                    row["posting"]
-                    if isinstance(row["posting"], dict)
-                    else _json.loads(row["posting"])
-                )
-                keys = auth.get("key_auths", [])
+            result = resp.json().get("result", [])
+            if result:
+                keys = result[0].get("posting", {}).get("key_auths", [])
                 if keys:
                     return keys[0][0]
-    except Exception as exc:
-        logger.debug("hafsql posting key lookup failed for %s: %s", username, exc)
+            return None
+        except Exception as exc:
+            logger.debug("Hive API posting key lookup failed at %s: %s", node, exc)
+            continue
     return None

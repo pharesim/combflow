@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Worker
     api_url: str = "http://combflow-app:8000"
 
+    # Public URLs
+    api_base_url: str = ""  # e.g. "https://api.example.com" — used in footer link
+
     # Logging
     sql_echo: bool = False
 

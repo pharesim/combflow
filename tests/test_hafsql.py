@@ -240,16 +240,13 @@ class TestGetComments:
 
 class TestGetPostingKey:
     def test_returns_key(self):
-        import json
         from project.hafsql import get_posting_key, _posting_key_cache
         _posting_key_cache.clear()
-        mock_cur = MagicMock()
-        mock_cur.fetchone.return_value = {
-            "posting": json.dumps({"key_auths": [["STM7abc123", 1]]})
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": [{"posting": {"key_auths": [["STM7abc123", 1]]}}]
         }
-        with patch("project.hafsql._cursor") as mock_ctx:
-            mock_ctx.return_value.__enter__ = lambda s: mock_cur
-            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        with patch("httpx.post", return_value=mock_resp):
             result = get_posting_key("alice")
         assert result == "STM7abc123"
         _posting_key_cache.clear()
@@ -257,7 +254,7 @@ class TestGetPostingKey:
     def test_returns_none_on_exception(self):
         from project.hafsql import get_posting_key, _posting_key_cache
         _posting_key_cache.clear()
-        with patch("project.hafsql._cursor", side_effect=Exception("down")):
+        with patch("httpx.post", side_effect=Exception("down")):
             result = get_posting_key("alice")
         assert result is None
         _posting_key_cache.clear()
