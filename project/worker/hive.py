@@ -444,6 +444,24 @@ def _classify_and_save(
                 if ts_match:
                     thumbnail_url = f"https://images.3speak.tv/images/{ts_match.group(1)}.webp"
 
+    if not thumbnail_url and body:
+        cp_match = _re.search(r'cross post of \[@([\w.-]+)/([\w-]+)\]', body)
+        if cp_match:
+            try:
+                import httpx
+                resp = httpx.post("https://api.hive.blog", json={
+                    "jsonrpc": "2.0",
+                    "method": "bridge.get_post",
+                    "params": {"author": cp_match.group(1), "permlink": cp_match.group(2)},
+                    "id": 1,
+                }, timeout=5)
+                orig = resp.json().get("result", {})
+                orig_images = orig.get("json_metadata", {}).get("image", [])
+                if orig_images:
+                    thumbnail_url = _re.sub(r'[\])].*$', '', str(orig_images[0]).replace("&amp;", "&"))
+            except Exception:
+                pass
+
     _save_post(db, {
         "author": author,
         "permlink": permlink,

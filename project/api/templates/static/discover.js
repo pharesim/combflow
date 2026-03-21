@@ -461,6 +461,17 @@ async function fetchSingleMeta(p) {
         }
       }
     }
+    if (!images.length && result.cross_post_key) {
+      const [cpAuthor, cpPermlink] = result.cross_post_key.split('/');
+      if (cpAuthor && cpPermlink) {
+        const cpResult = await hiveRpc('bridge.get_post', {author: cpAuthor, permlink: cpPermlink});
+        if (cpResult) {
+          let cpImages = (cpResult.json_metadata?.image || []).map(u =>
+            u.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[\])].*$/, ''));
+          if (cpImages.length) images = [cpImages[0]];
+        }
+      }
+    }
     cacheMetaEntry(key, {
       title: result.title || '',
       thumbnail: images.length ? images[0] : '',

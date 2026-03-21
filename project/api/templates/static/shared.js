@@ -344,7 +344,9 @@ function renderHiveBody(raw) {
     const src = img.getAttribute('src') || '';
     if (src && !src.startsWith('data:')) {
       img.dataset.directSrc = src;
-      img.src = 'https://images.hive.blog/768x0/' + src;
+      if (!/images\.hive\.blog|steemitimages\.com/.test(src)) {
+        img.src = 'https://images.hive.blog/768x0/' + src;
+      }
       img.onerror = function() {
         if (this.dataset.directSrc) {
           this.src = this.dataset.directSrc;
