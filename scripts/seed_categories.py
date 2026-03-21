@@ -176,6 +176,9 @@ CATEGORY_HINTS: dict[str, str] = {
     "entrepreneurship": "Startups, business building, marketing, small business, founders. "
                      "NOT personal finance or macroeconomics.",
     "introductions": "New user introduction posts (#introduceyourself). "
+                     "A person introducing THEMSELVES to the Hive community for the first time. "
+                     "NOT community curation reports or daily digest posts (-> hive). "
+                     "NOT posts that say 'welcome' or 'hello' as a greeting. "
                      "NOT any post where someone mentions being new to a topic.",
     "contests":      "Challenges, giveaways, competitions, contest posts. "
                      "NOT competitive sports or general gaming.",
@@ -276,6 +279,10 @@ NEGATIVE_EXAMPLES: dict[str, list[str]] = {
         "A food diary from a mom in the Philippines (-> food, NOT local-communities)",
         "A DIY craft post shared in a Hive community (-> diy-crafts, NOT local-communities)",
         "A personal blog about daily life (-> classify by actual topic, NOT local-communities)",
+    ],
+    "introductions": [
+        "A community daily curation report that says 'Welcome' (-> hive, NOT introductions)",
+        "A contest post greeting participants (-> contests, NOT introductions)",
     ],
     "programming": [
         "An automated daily token tracker/stats post (-> crypto or hive, NOT programming)",

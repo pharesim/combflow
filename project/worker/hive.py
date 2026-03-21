@@ -367,6 +367,11 @@ def _classify_and_save(
     if len(clean_body) < _MIN_CLEAN_BODY:
         return
 
+    # Skip bot/templated posts with very low text-to-markup ratio.
+    alpha_chars = sum(c.isalpha() for c in clean_body)
+    if len(clean_body) > 0 and alpha_chars / len(clean_body) < 0.50:
+        return
+
     tags_hint = ""
     try:
         meta = json_metadata
@@ -851,7 +856,7 @@ def _stream() -> None:
 
     embedder = _load_embedder()
     centroids = _load_centroids(db)
-    threshold = 0.30
+    threshold = 0.38
 
     if embedder:
         pos_anchor, neg_anchor = _build_sentiment_anchors(embedder)
