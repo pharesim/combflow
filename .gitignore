@@ -1,0 +1,27 @@
+# Environment / secrets
+.env
+docker-compose.override.yml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Agent prompts & coordination (internal)
+agents/
+
+# Claude Code config
+.claude/
+
+# Seed pipeline artifacts
+seeds/checkpoint*.json
+seeds/seed_run.log

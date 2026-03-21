@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HoneyComb — Discover</title>
+<link rel="stylesheet" href="/static/shared.css">
+<link rel="stylesheet" href="/static/discover.css">
+<link rel="preconnect" href="https://images.hive.blog">
+<link rel="preconnect" href="https://img.youtube.com">
+<link rel="preconnect" href="https://images.3speak.tv">
+<link rel="preconnect" href="https://files.peakd.com">
+<script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js" integrity="sha384-pcBjnGbkyKeOXaoFkmJiuR9E08/6gkmus6/Strimnxtl3uk0Hx23v345pWyC/MMr" crossorigin="anonymous"></script>
+<script defer src="/static/shared.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <a class="logo" href="/">HoneyComb</a>
+  <div class="nav-links">
+    <a href="/" class="active">Discover</a>
+    <a href="/docs">API Docs</a>
+    <div id="auth-area"></div>
+  </div>
+</div>
+
+<!-- Login prompt -->
+<div class="login-overlay" id="login-overlay" role="dialog" aria-modal="true" aria-label="Login" onclick="if(event.target===this)closeLogin()">
+  <div class="login-box" style="position:relative">
+    <button type="button" class="login-close" aria-label="Close" onclick="closeLogin()">&times;</button>
+    <h3>Login with Hive Keychain</h3>
+    <p>Enter your Hive username to sign in securely.</p>
+    <label for="login-username" class="sr-only">Hive username</label>
+    <input id="login-username" placeholder="hive username" maxlength="16"
+           onkeydown="if(event.key==='Enter')doLogin()">
+    <button type="button" class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error"></div>
+    <p class="signup-link">No account? <a href="#" onclick="event.preventDefault();openSignup()">Create one</a></p>
+  </div>
+</div>
+
+<div class="signup-overlay" id="signup-overlay" role="dialog" aria-modal="true" aria-label="Create Account" onclick="if(event.target===this)closeSignup()">
+  <div class="signup-box">
+    <button type="button" class="login-close" aria-label="Close" onclick="closeSignup()">&times;</button>
+    <iframe src="about:blank" id="signup-iframe" loading="lazy"></iframe>
+  </div>
+</div>
+
+
+<div class="filters-bar" id="filters-bar" role="button" tabindex="0" onclick="toggleFiltersBar()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltersBar()}">
+  <span class="filters-bar-label">Filters <span class="filters-bar-toggle" aria-hidden="true">&#9660;</span></span>
+  <div class="filters-bar-actions" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
+    <div class="layout-toggle" role="group" aria-label="Layout" id="layout-toggle">
+      <button type="button" class="active" data-layout="hex" aria-pressed="true" onclick="setLayout('hex')"><span aria-hidden="true">&#x2B21;</span> Hex grid</button>
+      <button type="button" data-layout="card" aria-pressed="false" onclick="setLayout('card')"><span aria-hidden="true">&#x25A6;</span> Card grid</button>
+      <button type="button" data-layout="list" aria-pressed="false" onclick="setLayout('list')"><span aria-hidden="true">&#x2630;</span> List</button>
+    </div>
+    <label for="sort-select" class="sr-only">Sort posts by</label>
+    <select id="sort-select" aria-label="Sort posts by" onchange="applySort(this.value)">
+      <option value="newest">Newest</option>
+      <option value="sentiment-pos">Most positive</option>
+      <option value="sentiment-neg">Most negative</option>
+    </select>
+  </div>
+</div>
+<div class="filters">
+  <div class="filter-section collapsed" id="filter-languages">
+    <button type="button" class="filter-header" aria-expanded="false" aria-controls="lang-chips" onclick="toggleSection('filter-languages')">
+      <span>Languages<span class="filter-count" id="count-languages"></span></span>
+      <span class="filter-toggle" aria-hidden="true">&#9660;</span>
+    </button>
+    <div class="filter-body chip-wrap" id="lang-chips"></div>
+  </div>
+  <div class="filter-section collapsed" id="filter-categories">
+    <button type="button" class="filter-header" aria-expanded="false" aria-controls="cat-chips" onclick="toggleSection('filter-categories')">
+      <span>Categories<span class="filter-count" id="count-categories"></span></span>
+      <span class="filter-toggle" aria-hidden="true">&#9660;</span>
+    </button>
+    <div class="filter-body chip-wrap" id="cat-chips"></div>
+  </div>
+  <div class="filter-section collapsed" id="filter-sentiment">
+    <button type="button" class="filter-header" aria-expanded="false" aria-controls="sentiment-chips" onclick="toggleSection('filter-sentiment')">
+      <span>Sentiment<span class="filter-count" id="count-sentiment"></span></span>
+      <span class="filter-toggle" aria-hidden="true">&#9660;</span>
+    </button>
+    <div class="filter-body chip-wrap" id="sentiment-chips">
+      <button type="button" class="chip sentiment-positive" data-sentiment="positive" aria-pressed="false">Positive</button>
+      <button type="button" class="chip sentiment-neutral" data-sentiment="neutral" aria-pressed="false">Neutral</button>
+      <button type="button" class="chip sentiment-negative" data-sentiment="negative" aria-pressed="false">Negative</button>
+    </div>
+  </div>
+  <div class="filter-actions" style="display:flex;gap:8px;padding:8px 12px">
+    <button type="button" class="btn btn-ghost" id="btn-save-prefs" style="display:none" onclick="savePreferences()">Save as default</button>
+    <button type="button" class="btn btn-ghost" onclick="resetFilters()">Reset</button>
+  </div>
+</div>
+
+<div class="suggestions-bar" id="suggestions-bar" style="display:none" role="complementary" aria-label="Related communities">
+  <div class="suggestions-header">Related communities</div>
+  <div class="suggestions-list" id="suggestions-list"></div>
+</div>
+
+<div class="results-bar" id="results-bar" role="status" aria-live="polite" style="display:none"></div>
+<div class="hex-container" id="hex-container">
+  <div class="hex-grid" id="hex-grid"></div>
+</div>
+<div class="card-grid" id="card-grid" style="display:none"></div>
+<div class="list-grid" id="list-grid" style="display:none"></div>
+<div class="scroll-sentinel" id="scroll-sentinel"></div>
+<div class="loading-more" id="loading-more" role="status" style="display:none"><div class="spinner"></div>Loading more...</div>
+
+<!-- First-login settings modal -->
+<div class="modal-overlay" id="settings-modal" role="dialog" aria-modal="true" aria-label="Set up your filters" onclick="if(event.target===this)skipSettings()">
+  <div class="modal settings-modal">
+    <button type="button" class="modal-close" aria-label="Close" onclick="skipSettings()">&times;</button>
+    <h2>Welcome to HoneyComb!</h2>
+    <p style="color:var(--text-dim);margin-bottom:20px">Choose your default filters to see the content you care about most.</p>
+    <div class="settings-section">
+      <h3 class="settings-section-title">Languages</h3>
+      <div class="filter-body chip-wrap" id="settings-langs"></div>
+    </div>
+    <div class="settings-section">
+      <h3 class="settings-section-title">Categories</h3>
+      <div class="filter-body chip-wrap" id="settings-cats"></div>
+    </div>
+    <div class="settings-section">
+      <h3 class="settings-section-title">Sentiment</h3>
+      <div class="filter-body chip-wrap" id="settings-sentiment">
+        <button type="button" class="chip sentiment-positive" data-sentiment="positive" aria-pressed="false">Positive</button>
+        <button type="button" class="chip sentiment-neutral" data-sentiment="neutral" aria-pressed="false">Neutral</button>
+        <button type="button" class="chip sentiment-negative" data-sentiment="negative" aria-pressed="false">Negative</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:24px;justify-content:center">
+      <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:12px 32px" onclick="saveSettings()">Save &amp; Start Browsing</button>
+      <button type="button" class="btn btn-ghost" onclick="skipSettings()">Skip</button>
+    </div>
+  </div>
+</div>
+
+<!-- Post detail modal -->
+<div class="modal-overlay" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button type="button" class="modal-close" aria-label="Close" onclick="closeModal()">&times;</button>
+    <h2 id="modal-title"></h2>
+    <div class="modal-meta">
+      <div class="modal-author" id="modal-author"></div>
+      <a class="modal-community" id="modal-community" style="display:none" target="_blank" rel="noopener noreferrer"></a>
+      <div class="modal-date" id="modal-date"></div>
+    </div>
+    <div class="modal-tags" id="modal-tags"></div>
+    <div class="modal-body rendered-body" id="modal-body"></div>
+    <div class="modal-score" id="modal-score"></div>
+    <div class="modal-actions">
+      <a id="modal-peakd-link" target="_blank" rel="noopener noreferrer">PeakD</a>
+      <a id="modal-ecency-link" target="_blank" rel="noopener noreferrer">Ecency</a>
+      <a id="modal-hiveblog-link" target="_blank" rel="noopener noreferrer">Hive.blog</a>
+      <button type="button" class="copy-link" id="modal-copy-link" aria-label="Copy link to clipboard" onclick="copyPostLink()">Copy link</button>
+    </div>
+    <div class="comments-section" id="comments-section">
+      <div class="comments-header">
+        <h3 class="comments-title">Comments</h3>
+        <span class="comments-count" id="comments-count"></span>
+      </div>
+      <div id="comments-tree"></div>
+      <div class="comments-hidden" id="comments-hidden" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Post editor modal -->
+<div class="modal-overlay" id="editor-modal" role="dialog" aria-modal="true" aria-label="Write a post" onclick="if(event.target===this)confirmCloseEditor()">
+  <div class="modal editor-modal">
+    <button type="button" class="modal-close" aria-label="Close" onclick="confirmCloseEditor()">&times;</button>
+    <h2>Write a Post</h2>
+    <div class="editor-field">
+      <label for="editor-community-select">Post to</label>
+      <div class="editor-community-wrap">
+        <select id="editor-community-select" onchange="onCommunitySelect()">
+          <option value="">My Blog</option>
+        </select>
+        <div class="editor-community-loading" id="editor-community-loading" style="display:none"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div></div>
+      </div>
+      <div class="editor-community-hint" id="editor-community-hint" style="display:none"></div>
+    </div>
+    <div class="editor-field">
+      <label for="editor-title">Title</label>
+      <input type="text" id="editor-title" maxlength="256" placeholder="Post title" oninput="updateEditorTitleCount();autoSaveDraft()">
+      <span class="editor-char-count" id="editor-title-count">0/256</span>
+    </div>
+    <div class="editor-field">
+      <label for="editor-body">Body <small>(Markdown)</small></label>
+      <div class="editor-tabs">
+        <button type="button" class="editor-tab active" id="editor-tab-write" onclick="showEditorTab('write')">Write</button>
+        <button type="button" class="editor-tab" id="editor-tab-preview" onclick="showEditorTab('preview')">Preview</button>
+      </div>
+      <textarea id="editor-body" placeholder="Write your post in Markdown..." rows="12" oninput="autoSaveDraft()"></textarea>
+      <div class="editor-preview rendered-body" id="editor-preview" style="display:none"></div>
+    </div>
+    <div class="editor-field">
+      <label for="editor-tags-input">Tags <small>(up to 10, first tag is primary)</small></label>
+      <div class="editor-tags-wrap">
+        <div class="editor-tags-list" id="editor-tags-list"></div>
+        <input type="text" id="editor-tags-input" placeholder="Add a tag..." maxlength="50" onkeydown="handleTagKey(event)" oninput="showTagSuggestions()">
+      </div>
+      <div class="editor-tag-suggestions" id="editor-tag-suggestions" style="display:none"></div>
+    </div>
+    <div class="editor-field editor-options">
+      <label><input type="checkbox" id="editor-decline-payout"> Decline payout</label>
+      <label id="editor-crosspost-label" style="display:none"><input type="checkbox" id="editor-crosspost"> Also share to your blog</label>
+    </div>
+    <div class="editor-actions">
+      <button type="button" class="btn btn-ghost" onclick="confirmCloseEditor()">Cancel</button>
+      <button type="button" class="btn comment-submit-btn" id="editor-publish-btn" onclick="publishPost()">Publish</button>
+    </div>
+  </div>
+</div>
+
+<button type="button" class="back-to-top" id="back-to-top" aria-label="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#9650;</button>
+
+<script defer src="/static/discover.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Host-side requirements for scripts/seed_categories.py
+# Install with: pip install -r scripts/requirements.txt
+#
+# For GPU acceleration (recommended on 4090), install torch with CUDA first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   (then the sentence-transformers install below will use the CUDA torch)
+
+ollama>=0.2
+psycopg2-binary>=2.9
+sentence-transformers>=2.7,<4
+requests>=2.31
+numpy>=1.24
