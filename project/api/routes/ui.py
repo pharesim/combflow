@@ -103,5 +103,5 @@ async def overview_stats(db: AsyncSession = Depends(get_db)):
     if cached is not None:
         return cached
     result = await crud.get_overview_stats(db)
-    cache.put("overview_stats", result, ttl=300)
+    cache.put("overview_stats", result, ttl=30)
     return result

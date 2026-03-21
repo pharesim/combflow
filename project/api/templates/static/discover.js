@@ -440,7 +440,7 @@ async function fetchSingleMeta(p) {
   const result = await hiveRpc('bridge.get_post', {author:p.author, permlink:p.permlink});
   if (result) {
     let images = (result.json_metadata?.image || []).map(u =>
-      u.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+      u.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[\])].*$/, ''));
     if (!images.length && result.body) {
       const body = result.body;
       const mdMatch = body.match(/!\[[^\]]*\]\(([^)]+)\)/);
@@ -1702,7 +1702,7 @@ function renderSuggestions(suggestions) {
       btn.type = 'button';
       btn.className = 'suggestion-action';
       btn.textContent = 'Join';
-      btn.onclick = (e) => { e.stopPropagation(); doLogin(); };
+      btn.onclick = (e) => { e.stopPropagation(); showLoginPrompt(); };
       item.appendChild(btn);
     }
 

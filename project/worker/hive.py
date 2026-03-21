@@ -427,7 +427,7 @@ def _classify_and_save(
         if isinstance(meta, dict):
             images = meta.get("image", [])
             if images and isinstance(images, list):
-                thumbnail_url = str(images[0]).replace("&amp;", "&")
+                thumbnail_url = _re.sub(r'[\])].*$', '', str(images[0]).replace("&amp;", "&"))
     except Exception:
         pass
 
