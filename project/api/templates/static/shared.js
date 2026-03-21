@@ -343,9 +343,11 @@ function renderHiveBody(raw) {
   div.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || '';
     if (src && !src.startsWith('data:')) {
-      img.dataset.directSrc = src;
-      if (!/images\.hive\.blog|steemitimages\.com/.test(src)) {
-        img.src = 'https://images.hive.blog/768x0/' + src;
+      const fixedSrc = src.replace(/^https?:\/\/(?:cdn\.)?steemitimages\.com\//, 'https://images.hive.blog/');
+      if (fixedSrc !== src) img.src = fixedSrc;
+      img.dataset.directSrc = fixedSrc;
+      if (!/images\.hive\.blog/.test(fixedSrc)) {
+        img.src = 'https://images.hive.blog/768x0/' + fixedSrc;
       }
       img.onerror = function() {
         if (this.dataset.directSrc) {
