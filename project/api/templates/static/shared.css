@@ -36,7 +36,7 @@ a{color:var(--hive-red);text-decoration:none}
 
 /* ── Rendered markdown body ── */
 .rendered-body{font-size:14px;line-height:1.7;color:var(--text);overflow-y:auto;word-break:break-word}
-.rendered-body img{max-width:100%;height:auto;border-radius:8px;margin:8px 0}
+.rendered-body img{max-width:100%;height:auto;border-radius:8px;margin:8px auto;display:block}
 .rendered-body h1,.rendered-body h2,.rendered-body h3,.rendered-body h4{color:#fff;margin:12px 0 6px;font-size:1.1em}
 .rendered-body p{margin:6px 0}
 .rendered-body a{color:var(--hive-red);text-decoration:underline}

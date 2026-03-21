@@ -111,8 +111,10 @@ Categories JSON:"""
 
 CATEGORY_HINTS: dict[str, str] = {
     # -- Semantic overlap fixes --
-    "crypto":        "Cryptocurrency, blockchain technology, DeFi, tokens, mining, NFTs. "
+    "crypto":        "Cryptocurrency, blockchain technology, DeFi, tokens, mining, NFTs, "
+                     "NFT trading, token swaps, crypto trading, blockchain gaming assets. "
                      "The post must be primarily ABOUT crypto technology or crypto markets. "
+                     "Any trading of digital tokens, NFTs, or blockchain-based assets is crypto, NOT finance. "
                      "NOT stock market investing or personal finance (-> finance). "
                      "NOT macroeconomic analysis of monetary policy (-> economics). "
                      "NOT posts that merely mention Hive/HBD rewards or crypto earnings in passing. "
@@ -131,6 +133,7 @@ CATEGORY_HINTS: dict[str, str] = {
     "finance":       "Personal finance, investing, stock markets, banking, real estate, retirement. "
                      "Traditional financial instruments and money management. "
                      "NOT cryptocurrency, DeFi, or blockchain tokens (-> crypto). "
+                     "NOT NFT trading, token swaps, or blockchain asset trading (-> crypto). "
                      "NOT macroeconomic theory or government monetary policy (-> economics).",
     "programming":   "Software development, writing code, DevOps, APIs, databases. "
                      "NOT using software tools, math, chess, or general tech.",
@@ -150,7 +153,9 @@ CATEGORY_HINTS: dict[str, str] = {
     "science":       "Scientific research, experiments, discoveries, STEM topics. "
                      "NOT health/medicine advice or nature photography.",
     "education":     "Teaching, learning, curricula, academic institutions, study methods, "
-                     "tutorials, educational content.",
+                     "tutorials, educational content. "
+                     "NOT crypto/Hive how-to guides (-> crypto or hive). "
+                     "NOT cooking tutorials (-> food). NOT fitness tutorials (-> fitness).",
     # -- p025 new categories --
     "team-sports":   "Team ball sports: football, soccer, basketball, cricket, baseball, rugby. "
                      "NOT individual fitness, combat sports, or motorsports.",
@@ -236,6 +241,8 @@ NEGATIVE_EXAMPLES: dict[str, list[str]] = {
         "A photography post shared on Hive (-> photography, NOT hive)",
         "A post that starts with 'Hello Hivers!' then talks about travel (-> travel, NOT hive)",
         "A post mentioning Hive rewards in the footer but about cooking (-> food, NOT hive)",
+        "A Splinterlands or Rising Star gameplay post (-> gaming, NOT hive)",
+        "A post in a Hive community about the author's hobby (-> classify by hobby topic, NOT hive)",
     ],
     "writing": [
         "A long-form opinion about politics (-> politics, NOT writing)",
@@ -251,6 +258,14 @@ NEGATIVE_EXAMPLES: dict[str, list[str]] = {
         "A non-English blog post published on the Hive blockchain (-> classify by actual topic, NOT crypto)",
         "A daily automated token stats/tracker post (-> hive, NOT crypto unless about crypto markets)",
         "A Hive witness update about node infrastructure (-> hive, NOT crypto)",
+    ],
+    "finance": [
+        "A post about NFT card trading or blockchain game assets (-> crypto, NOT finance)",
+        "A post about swapping tokens on a DEX (-> crypto, NOT finance)",
+        "A crypto market analysis or price prediction (-> crypto, NOT finance)",
+        "A post about HP, powering up, staking, or delegating Hive (-> crypto or hive, NOT finance)",
+        "A post about HBD savings interest or converting HBD (-> crypto or hive, NOT finance)",
+        "A post about Hive-Engine token prices or market cap (-> crypto, NOT finance)",
     ],
     "psychology": [
         "Self-help advice about motivation (-> education or health, NOT psychology)",

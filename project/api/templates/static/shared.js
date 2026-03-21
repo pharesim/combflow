@@ -318,10 +318,10 @@ function renderHiveBody(raw) {
     '![]($1)');
   md = md.replace(/(^|>|\n)\s*(https?:\/\/[^\s<>"]+\.(?:jpe?g|png|gif|webp|svg)(?:\?[^\s<>"]*)?)\s*(?=<|\n|$)/gim,
     '$1\n![]($2)\n');
-  // Convert markdown images inside HTML block tags (e.g. <center>) to <img>,
-  // because marked treats content inside HTML blocks as raw text.
-  md = md.replace(/(<[a-z][^>]*>)\s*!\[([^\]]*)\]\(([^)]+)\)\s*(<\/[a-z]+>)/gim,
-    '$1<img alt="$2" src="$3">$4');
+  // Convert all markdown images to <img> before marked parses.
+  // marked would do the same for non-HTML-block images; this also fixes
+  // images inside HTML blocks (e.g. <center>) which marked treats as raw text.
+  md = md.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/gim, '<img alt="$1" src="$2">');
   const html = marked.parse(md, { breaks: true, gfm: true });
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [

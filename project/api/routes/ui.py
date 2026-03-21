@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import cache
+from ...config import settings
 from ...db import crud
 from ..deps import get_db
 
@@ -103,5 +104,6 @@ async def overview_stats(db: AsyncSession = Depends(get_db)):
     if cached is not None:
         return cached
     result = await crud.get_overview_stats(db)
+    result["api_base_url"] = settings.api_base_url
     cache.put("overview_stats", result, ttl=30)
     return result
