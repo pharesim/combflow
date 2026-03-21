@@ -100,8 +100,8 @@ async def test_post_detail_community_id_null(client, seeded_db):
     assert resp.json()["community_id"] is None
 
 
-async def test_create_post_with_title_and_thumbnail(client, seeded_db):
-    """Posts with title and thumbnail_url should persist and return them."""
+async def test_create_post_with_title(client, seeded_db):
+    """Posts with title should persist and return it."""
     resp = await client.post(
         "/posts",
         json={
@@ -112,7 +112,6 @@ async def test_create_post_with_title_and_thumbnail(client, seeded_db):
             "sentiment": "positive",
             "sentiment_score": 0.6,
             "title": "My Great Post",
-            "thumbnail_url": "https://images.hive.blog/p/photo.jpg",
         },
         headers=AUTH,
     )
@@ -122,20 +121,18 @@ async def test_create_post_with_title_and_thumbnail(client, seeded_db):
     assert get_resp.status_code == 200
     post = get_resp.json()
     assert post["title"] == "My Great Post"
-    assert post["thumbnail_url"] == "https://images.hive.blog/p/photo.jpg"
 
 
 async def test_post_detail_title_null_when_missing(client, seeded_db):
-    """Posts without title/thumbnail should return null."""
+    """Posts without title should return null."""
     resp = await client.get("/posts/alice/test-post-one")
     assert resp.status_code == 200
     post = resp.json()
     assert post["title"] is None
-    assert post["thumbnail_url"] is None
 
 
-async def test_upsert_updates_title_and_thumbnail(client, seeded_db):
-    """Upserting a post should update title and thumbnail."""
+async def test_upsert_updates_title(client, seeded_db):
+    """Upserting a post should update title."""
     payload = {
         "author": "eve",
         "permlink": "upsert-title",
@@ -144,15 +141,12 @@ async def test_upsert_updates_title_and_thumbnail(client, seeded_db):
         "sentiment": "neutral",
         "sentiment_score": 0.0,
         "title": "Original Title",
-        "thumbnail_url": "https://old.jpg",
     }
     await client.post("/posts", json=payload, headers=AUTH)
 
     payload["title"] = "Updated Title"
-    payload["thumbnail_url"] = "https://new.jpg"
     await client.post("/posts", json=payload, headers=AUTH)
 
     get_resp = await client.get("/posts/eve/upsert-title")
     post = get_resp.json()
     assert post["title"] == "Updated Title"
-    assert post["thumbnail_url"] == "https://new.jpg"

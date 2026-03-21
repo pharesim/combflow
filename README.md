@@ -83,7 +83,8 @@ This builds the image, runs migrations, verifies tables, seeds the category tree
 |---------|-------------|
 | `combflow-app` | FastAPI on port 8000 (1G memory limit) |
 | `db` | PostgreSQL 17 + pgvector |
-| `hive_worker` | Streams + classifies + saves posts (1G memory limit) |
+| `hive_worker` | Streams + classifies + saves posts (2G memory limit) |
+| `caddy` | Reverse proxy with auto-TLS (128M memory limit) |
 
 ### 3. Check
 
@@ -219,7 +220,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 | Table | Purpose |
 |-------|---------|
-| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id) |
+| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, title) |
 | `categories` | 2-level hierarchy (parent_id for nesting) |
 | `post_category` | Many-to-many: posts <-> categories |
 | `post_language` | Many-to-many: posts <-> languages |
@@ -239,7 +240,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 ### Migration
 
-Single migration `001_initial_schema.py` — all tables, indexes, and pgvector setup. Fresh-install only. Verified by `alembic/verify_migration.py` on startup.
+Migrations: `001_initial_schema.py` (all tables, indexes, pgvector), `002_add_title.py` (title column), `003_drop_thumbnail_url.py` (removed — thumbnails fetched client-side from Hive). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
@@ -463,13 +464,15 @@ combflow/combflow/
 │       └── hive.py        # self-contained: live stream + two-phase backfill
 ├── alembic/
 │   ├── versions/
-│   │   └── 001_initial_schema.py  # all tables + indexes (fresh install)
+│   │   ├── 001_initial_schema.py  # all tables + indexes (fresh install)
+│   │   ├── 002_add_title.py       # title column on posts
+│   │   └── 003_drop_thumbnail_url.py  # thumbnails now client-side only
 │   └── verify_migration.py        # post-migration table verification
 ├── scripts/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 96+ tests
+├── tests/                   # 256 tests
 ├── Dockerfile
 ├── docker-compose.yml
 └── deploy.sh

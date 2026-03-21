@@ -17,4 +17,3 @@ class PostCreate(BaseModel):
     sentiment_score: float | None = Field(default=None, examples=[0.72], ge=-1.0, le=1.0)
     community_id: str | None = Field(default=None, examples=["hive-174578"], max_length=20)
     title: str | None = Field(default=None, examples=["My Bitcoin Journey"])
-    thumbnail_url: str | None = Field(default=None, examples=["https://images.hive.blog/p/image.jpg"])

@@ -97,11 +97,6 @@ def _get_author_rep(author: str) -> float:
 
 import re as _re
 
-_MD_IMG_RE = _re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
-_HTML_IMG_RE = _re.compile(r'<img\s[^>]*?src=["\']?([^"\'\s>]+)', _re.IGNORECASE)
-_YT_RE = _re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)')
-_3SPEAK_RE = _re.compile(r'3speak\.tv/watch\?v=[\w.-]+/([\w-]+)')
-
 _COMMUNITY_PATTERN = _re.compile(r"^hive-\d+$")
 _COMMUNITY_BOOST = 0.08
 _COMMUNITY_MAP_THRESHOLD = 0.40
@@ -427,51 +422,6 @@ def _classify_and_save(
 
     languages = _detect_languages(clean_body, meta_langs)
 
-    # Extract thumbnail URL from json_metadata or body.
-    thumbnail_url = ""
-    try:
-        if isinstance(meta, dict):
-            images = meta.get("image", [])
-            if images and isinstance(images, list):
-                thumbnail_url = _re.sub(r'[\])].*$', '', str(images[0]).replace("&amp;", "&"))
-    except Exception:
-        pass
-
-    if not thumbnail_url and body:
-        md_match = _MD_IMG_RE.search(body)
-        if md_match:
-            thumbnail_url = md_match.group(1)
-        else:
-            html_img_match = _HTML_IMG_RE.search(body)
-            if html_img_match:
-                thumbnail_url = html_img_match.group(1)
-            else:
-                yt_match = _YT_RE.search(body)
-                if yt_match:
-                    thumbnail_url = f"https://img.youtube.com/vi/{yt_match.group(1)}/hqdefault.jpg"
-                else:
-                    ts_match = _3SPEAK_RE.search(body)
-                    if ts_match:
-                        thumbnail_url = f"https://images.3speak.tv/images/{ts_match.group(1)}.webp"
-
-    if not thumbnail_url and body:
-        cp_match = _re.search(r'cross post of \[@([\w.-]+)/([\w-]+)\]', body)
-        if cp_match:
-            try:
-                import httpx
-                resp = httpx.post("https://api.hive.blog", json={
-                    "jsonrpc": "2.0",
-                    "method": "bridge.get_post",
-                    "params": {"author": cp_match.group(1), "permlink": cp_match.group(2)},
-                    "id": 1,
-                }, timeout=5)
-                orig = resp.json().get("result", {})
-                orig_images = orig.get("json_metadata", {}).get("image", [])
-                if orig_images:
-                    thumbnail_url = _re.sub(r'[\])].*$', '', str(orig_images[0]).replace("&amp;", "&"))
-            except Exception:
-                pass
-
     _save_post(db, {
         "author": author,
         "permlink": permlink,
@@ -482,7 +432,6 @@ def _classify_and_save(
         "sentiment_score": sentiment_score,
         "community_id": community_id,
         "title": title,
-        "thumbnail_url": thumbnail_url or None,
     })
     logger.info("%s processed %s/%s langs=%s sentiment=%s cats=%s community=%s",
                 label, author, permlink, languages, sentiment, categories, community_id)

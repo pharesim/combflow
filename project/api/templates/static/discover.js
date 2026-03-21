@@ -482,13 +482,10 @@ async function fetchSingleMeta(p) {
 
 function seedMetaFromServer(posts) {
   for (const p of posts) {
-    if (!p.title && !p.thumbnail_url) continue;
+    if (!p.title) continue;
     const key = `${p.author}/${p.permlink}`;
     if (metaCache[key]) continue;
-    cacheMetaEntry(key, {
-      title: p.title || '',
-      thumbnail: p.thumbnail_url || '',
-    });
+    cacheMetaEntry(key, { title: p.title, thumbnail: '' });
   }
 }
 
