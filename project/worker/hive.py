@@ -98,6 +98,7 @@ def _get_author_rep(author: str) -> float:
 import re as _re
 
 _MD_IMG_RE = _re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
+_HTML_IMG_RE = _re.compile(r'<img\s[^>]*?src=["\']?([^"\'\s>]+)', _re.IGNORECASE)
 _YT_RE = _re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)')
 _3SPEAK_RE = _re.compile(r'3speak\.tv/watch\?v=[\w.-]+/([\w-]+)')
 
@@ -436,13 +437,17 @@ def _classify_and_save(
         if md_match:
             thumbnail_url = md_match.group(1)
         else:
-            yt_match = _YT_RE.search(body)
-            if yt_match:
-                thumbnail_url = f"https://img.youtube.com/vi/{yt_match.group(1)}/hqdefault.jpg"
+            html_img_match = _HTML_IMG_RE.search(body)
+            if html_img_match:
+                thumbnail_url = html_img_match.group(1)
             else:
-                ts_match = _3SPEAK_RE.search(body)
-                if ts_match:
-                    thumbnail_url = f"https://images.3speak.tv/images/{ts_match.group(1)}.webp"
+                yt_match = _YT_RE.search(body)
+                if yt_match:
+                    thumbnail_url = f"https://img.youtube.com/vi/{yt_match.group(1)}/hqdefault.jpg"
+                else:
+                    ts_match = _3SPEAK_RE.search(body)
+                    if ts_match:
+                        thumbnail_url = f"https://images.3speak.tv/images/{ts_match.group(1)}.webp"
 
     if not thumbnail_url and body:
         cp_match = _re.search(r'cross post of \[@([\w.-]+)/([\w-]+)\]', body)
