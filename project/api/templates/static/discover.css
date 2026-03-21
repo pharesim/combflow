@@ -145,6 +145,13 @@ body{overflow-x:hidden}
 .loading-more{text-align:center;padding:24px;color:var(--text-dim);font-size:13px}
 .loading-more .spinner{width:28px;height:28px;border:3px solid var(--card);border-top-color:var(--hive-red);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px}
 
+/* ── Custom scrollbar ─── */
+.modal{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
+.modal::-webkit-scrollbar{width:8px}
+.modal::-webkit-scrollbar-track{background:transparent}
+.modal::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px}
+.modal::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.25)}
+
 /* ── Post modal ─── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center;padding:24px}
 .modal-overlay.open{display:flex}
