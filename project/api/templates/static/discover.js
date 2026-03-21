@@ -491,7 +491,10 @@ function seedMetaFromServer(posts) {
 
 async function fetchMeta(posts) {
   if (!posts.length) return;
-  const need = posts.filter(p => !metaCache[`${p.author}/${p.permlink}`]);
+  const need = posts.filter(p => {
+    const cached = metaCache[`${p.author}/${p.permlink}`];
+    return !cached || !cached.thumbnail;
+  });
   const chunks = [];
   for (let i = 0; i < need.length; i += 10) chunks.push(need.slice(i, i + 10));
 
