@@ -393,6 +393,8 @@ body{overflow-x:hidden}
   .modal-close{top:0}
   .filter-header{padding:12px 0}
   #sort-select{display:none}
+  #auth-area .auth-user{font-size:0}
+  #auth-area .auth-user .auth-avatar{font-size:13px}
 }
 
 /* ── Video embeds (click-to-play) ── */
