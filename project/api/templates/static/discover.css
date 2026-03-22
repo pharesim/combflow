@@ -187,6 +187,11 @@ body{overflow-x:hidden}
 .empty h3{font-size:20px;margin-bottom:8px;color:var(--text)}
 .empty p{max-width:400px;margin:0 auto}
 
+/* ── My Communities toggle ─── */
+.my-communities-toggle{background:var(--card);color:var(--text-dim);border:1px solid #ffffff20;padding:6px 14px;border-radius:16px;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.my-communities-toggle:hover{color:#fff;border-color:var(--gold)}
+.my-communities-toggle.active{background:var(--gold);color:var(--bg);border-color:var(--gold);font-weight:600}
+
 /* ── Layout toggle ─── */
 .layout-toggle{display:flex;gap:4px;background:var(--card);border-radius:20px;padding:3px}
 .layout-toggle button{background:none;border:none;color:var(--text-dim);padding:6px 12px;border-radius:16px;cursor:pointer;font-size:13px;transition:all .2s;line-height:1}

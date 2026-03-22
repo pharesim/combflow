@@ -139,6 +139,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Post authoring** — "Write Post" button opens a full editor with title, markdown body (with preview), tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
 - **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with PeakD link
 - **Community discovery** — suggestions bar shows related communities when category filters are active; logged-in users can join/leave communities directly via Keychain
+- **My Communities filter** — logged-in users can toggle a "My Communities" filter to show only posts from communities they've joined on Hive
 - **Lazy thumbnails** — loaded on-demand as hexes enter the viewport
 - **Sentiment borders** — each hex has a coloured border from red (negative) to green (positive)
 - **Layout toggle** — switch between hex grid and card view (auto-selects cards on mobile)
@@ -306,7 +307,7 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | GET | `/health` | Liveness check |
 | GET | `/categories` | Full 2-level category tree |
 | GET | `/posts/{author}/{permlink}` | Post detail with categories, languages, sentiment |
-| GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `limit`, `offset`) |
+| GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `communities`, `limit`, `offset`) |
 | GET | `/api/languages` | Available languages with post counts |
 | GET | `/api/stats` | Overview statistics |
 | POST | `/api/auth/challenge` | Generate a Keychain login challenge |
@@ -348,6 +349,9 @@ curl 'https://your-server:8000/api/browse?category=crypto&category=ai'
 
 # Filter by community
 curl 'https://your-server:8000/api/browse?community=hive-174578'
+
+# Filter by multiple communities (e.g. all communities you've joined)
+curl 'https://your-server:8000/api/browse?communities=hive-174578&communities=hive-163772'
 
 # Filter by language and sentiment
 curl 'https://your-server:8000/api/browse?language=en&sentiment=positive&limit=20'

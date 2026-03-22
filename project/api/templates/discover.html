@@ -50,6 +50,7 @@
 <div class="filters-bar" id="filters-bar" role="button" tabindex="0" onclick="toggleFiltersBar()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltersBar()}">
   <span class="filters-bar-label">Filters <span class="filters-bar-toggle" aria-hidden="true">&#9660;</span></span>
   <div class="filters-bar-actions" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
+    <button type="button" class="my-communities-toggle" id="my-communities-toggle" style="display:none" aria-pressed="false" onclick="toggleMyCommunities()">My Communities</button>
     <div class="layout-toggle" role="group" aria-label="Layout" id="layout-toggle">
       <button type="button" class="active" data-layout="hex" aria-pressed="true" onclick="setLayout('hex')"><span aria-hidden="true">&#x2B21;</span> Hex grid</button>
       <button type="button" data-layout="card" aria-pressed="false" onclick="setLayout('card')"><span aria-hidden="true">&#x25A6;</span> Card grid</button>

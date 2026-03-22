@@ -11,6 +11,7 @@ let filteredTotalCount = 0;
 // Community data
 let _communityList = []; // from /api/communities
 let _activeCommunityFilter = null; // active community filter (community id)
+let _myCommunitiesActive = false; // "My Communities" multi-filter toggle
 let _userCommunities = null; // from bridge.list_all_subscriptions (for editor)
 
 // Endless scrolling state
@@ -421,7 +422,11 @@ function buildFilterUrl(limit, offset) {
   let url = `/api/browse?limit=${limit}&offset=${offset}`;
   cats.forEach(c => url += `&category=${encodeURIComponent(c)}`);
   langs.forEach(l => url += `&language=${encodeURIComponent(l)}`);
-  if (_activeCommunityFilter) url += `&community=${encodeURIComponent(_activeCommunityFilter)}`;
+  if (_myCommunitiesActive && _userCommunities && _userCommunities.length > 0) {
+    _userCommunities.forEach(c => url += `&communities=${encodeURIComponent(c.id)}`);
+  } else if (_activeCommunityFilter) {
+    url += `&community=${encodeURIComponent(_activeCommunityFilter)}`;
+  }
   if (sentiments.length === 1) url += `&sentiment=${encodeURIComponent(sentiments[0])}`;
   return { url, sentiments };
 }
@@ -577,6 +582,7 @@ function resetFilters() {
     c.setAttribute('aria-pressed', 'false');
   });
   _activeCommunityFilter = null;
+  setMyCommunitiesActive(false);
   updateFilterCounts();
   document.getElementById('suggestions-bar').style.display = 'none';
   applyFilters();
@@ -1287,9 +1293,11 @@ function renderAuthUI() {
       '<a class="auth-settings" href="#" onclick="showSettingsModal();return false" title="Filter preferences">Settings</a>' +
       '<a class="auth-logout" href="#" onclick="doLogout();return false">Logout</a>';
     document.getElementById('btn-save-prefs').style.display = '';
+    document.getElementById('my-communities-toggle').style.display = '';
   } else {
     area.innerHTML = '<a class="auth-login" href="#" onclick="showLoginPrompt();return false">Login</a>';
     document.getElementById('btn-save-prefs').style.display = 'none';
+    document.getElementById('my-communities-toggle').style.display = 'none';
   }
 }
 
@@ -1345,6 +1353,7 @@ async function doLogout() {
   await logout();
   sessionStorage.removeItem('honeycomb_user_communities');
   _userCommunities = null;
+  setMyCommunitiesActive(false);
   renderAuthUI();
   resetFilters();
 }
@@ -1763,6 +1772,25 @@ async function handleJoinCommunity(communityId, communityName, btn) {
   btn.disabled = false;
 }
 
+// ── "My Communities" toggle ──
+function toggleMyCommunities() {
+  setMyCommunitiesActive(!_myCommunitiesActive);
+  if (_myCommunitiesActive) {
+    _activeCommunityFilter = null;
+    updateSuggestionActiveState();
+  }
+  scheduleFilter();
+}
+
+function setMyCommunitiesActive(active) {
+  _myCommunitiesActive = active;
+  const btn = document.getElementById('my-communities-toggle');
+  if (btn) {
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  }
+}
+
 // ── Filter by community (from suggestion or badge click) ──
 function filterByCommunity(communityId) {
   if (_activeCommunityFilter === communityId) {
@@ -1770,6 +1798,7 @@ function filterByCommunity(communityId) {
   } else {
     _activeCommunityFilter = communityId;
   }
+  setMyCommunitiesActive(false);
   updateSuggestionActiveState();
   scheduleFilter();
 }

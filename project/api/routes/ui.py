@@ -49,13 +49,16 @@ async def browse_posts(
     language: list[str] | None = Query(default=None),
     sentiment: str | None = Query(default=None),
     community: str | None = Query(default=None, description="Filter by Hive community ID (e.g. hive-174578)"),
+    communities: list[str] | None = Query(default=None, description="Filter by multiple community IDs; overrides community"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0, le=10000),
     cursor: str | None = Query(default=None, description="Opaque cursor from previous response for keyset pagination"),
 ):
     result = await crud.browse_posts(
         db, categories=category, languages=language,
-        sentiment=sentiment, community=community,
+        sentiment=sentiment,
+        community=None if communities else community,
+        communities=communities,
         limit=limit, offset=offset, cursor=cursor,
     )
     return {"posts": result["posts"], "count": len(result["posts"]), "total": result["total"], "next_cursor": result["next_cursor"]}

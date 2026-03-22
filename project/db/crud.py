@@ -321,11 +321,12 @@ async def _attach_categories_and_languages(
 # ── Browse & discovery ────────────────────────────────────────────────────────
 
 
-def _browse_count_cache_key(categories, languages, sentiment, community=None):
+def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None):
     raw = _json.dumps({"c": sorted(categories or []),
                        "l": sorted(languages or []),
                        "s": sentiment,
-                       "m": community}, sort_keys=True)
+                       "m": community,
+                       "ms": sorted(communities) if communities else None}, sort_keys=True)
     return f"browse_count:{hashlib.md5(raw.encode()).hexdigest()}"
 
 @retry_transient
@@ -335,6 +336,7 @@ async def browse_posts(
     languages: list[str] | None = None,
     sentiment: str | None = None,
     community: str | None = None,
+    communities: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
     cursor: str | None = None,
@@ -380,7 +382,10 @@ async def browse_posts(
     if sentiment:
         conditions.append("p.sentiment = :sent")
         params["sent"] = sentiment
-    if community:
+    if communities:
+        conditions.append("p.community_id = ANY(CAST(:communities AS text[]))")
+        params["communities"] = communities
+    elif community:
         conditions.append("p.community_id = :community")
         params["community"] = community
 
@@ -403,7 +408,7 @@ async def browse_posts(
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     # Filtered total count — cached with 30s TTL, keyed by filter combination.
-    count_key = _browse_count_cache_key(categories, languages, sentiment, community)
+    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities)
     total = _cache.get(count_key)
     if total is None:
         count_conditions = [c for c in conditions if ":cursor_created" not in c]

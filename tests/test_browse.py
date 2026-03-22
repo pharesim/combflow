@@ -418,3 +418,79 @@ async def test_browse_community_name_coalesce(client, seeded_db):
     assert len(posts) >= 1
     # community_name should be None (no mapping exists).
     assert posts[0]["community_name"] is None
+
+
+# ── Multi-community filter ─────────────────────────────────────────────────
+
+async def test_browse_filter_by_communities(client, seeded_db):
+    """The communities param filters posts to multiple community IDs."""
+    from tests.conftest import AUTH
+    leaf = seeded_db["leaf_name"]
+    for cid, author, perm in [
+        ("hive-111111", "alice", "mc-1"),
+        ("hive-222222", "bob", "mc-2"),
+        ("hive-333333", "carol", "mc-3"),
+    ]:
+        await client.post("/posts", json={
+            "author": author, "permlink": perm,
+            "categories": [leaf], "languages": ["en"],
+            "sentiment": "neutral", "sentiment_score": 0.0,
+            "community_id": cid,
+        }, headers=AUTH)
+
+    resp = await client.get(
+        "/api/browse?communities=hive-111111&communities=hive-222222"
+    )
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 2
+    returned_communities = {p["community_id"] for p in posts}
+    assert returned_communities <= {"hive-111111", "hive-222222"}
+
+
+async def test_browse_communities_overrides_community(client, seeded_db):
+    """When both community and communities are provided, communities wins."""
+    from tests.conftest import AUTH
+    leaf = seeded_db["leaf_name"]
+    await client.post("/posts", json={
+        "author": "dave", "permlink": "override-1",
+        "categories": [leaf], "languages": ["en"],
+        "sentiment": "neutral", "sentiment_score": 0.0,
+        "community_id": "hive-444444",
+    }, headers=AUTH)
+
+    # community=hive-444444 should be ignored when communities is set
+    resp = await client.get(
+        "/api/browse?community=hive-444444&communities=hive-999999"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["posts"] == []
+    assert resp.json()["total"] == 0
+
+
+async def test_browse_communities_empty_list(client, seeded_db):
+    """Omitting communities should return all posts (no filter)."""
+    resp = await client.get("/api/browse")
+    assert resp.status_code == 200
+    assert resp.json()["total"] >= 3
+
+
+async def test_browse_communities_total_reflects_filter(client, seeded_db):
+    """Total count reflects the multi-community filter."""
+    from tests.conftest import AUTH
+    leaf = seeded_db["leaf_name"]
+    await client.post("/posts", json={
+        "author": "eve", "permlink": "mc-total-1",
+        "categories": [leaf], "languages": ["en"],
+        "sentiment": "neutral", "sentiment_score": 0.0,
+        "community_id": "hive-555555",
+    }, headers=AUTH)
+
+    all_resp = await client.get("/api/browse")
+    all_total = all_resp.json()["total"]
+
+    filtered_resp = await client.get("/api/browse?communities=hive-555555")
+    filtered_total = filtered_resp.json()["total"]
+
+    assert filtered_total >= 1
+    assert filtered_total < all_total
