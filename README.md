@@ -136,7 +136,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Post modal** — click a hex to see full content, categories, languages, and sentiment (body scroll locked while open)
 - **Comment threads** — hierarchical comments loaded from HAFSQL, reputation-filtered (rep <= 0 hidden), collapsible nested replies, includes author's own replies
 - **Comment posting** — logged-in users can post comments and replies via Hive Keychain, with 3-second cooldown and cache invalidation
-- **Post authoring** — pen icon opens a full editor with title, preview description (120 chars, stored in `json_metadata.description`), markdown body with formatting toolbar (bold, italic, headings, links, images, lists, quotes, code blocks, tables, center, @mentions — plus Ctrl+B/I/K shortcuts), markdown help modal, tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
+- **Post authoring** — pen icon opens a full editor with title, preview description (120 chars, stored in `json_metadata.description`), markdown body with formatting toolbar (bold, italic, headings, links, images, lists, quotes, code blocks, tables, center, @mentions — plus Ctrl+B/I/K shortcuts), image upload via clipboard paste, drag-and-drop, or file picker (uploaded to Hive image hosting via Keychain-signed requests), markdown help modal, tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
 - **Location picker** — map button in the editor opens a Leaflet/OpenStreetMap modal; click to place a pin or use "My Location" (browser geolocation). Reverse geocoding via Nominatim auto-fills the location name. Inserts a worldmappin-compatible hidden tag in the post body
 - **Upvoting** — heart button on posts (card, list, and modal views). Dynamic vote weight adjusts automatically based on voting mana with configurable floor (default 50%) and max weight (default 25%) — users never run out of votes. Settings saved on-chain.
 - **Follow users** — follow/unfollow button in post modal broadcasts Hive-native follow via Keychain. "Following" toggle in the filter bar shows only followed users' posts (active by default after login). Followed list synced from chain on login, cached in localStorage. Manage followed users in settings modal.
@@ -189,6 +189,7 @@ The seed script (`scripts/seed_categories.py`) bootstraps the classification sys
 - **Quality techniques** — disambiguation hints in prompts, primary-label weighting, outlier pruning, negative examples for confusable categories
 - **Quality validation** — holds out 20% of labeled posts and reports precision/recall per category
 - **Checkpoint/resume** — progress saved to `seeds/checkpoint.json`, resume with `--resume`
+- **Automatic backups** — timestamped backups of `checkpoint.json` and `centroids.json` created before overwriting (e.g. `centroids.20260322_213757.json`)
 
 ---
 

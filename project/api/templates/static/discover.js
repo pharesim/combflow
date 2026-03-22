@@ -169,6 +169,14 @@ async function init() {
   enableFilterEffect();
   setupInfiniteScroll();
 
+  // Editor image paste/drop/pick listeners
+  const editorBody = document.getElementById('editor-body');
+  editorBody.addEventListener('paste', onEditorPaste);
+  editorBody.addEventListener('dragover', onEditorDragOver);
+  editorBody.addEventListener('dragleave', onEditorDragLeave);
+  editorBody.addEventListener('drop', onEditorDrop);
+  document.getElementById('editor-image-input').addEventListener('change', onEditorImagePick);
+
   // Author profile URL (/@username with no permlink)
   const authorMatch = window.location.pathname.match(/^\/@([^/]+)$/);
   if (authorMatch) {

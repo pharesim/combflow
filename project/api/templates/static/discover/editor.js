@@ -177,19 +177,113 @@ function editorInsertLink() {
 }
 
 function editorInsertImage() {
+  document.getElementById('editor-image-input').click();
+}
+
+// ── Image upload to Hive image hosting ──
+let _imageUploading = false;
+
+async function uploadImageToHive(file) {
+  const auth = getStoredAuth();
+  if (!auth) { showToast('Log in to upload images', 'error'); return null; }
+  if (_imageUploading) { showToast('Upload already in progress', 'info'); return null; }
+  if (file.size > 10 * 1024 * 1024) { showToast('Image too large (max 10 MB)', 'error'); return null; }
+
+  _imageUploading = true;
   const ta = document.getElementById('editor-body');
-  const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-  const isUrl = /^https?:\/\//.test(sel);
-  if (isUrl) {
-    editorInsert('![](', ')');
-  } else {
-    editorInsert('![' + (sel || 'alt text') + '](', ')');
-    if (sel) {
-      const pos = ta.selectionEnd - 1;
-      ta.selectionStart = pos;
-      ta.selectionEnd = pos;
+  ta.disabled = true;
+  showToast('Uploading image...', 'info');
+
+  try {
+    const buf = await file.arrayBuffer();
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const signature = await new Promise((resolve, reject) => {
+      if (!window.hive_keychain) { reject(new Error('Hive Keychain not found')); return; }
+      window.hive_keychain.requestSignBuffer(auth.username, hashHex, 'Posting', res => {
+        if (res.success) resolve(res.result);
+        else reject(new Error(res.message || 'Signature rejected'));
+      });
+    });
+
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await fetch(`https://images.hive.blog/${auth.username}/${signature}`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!resp.ok) throw new Error('Upload failed (' + resp.status + ')');
+    const data = await resp.json();
+    if (!data.url) throw new Error('No URL in upload response');
+
+    showToast('Image uploaded', 'success');
+    return data.url;
+  } catch (e) {
+    showToast(e.message || 'Image upload failed', 'error');
+    return null;
+  } finally {
+    _imageUploading = false;
+    ta.disabled = false;
+    ta.focus();
+  }
+}
+
+function insertImageMarkdown(url) {
+  const ta = document.getElementById('editor-body');
+  const pos = ta.selectionStart;
+  const md = `![image](${url})\n`;
+  ta.setRangeText(md, pos, pos, 'end');
+  ta.focus();
+  autoSaveDraft();
+}
+
+async function handleImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = await uploadImageToHive(file);
+  if (url) insertImageMarkdown(url);
+}
+
+function onEditorPaste(e) {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      handleImageFile(item.getAsFile());
+      return;
     }
   }
+}
+
+function onEditorDragOver(e) {
+  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+  }
+}
+
+function onEditorDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function onEditorDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files) return;
+  for (const file of files) {
+    if (file.type.startsWith('image/')) {
+      await handleImageFile(file);
+    }
+  }
+}
+
+function onEditorImagePick(e) {
+  const files = e.target.files;
+  if (!files || !files.length) return;
+  for (const file of files) handleImageFile(file);
+  e.target.value = '';
 }
 
 function editorInsertTable() {

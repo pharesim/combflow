@@ -492,7 +492,8 @@
         <div style="flex:1"></div>
         <button type="button" title="Markdown help" data-action="show-md-help" class="toolbar-help">?</button>
       </div>
-      <textarea id="editor-body" placeholder="Write your post in Markdown..." rows="12" data-action="editor-body-input"></textarea>
+      <textarea id="editor-body" placeholder="Write your post in Markdown... (paste or drop images here)" rows="12" data-action="editor-body-input"></textarea>
+      <input type="file" id="editor-image-input" accept="image/*" multiple style="display:none">
       <div class="editor-preview rendered-body" id="editor-preview" style="display:none"></div>
     </div>
     <div class="editor-field">
