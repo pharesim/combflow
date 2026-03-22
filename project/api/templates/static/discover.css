@@ -392,6 +392,7 @@ body{overflow-x:hidden}
   .modal-tags .tag{font-size:10px;padding:3px 8px}
   .modal-close{top:0}
   .filter-header{padding:12px 0}
+  #filter-sentiment{display:none}
 }
 
 /* ── Video embeds (click-to-play) ── */
