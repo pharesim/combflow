@@ -278,6 +278,7 @@ async function handleVote(author, permlink, btn) {
   if (!auth) { showLoginPrompt(); return; }
   const key = `${author}/${permlink}`;
   if (_votedPosts[key]) {
+    if (!confirm('Remove your vote from this post?')) return;
     btn.disabled = true;
     try {
       await broadcastVote(author, permlink, 0);
@@ -286,7 +287,6 @@ async function handleVote(author, permlink, btn) {
         el.classList.remove('voted');
         el.setAttribute('aria-label', 'Vote');
       });
-      showToast('Vote removed', 'success');
     } catch(e) {
       showToast(e.message || 'Unvote failed', 'error');
     }
