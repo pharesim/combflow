@@ -141,6 +141,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Upvoting** — heart button on posts (card, list, and modal views). Dynamic vote weight adjusts automatically based on voting mana with configurable floor (default 50%) and max weight (default 25%) — users never run out of votes. Settings saved on-chain.
 - **Follow users** — follow/unfollow button in post modal broadcasts Hive-native follow via Keychain. "Following" toggle in the filter bar shows only followed users' posts (active by default after login). Followed list synced from chain on login, cached in localStorage. Manage followed users in settings modal.
 - **Mute users** — mute button in post modal broadcasts Hive-native mute via Keychain. Muted users' posts are hidden client-side. Unmute available in settings. Muted list synced from chain on login.
+- **Notifications** — bell icon in the header shows unread Hive notifications (replies, mentions, votes, reblogs, follows, etc.) fetched from the Hive Bridge API. Unread count badge updates on login and periodically. Click to expand a dropdown of recent notifications with relative timestamps. Mark all as read via Keychain (writes last-read timestamp to `posting_json_metadata`). Notifications link to the relevant post or author profile.
 - **Profile avatars** — Hive profile pictures shown next to usernames in header, cards, list rows, and post modal
 - **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with hivel.ink link
 - **Community discovery** — suggestions bar shows related communities when category filters are active; logged-in users can join/leave communities directly via Keychain
@@ -479,10 +480,10 @@ combflow/combflow/
 │   │           ├── shared/      # shared modules
 │   │           │   ├── keychain.js  # Keychain broadcasting (vote, comment, post, follow, mute, subscribe)
 │   │           │   └── markdown.js  # Hive markdown rendering, sanitization, video embeds
-│   │           └── discover/    # 12 focused JS modules
+│   │           └── discover/    # 13 focused JS modules
 │   │               ├── state.js, filters.js, rendering.js, voting.js,
 │   │               ├── social.js, comments.js, modal.js, auth.js,
-│   │               └── preferences.js, communities.js, editor.js, location.js
+│   │               └── preferences.js, communities.js, editor.js, location.js, notifications.js
 │   ├── db/
 │   │   ├── models.py      # ORM models (Post, Category, etc.)
 │   │   ├── session.py     # async engine + session

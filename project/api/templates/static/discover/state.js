@@ -113,6 +113,11 @@ document.addEventListener('alpine:init', () => {
     // Editor
     editorTags: [],
     editorTab: 'write',
+    // Notifications
+    notifOpen: false,
+    notifications: [],
+    unreadCount: 0,
+    lastRead: null,
   });
 
   // ── Filters store ──

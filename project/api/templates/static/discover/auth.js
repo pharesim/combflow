@@ -46,6 +46,8 @@ async function doLogin() {
     fetchUserCommunities(input).then(list => { state.userCommunities = list; });
     fetchMutedList(); // background fetch
     fetchFollowedList(); // background fetch
+    fetchUnreadCount();
+    startNotifPolling();
     const prefs = await loadAndApplyPreferences();
     if (isFirstLogin(prefs)) {
       showSettingsModal();
@@ -73,5 +75,10 @@ async function doLogout() {
   setFollowingActive(false);
   Alpine.store('app').currentUser = null;
   Alpine.store('app').authDropdownOpen = false;
+  stopNotifPolling();
+  Alpine.store('app').notifications = [];
+  Alpine.store('app').unreadCount = 0;
+  Alpine.store('app').notifOpen = false;
+  Alpine.store('app').lastRead = null;
   resetFilters();
 }

@@ -143,6 +143,8 @@ async function init() {
     fetchUserCommunities(authInit.username).then(list => { state.userCommunities = list; });
     fetchMutedList();
     fetchFollowedList();
+    fetchUnreadCount();
+    startNotifPolling();
   }
   await loadAndApplyPreferences();
 
@@ -225,7 +227,8 @@ async function init() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const s = Alpine.store('app');
-    if (s.mdHelpOpen) closeMdHelp();
+    if (s.notifOpen) { s.notifOpen = false; }
+    else if (s.mdHelpOpen) closeMdHelp();
     else if (s.locationOpen) closeLocationPicker();
     else if (s.votePopupOpen) closeVotePopup();
     else if (s.editorOpen) confirmCloseEditor();
@@ -310,6 +313,9 @@ document.addEventListener('click', e => {
     case 'confirm-location': confirmLocation(); break;
     // Markdown help
     case 'close-md-help': closeMdHelp(); break;
+    // Notifications
+    case 'toggle-notifications': toggleNotifications(); break;
+    case 'mark-all-read': markAllRead(); break;
     // Back to top
     case 'back-to-top': window.scrollTo({top:0,behavior:'smooth'}); break;
   }

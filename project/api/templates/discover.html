@@ -28,6 +28,20 @@
       <template x-if="$store.app.currentUser">
         <div class="auth-logged-in" style="display:flex;align-items:center;gap:6px">
           <button type="button" class="auth-login" style="background:var(--hive-red);color:#fff;border-color:var(--hive-red);padding:6px 10px" title="Write Post" data-action="open-editor"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>
+          <div class="notif-wrapper" @click.outside="$store.app.notifOpen = false" style="position:relative">
+            <button type="button" class="notif-bell" title="Notifications" data-action="toggle-notifications" aria-label="Notifications">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span class="notif-badge" x-show="$store.app.unreadCount > 0" x-text="$store.app.unreadCount > 99 ? '99+' : $store.app.unreadCount" x-cloak></span>
+            </button>
+            <div class="notif-dropdown" x-show="$store.app.notifOpen" x-cloak>
+              <div class="notif-header">
+                <span>Notifications</span>
+                <button type="button" class="btn btn-ghost btn-sm" data-action="mark-all-read" x-show="$store.app.unreadCount > 0">Mark all read</button>
+              </div>
+              <div class="notif-list" id="notif-list"></div>
+              <div class="notif-empty" x-show="$store.app.notifications.length === 0">No notifications yet.</div>
+            </div>
+          </div>
           <div class="auth-dropdown" @click.outside="$store.app.authDropdownOpen = false">
             <button type="button" class="auth-dropdown-toggle" @click="$store.app.authDropdownOpen = !$store.app.authDropdownOpen">
               <img class="auth-avatar" :src="'https://images.hive.blog/u/' + encodeURIComponent($store.app.currentUser) + '/avatar/small'" alt="" width="22" height="22">
@@ -614,6 +628,7 @@
 <script defer src="/static/discover/communities.js"></script>
 <script defer src="/static/discover/editor.js"></script>
 <script defer src="/static/discover/location.js"></script>
+<script defer src="/static/discover/notifications.js"></script>
 <script defer src="/static/discover.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.15.3/dist/cdn.min.js" integrity="sha384-6WOLkykwLb3YWzXZ6lAq+GI0p3V+enUm9jY6yIXGpIriiAUOSF5dgNJLoSSNam4j" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js" integrity="sha384-LXWjKwDZz29o7TduNe+r/UxaolHh5FsSvy2W7bDHSZ8jJeGgDeuNnsDNHoxpSgDi" crossorigin="anonymous"></script>
