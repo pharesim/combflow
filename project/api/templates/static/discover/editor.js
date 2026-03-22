@@ -197,11 +197,18 @@ async function uploadImageToHive(file) {
   try {
     const buf = await file.arrayBuffer();
     const fileHashBuf = await crypto.subtle.digest('SHA-256', buf);
-    const fileHashHex = Array.from(new Uint8Array(fileHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const fileHashBytes = new Uint8Array(fileHashBuf);
+    // Build raw binary buffer: 'ImageSigningChallenge' bytes + SHA256(file) bytes
+    const prefix = new TextEncoder().encode('ImageSigningChallenge');
+    const signData = new Uint8Array(prefix.length + fileHashBytes.length);
+    signData.set(prefix, 0);
+    signData.set(fileHashBytes, prefix.length);
+    // Keychain accepts JSON-serialized Buffer objects for raw binary signing
+    const keychainBuf = JSON.stringify({type: 'Buffer', data: Array.from(signData)});
 
     const signature = await new Promise((resolve, reject) => {
       if (!window.hive_keychain) { reject(new Error('Hive Keychain not found')); return; }
-      window.hive_keychain.requestSignBuffer(auth.username, 'ImageSigningChallenge' + fileHashHex, 'Posting', res => {
+      window.hive_keychain.requestSignBuffer(auth.username, keychainBuf, 'Posting', res => {
         if (res.success) resolve(res.result);
         else reject(new Error(res.message || 'Signature rejected'));
       });
