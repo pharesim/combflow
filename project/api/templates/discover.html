@@ -181,6 +181,7 @@
         <div class="editor-community-loading" id="editor-community-loading" style="display:none"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div></div>
       </div>
       <div class="editor-community-hint" id="editor-community-hint" style="display:none"></div>
+      <label id="editor-crosspost-label" style="display:none"><input type="checkbox" id="editor-crosspost"> Also share to your blog</label>
     </div>
     <div class="editor-field">
       <label for="editor-title">Title</label>
@@ -203,10 +204,6 @@
         <input type="text" id="editor-tags-input" placeholder="Add a tag..." maxlength="50" onkeydown="handleTagKey(event)" oninput="showTagSuggestions()">
       </div>
       <div class="editor-tag-suggestions" id="editor-tag-suggestions" style="display:none"></div>
-    </div>
-    <div class="editor-field editor-options">
-      <label><input type="checkbox" id="editor-decline-payout"> Decline payout</label>
-      <label id="editor-crosspost-label" style="display:none"><input type="checkbox" id="editor-crosspost"> Also share to your blog</label>
     </div>
     <div class="editor-actions">
       <button type="button" class="btn btn-ghost" onclick="confirmCloseEditor()">Cancel</button>

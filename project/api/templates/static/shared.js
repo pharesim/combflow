@@ -126,7 +126,7 @@ function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 200);
 }
 
-function broadcastPost(title, body, tags, declinePayout, communityId) {
+function broadcastPost(title, body, tags, communityId) {
   return new Promise((resolve, reject) => {
     const auth = getStoredAuth();
     if (!auth) return reject(new Error('Not logged in'));
@@ -159,17 +159,15 @@ function broadcastPost(title, body, tags, declinePayout, communityId) {
 
     const ops = [commentOp];
 
-    if (declinePayout) {
-      ops.push(['comment_options', {
-        author: auth.username,
-        permlink: permlink,
-        max_accepted_payout: '0.000 HBD',
-        percent_hbd: 10000,
-        allow_votes: true,
-        allow_curation_rewards: true,
-        extensions: [],
-      }]);
-    }
+    ops.push(['comment_options', {
+      author: auth.username,
+      permlink: permlink,
+      max_accepted_payout: '1000000.000 HBD',
+      percent_hbd: 0,
+      allow_votes: true,
+      allow_curation_rewards: true,
+      extensions: [],
+    }]);
 
     window.hive_keychain.requestBroadcast(auth.username, ops, 'Posting', (response) => {
       if (response.success) {

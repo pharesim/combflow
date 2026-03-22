@@ -136,7 +136,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Post modal** — click a hex to see full content, categories, languages, and sentiment
 - **Comment threads** — hierarchical comments loaded from HAFSQL, reputation-filtered (rep <= 0 hidden), collapsible nested replies
 - **Comment posting** — logged-in users can post comments and replies via Hive Keychain, with 3-second cooldown and cache invalidation
-- **Post authoring** — "Write Post" button opens a full editor with title, markdown body (with preview), tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, decline payout option, and localStorage draft auto-save
+- **Post authoring** — "Write Post" button opens a full editor with title, markdown body (with preview), tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
 - **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with PeakD link
 - **Community discovery** — suggestions bar shows related communities when category filters are active; logged-in users can join/leave communities directly via Keychain
 - **Lazy thumbnails** — loaded on-demand as hexes enter the viewport
@@ -274,7 +274,7 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-251 tests across 12 files:
+266 tests across 12 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -473,7 +473,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 256 tests
+├── tests/                   # 266 tests
 ├── Dockerfile
 ├── docker-compose.yml
 └── deploy.sh

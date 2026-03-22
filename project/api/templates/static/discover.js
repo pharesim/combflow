@@ -1870,7 +1870,6 @@ async function openEditor() {
       document.getElementById('editor-title').value = draft.title || '';
       document.getElementById('editor-body').value = draft.body || '';
       _editorTags = draft.tags || [];
-      document.getElementById('editor-decline-payout').checked = draft.declinePayout || false;
       if (draft.communityId) {
         document.getElementById('editor-community-select').value = draft.communityId;
       }
@@ -2005,7 +2004,6 @@ function saveDraft() {
     title: document.getElementById('editor-title').value,
     body: document.getElementById('editor-body').value,
     tags: _editorTags,
-    declinePayout: document.getElementById('editor-decline-payout').checked,
     communityId: document.getElementById('editor-community-select').value || null,
   }));
 }
@@ -2023,7 +2021,6 @@ function clearDraft() {
 async function publishPost() {
   const title = document.getElementById('editor-title').value.trim();
   const body = document.getElementById('editor-body').value.trim();
-  const decline = document.getElementById('editor-decline-payout').checked;
   const communityId = document.getElementById('editor-community-select').value || null;
   const crossPost = communityId && document.getElementById('editor-crosspost').checked;
   const btn = document.getElementById('editor-publish-btn');
@@ -2034,7 +2031,7 @@ async function publishPost() {
   btn.disabled = true;
   btn.textContent = 'Publishing...';
   try {
-    const result = await broadcastPost(title, body, _editorTags, decline, communityId);
+    const result = await broadcastPost(title, body, _editorTags, communityId);
     showToast('Post published!', 'success');
 
     // Cross-post to blog if requested

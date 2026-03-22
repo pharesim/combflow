@@ -297,9 +297,8 @@ body{overflow-x:hidden}
 .editor-tag-suggestions{background:var(--card);border:1px solid #ffffff15;border-radius:8px;padding:4px;margin-top:4px;max-height:180px;overflow-y:auto}
 .editor-tag-suggestion{display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:6px 10px;font-size:12px;cursor:pointer;border-radius:6px}
 .editor-tag-suggestion:hover{background:var(--bg2);color:#fff}
-.editor-options{display:flex;align-items:center;gap:12px}
-.editor-options label{display:flex;align-items:center;gap:6px;cursor:pointer;text-transform:none;font-size:13px;color:var(--text);letter-spacing:0}
-.editor-options input[type="checkbox"]{accent-color:var(--hive-red)}
+#editor-crosspost-label{display:flex;align-items:center;gap:6px;cursor:pointer;text-transform:none;font-size:13px;color:var(--text);letter-spacing:0;margin-top:6px;margin-bottom:0}
+#editor-crosspost-label input[type="checkbox"]{accent-color:var(--hive-red)}
 .editor-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
 
 /* ── Editor community selector ─── */
