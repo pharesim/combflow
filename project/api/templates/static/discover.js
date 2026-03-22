@@ -211,10 +211,12 @@ function updateFilterCounts() {
   const catCount = document.querySelectorAll('#cat-chips .chip.active:not(.cat-parent)').length;
   const sentCount = document.querySelectorAll('#sentiment-chips .chip.active').length;
   const langCount = document.querySelectorAll('#lang-chips .chip.active').length;
+  const comCount = document.querySelectorAll('#community-chips .chip.active').length;
 
   setFilterBadge('count-categories', catCount);
   setFilterBadge('count-sentiment', sentCount);
   setFilterBadge('count-languages', langCount);
+  setFilterBadge('count-communities', comCount);
 }
 
 function setFilterBadge(id, count) {
@@ -270,7 +272,45 @@ function getVotePrefs() {
   return {
     floor: Number(localStorage.getItem('honeycomb_voteFloor') || 50),
     maxWeight: Number(localStorage.getItem('honeycomb_voteMaxWeight') || 25),
+    manual: localStorage.getItem('honeycomb_voteManual') === 'true',
   };
+}
+
+let _pendingManualVote = null;
+function openVotePopup(author, permlink, btn) {
+  _pendingManualVote = { author, permlink, btn };
+  const lastWeight = Number(localStorage.getItem('honeycomb_lastVoteWeight') || 50);
+  document.getElementById('vote-weight-slider').value = lastWeight;
+  document.getElementById('vote-weight-val').textContent = lastWeight + '%';
+  document.getElementById('vote-popup').classList.add('open');
+}
+function closeVotePopup() {
+  document.getElementById('vote-popup').classList.remove('open');
+  if (_pendingManualVote) _pendingManualVote.btn.disabled = false;
+  _pendingManualVote = null;
+}
+async function confirmManualVote() {
+  if (!_pendingManualVote) return;
+  const { author, permlink, btn } = _pendingManualVote;
+  const sliderVal = Number(document.getElementById('vote-weight-slider').value);
+  localStorage.setItem('honeycomb_lastVoteWeight', sliderVal);
+  const weight = sliderVal * 100;
+  closeVotePopup();
+  btn.disabled = true;
+  const key = `${author}/${permlink}`;
+  try {
+    await broadcastVote(author, permlink, weight);
+    saveVotedPost(key);
+    _manaCache = null;
+    document.querySelectorAll(`.vote-btn[data-vote-key="${CSS.escape(key)}"]`).forEach(el => {
+      el.classList.add('voted');
+      el.setAttribute('aria-label', 'Voted');
+    });
+    showToast('Voted!', 'success');
+  } catch(e) {
+    showToast(e.message || 'Vote failed', 'error');
+  }
+  btn.disabled = false;
 }
 
 async function handleVote(author, permlink, btn) {
@@ -294,10 +334,16 @@ async function handleVote(author, permlink, btn) {
     return;
   }
 
+  const prefs = getVotePrefs();
+  if (prefs.manual) {
+    btn.disabled = true;
+    openVotePopup(author, permlink, btn);
+    return;
+  }
+
   btn.disabled = true;
   try {
     const manaPercent = await fetchManaPercent();
-    const prefs = getVotePrefs();
     const weight = calculateVoteWeight(manaPercent, prefs.floor, prefs.maxWeight);
     if (weight === 0) {
       showToast('Voting power too low, try again later', 'info');
@@ -546,6 +592,33 @@ async function init() {
   });
 
   _communityList = (communitiesRes.communities || []).sort((a, b) => (b.post_count || 0) - (a.post_count || 0));
+
+  // Build community filter chips (top 100)
+  const comChipWrap = document.getElementById('community-chips');
+  _communityList.slice(0, 100).forEach(c => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'chip';
+    el.dataset.communityId = c.id;
+    el.setAttribute('aria-pressed', 'false');
+    el.textContent = c.name || c.id;
+    comChipWrap.appendChild(el);
+  });
+  comChipWrap.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    // Only one community active at a time
+    comChipWrap.querySelectorAll('.chip.active').forEach(c => {
+      if (c !== chip) { c.classList.remove('active'); c.setAttribute('aria-pressed', 'false'); }
+    });
+    chip.classList.toggle('active');
+    chip.setAttribute('aria-pressed', chip.classList.contains('active') ? 'true' : 'false');
+    const id = chip.classList.contains('active') ? chip.dataset.communityId : null;
+    _activeCommunityFilter = id;
+    updateSuggestionActiveState();
+    updateFilterCounts();
+    scheduleFilter();
+  });
 
   // Wire up filter chip events (toggle active + aria-pressed)
   function toggleChip(chip) {
@@ -849,6 +922,7 @@ function resetFilters() {
   _activeCommunityFilter = null;
   setMyCommunitiesActive(false);
   setFollowingActive(false);
+  updateSuggestionActiveState();
   updateFilterCounts();
   document.getElementById('suggestions-bar').style.display = 'none';
   applyFilters();
@@ -1563,6 +1637,26 @@ async function openModal(post, skipPush) {
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');
+    // Show mini map if post has worldmappin location
+    const wmMatch = (result.body || '').match(/\[\/\/\]:#\s*\(!worldmappin\s+([\d.-]+)\s+lat\s+([\d.-]+)\s+long\s*(.*?)\s*d3scr\)/);
+    if (wmMatch) {
+      const lat = parseFloat(wmMatch[1]), lng = parseFloat(wmMatch[2]), desc = wmMatch[3].trim() || 'Location';
+      const mapLink = document.createElement('a');
+      mapLink.href = 'https://worldmappin.com/p/' + post.permlink;
+      mapLink.target = '_blank';
+      mapLink.rel = 'noopener';
+      mapLink.style.cssText = 'display:block;cursor:pointer';
+      const mapDiv = document.createElement('div');
+      mapDiv.id = 'modal-minimap';
+      mapDiv.style.cssText = 'height:200px;border-radius:8px;margin:12px 0;z-index:0';
+      mapLink.appendChild(mapDiv);
+      document.getElementById('modal-body').appendChild(mapLink);
+      _loadLeaflet().then(() => {
+        const map = L.map('modal-minimap', { scrollWheelZoom: false, dragging: false, zoomControl: false, attributionControl: false }).setView([lat, lng], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+        L.marker([lat, lng]).addTo(map).bindPopup(desc).openPopup();
+      });
+    }
     // Check if user already voted
     if (auth && checkExistingVote(result, auth.username) && !_votedPosts[voteKey]) {
       saveVotedPost(voteKey);
@@ -1709,6 +1803,7 @@ function applyPreferenceFilters(prefs) {
   // Cache vote settings locally
   if (prefs.voteFloor != null) localStorage.setItem('honeycomb_voteFloor', prefs.voteFloor);
   if (prefs.voteMaxWeight != null) localStorage.setItem('honeycomb_voteMaxWeight', prefs.voteMaxWeight);
+  if (prefs.voteManual != null) localStorage.setItem('honeycomb_voteManual', prefs.voteManual);
   // Activate category chips
   (prefs.default_categories || []).forEach(cat => {
     const chip = document.querySelector('#cat-chips .chip[data-cat="' + CSS.escape(cat) + '"]');
@@ -1903,13 +1998,17 @@ async function showSettingsModal() {
   // Set vote settings
   const voteFloorInput = document.getElementById('settings-vote-floor');
   const voteMaxInput = document.getElementById('settings-vote-max');
+  const voteManualInput = document.getElementById('settings-vote-manual');
   if (voteFloorInput) {
     const vf = savedPrefs.voteFloor != null ? savedPrefs.voteFloor : 50;
     const vm = savedPrefs.voteMaxWeight != null ? savedPrefs.voteMaxWeight : 25;
+    const manual = savedPrefs.voteManual || false;
     voteFloorInput.value = vf;
     document.getElementById('settings-vote-floor-val').textContent = vf + '%';
     voteMaxInput.value = vm;
     document.getElementById('settings-vote-max-val').textContent = vm + '%';
+    voteManualInput.checked = manual;
+    document.getElementById('auto-vote-settings').style.display = manual ? 'none' : '';
   }
 
   // Render muted + followed users
@@ -1941,16 +2040,19 @@ async function saveSettings() {
         try { postingMeta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
         const voteFloor = Number(document.getElementById('settings-vote-floor').value);
         const voteMax = Number(document.getElementById('settings-vote-max').value);
+        const voteManual = document.getElementById('settings-vote-manual').checked;
         const prefs = {
           default_categories: cats,
           default_languages: langs,
           default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
           voteFloor: voteFloor,
           voteMaxWeight: voteMax,
+          voteManual: voteManual,
         };
         // Cache vote prefs locally for immediate use
         localStorage.setItem('honeycomb_voteFloor', voteFloor);
         localStorage.setItem('honeycomb_voteMaxWeight', voteMax);
+        localStorage.setItem('honeycomb_voteManual', voteManual);
         postingMeta.combflow = prefs;
         const ops = [['account_update2', {
           account: auth.username,
@@ -2209,7 +2311,17 @@ function filterByCommunity(communityId) {
   }
   setMyCommunitiesActive(false);
   updateSuggestionActiveState();
+  syncCommunityChips();
   scheduleFilter();
+}
+
+function syncCommunityChips() {
+  document.querySelectorAll('#community-chips .chip').forEach(c => {
+    const active = c.dataset.communityId === _activeCommunityFilter;
+    c.classList.toggle('active', active);
+    c.setAttribute('aria-pressed', String(active));
+  });
+  updateFilterCounts();
 }
 
 function updateSuggestionActiveState() {

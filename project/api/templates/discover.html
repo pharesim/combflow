@@ -47,6 +47,20 @@
   </div>
 </div>
 
+<!-- Manual vote weight popup -->
+<div class="vote-popup-overlay" id="vote-popup" onclick="if(event.target===this)closeVotePopup()">
+  <div class="vote-popup">
+    <div class="settings-slider-row">
+      <label for="vote-weight-slider">Vote weight</label>
+      <input type="range" id="vote-weight-slider" min="1" max="100" value="50" oninput="document.getElementById('vote-weight-val').textContent=this.value+'%'">
+      <span class="settings-slider-val" id="vote-weight-val">50%</span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+      <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:6px 20px" onclick="confirmManualVote()">Vote</button>
+      <button type="button" class="btn btn-ghost" onclick="closeVotePopup()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <div class="filters-bar" id="filters-bar" role="button" tabindex="0" onclick="toggleFiltersBar()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltersBar()}">
   <span class="filters-bar-label">Filters <span class="filters-bar-toggle" aria-hidden="true">&#9660;</span></span>
@@ -80,6 +94,13 @@
       <span class="filter-toggle" aria-hidden="true">&#9660;</span>
     </button>
     <div class="filter-body chip-wrap" id="cat-chips"></div>
+  </div>
+  <div class="filter-section collapsed" id="filter-communities">
+    <button type="button" class="filter-header" aria-expanded="false" aria-controls="community-chips" onclick="toggleSection('filter-communities')">
+      <span>Communities<span class="filter-count" id="count-communities"></span></span>
+      <span class="filter-toggle" aria-hidden="true">&#9660;</span>
+    </button>
+    <div class="filter-body chip-wrap" id="community-chips"></div>
   </div>
   <div class="filter-section collapsed" id="filter-sentiment">
     <button type="button" class="filter-header" aria-expanded="false" aria-controls="sentiment-chips" onclick="toggleSection('filter-sentiment')">
@@ -136,14 +157,20 @@
     <div class="settings-section">
       <h3 class="settings-section-title">Vote Settings</h3>
       <div class="settings-slider-row">
-        <label for="settings-vote-floor">Mana floor</label>
-        <input type="range" id="settings-vote-floor" min="20" max="95" value="50" oninput="document.getElementById('settings-vote-floor-val').textContent=this.value+'%'">
-        <span class="settings-slider-val" id="settings-vote-floor-val">50%</span>
+        <label for="settings-vote-manual">Manual voting</label>
+        <input type="checkbox" id="settings-vote-manual" onchange="document.getElementById('auto-vote-settings').style.display=this.checked?'none':''">
       </div>
-      <div class="settings-slider-row">
-        <label for="settings-vote-max">Max vote weight</label>
-        <input type="range" id="settings-vote-max" min="1" max="100" value="25" oninput="document.getElementById('settings-vote-max-val').textContent=this.value+'%'">
-        <span class="settings-slider-val" id="settings-vote-max-val">25%</span>
+      <div id="auto-vote-settings">
+        <div class="settings-slider-row">
+          <label for="settings-vote-floor">Mana floor</label>
+          <input type="range" id="settings-vote-floor" min="20" max="95" value="50" oninput="document.getElementById('settings-vote-floor-val').textContent=this.value+'%'">
+          <span class="settings-slider-val" id="settings-vote-floor-val">50%</span>
+        </div>
+        <div class="settings-slider-row">
+          <label for="settings-vote-max">Max vote weight</label>
+          <input type="range" id="settings-vote-max" min="1" max="100" value="25" oninput="document.getElementById('settings-vote-max-val').textContent=this.value+'%'">
+          <span class="settings-slider-val" id="settings-vote-max-val">25%</span>
+        </div>
       </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:16px;justify-content:center">
@@ -160,7 +187,7 @@
     </div>
     <div style="display:flex;gap:12px;margin-top:24px;justify-content:center">
       <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:12px 32px" onclick="saveSettings()">Save &amp; Start Browsing</button>
-      <button type="button" class="btn btn-ghost" onclick="skipSettings()">Skip</button>
+      <button type="button" class="btn btn-ghost" onclick="skipSettings()">Cancel</button>
     </div>
   </div>
 </div>
