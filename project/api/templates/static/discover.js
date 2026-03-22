@@ -32,12 +32,13 @@ let _followingFilterActive = false;
 const PAGE_SIZE = 60;
 
 // Hive RPC nodes with automatic fallback
-const HIVE_NODES = ['https://api.hive.blog', 'https://api.deathwing.me', 'https://rpc.ausbit.dev'];
+const HIVE_NODES = ['/hive-api', 'https://api.deathwing.me', 'https://rpc.ausbit.dev'];
 const PROXY_DOMAINS = /(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|cdn\.steemitimages\.com|steemitimages\.com|usermedia\.actifit\.io|imgur\.com|i\.imgur\.com|blurt\.media)/i;
 async function hiveRpc(method, params) {
   for (const node of HIVE_NODES) {
     try {
-      const res = await fetch(node, {
+      const url = node.startsWith('http') ? node : node + '/';
+      const res = await fetch(url, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({jsonrpc:'2.0', method, params, id:1})
@@ -590,9 +591,11 @@ async function init() {
   if (document.querySelectorAll('.chip.active').length > 0) {
     await applyFilters();
   } else {
-    allPosts = filterMutedPosts(postsRes.posts || []);
+    const rawPosts = postsRes.posts || [];
+    allPosts = filterMutedPosts(rawPosts);
     currentOffset = allPosts.length;
-    noMorePosts = allPosts.length < PAGE_SIZE;
+    _lastCursor = postsRes.next_cursor || null;
+    noMorePosts = rawPosts.length < PAGE_SIZE;
     if (allPosts.length > 0) newestCreated = allPosts[0].created;
     seedMetaFromServer(allPosts);
     renderAll(allPosts, true);
@@ -680,9 +683,14 @@ function cacheMetaEntry(key, entry) {
   metaCache[key] = entry;
 }
 
-async function fetchSingleMeta(p) {
+async function fetchSingleMeta(p, retries = 2) {
   const key = `${p.author}/${p.permlink}`;
-  const result = await hiveRpc('bridge.get_post', {author:p.author, permlink:p.permlink});
+  let result;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    result = await hiveRpc('bridge.get_post', {author:p.author, permlink:p.permlink});
+    if (result) break;
+    if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+  }
   if (result) {
     let images = (result.json_metadata?.image || []).map(u =>
       u.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[\])].*$/, ''));
@@ -742,14 +750,15 @@ async function fetchMeta(posts) {
     return !cached || !cached.thumbnail;
   });
   const chunks = [];
-  for (let i = 0; i < need.length; i += 10) chunks.push(need.slice(i, i + 10));
+  for (let i = 0; i < need.length; i += 5) chunks.push(need.slice(i, i + 5));
 
-  const CONCURRENCY = 6;
+  const CONCURRENCY = 2;
   let ci = 0;
   async function runNext() {
     if (ci >= chunks.length) return;
     const chunk = chunks[ci++];
-    await Promise.all(chunk.map(fetchSingleMeta));
+    await Promise.all(chunk.map(p => fetchSingleMeta(p)));
+    await new Promise(r => setTimeout(r, 200));
     return runNext();
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
@@ -841,12 +850,14 @@ async function applyFilters() {
     const data = await res.json();
     allPosts = data.posts || [];
     filteredTotalCount = data.total || 0;
+    const serverCount = allPosts.length;
     if (sentiments.length > 1) {
       allPosts = allPosts.filter(p => sentiments.includes(p.sentiment));
     }
     allPosts = filterMutedPosts(allPosts);
     currentOffset = allPosts.length;
-    noMorePosts = allPosts.length < PAGE_SIZE;
+    _lastCursor = data.next_cursor || null;
+    noMorePosts = serverCount < PAGE_SIZE;
     seedMetaFromServer(allPosts);
     renderAll(allPosts, true);
     updateResultsBar();
@@ -878,12 +889,13 @@ async function loadMore() {
     const res = await fetch(fetchUrl);
     const data = await res.json();
     let newPosts = data.posts || [];
+    const serverCount = newPosts.length;
     if (sentiments.length > 1) {
       newPosts = newPosts.filter(p => sentiments.includes(p.sentiment));
     }
     newPosts = filterMutedPosts(newPosts);
     _lastCursor = data.next_cursor || null;
-    if (!_lastCursor) noMorePosts = true;
+    if (serverCount < PAGE_SIZE) noMorePosts = true;
     if (newPosts.length > 0) {
       seedMetaFromServer(newPosts);
       const startIdx = allPosts.length;

@@ -3,6 +3,16 @@
 #   (no port = Caddy auto-provisions TLS via Let's Encrypt + redirects HTTP→HTTPS)
 
 {$CADDY_UI:honeycomb.lvh.me:80} {
+	handle /hive-api/* {
+		uri strip_prefix /hive-api
+		reverse_proxy https://api.hive.blog {
+			header_up Host api.hive.blog
+			transport http {
+				tls
+				tls_server_name api.hive.blog
+			}
+		}
+	}
 	handle /static/* {
 		header Cache-Control "public, max-age=86400, immutable"
 		encode zstd gzip
