@@ -33,20 +33,33 @@ let _myPostsActive = false;
 const PAGE_SIZE = 60;
 
 // Hive RPC nodes with automatic fallback
-const HIVE_NODES = ['https://api.deathwing.me', 'https://api.hive.blog', 'https://techcoderx.com'];
+const HIVE_NODES = ['https://api.hive.blog', 'https://techcoderx.com', 'https://api.openhive.network'];
+const _nodePenalties = new Map(); // node -> failure count
+
+function _sortedNodes() {
+  return [...HIVE_NODES].sort((a, b) => (_nodePenalties.get(a) || 0) - (_nodePenalties.get(b) || 0));
+}
+
 const PROXY_DOMAINS = /(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|cdn\.steemitimages\.com|steemitimages\.com|usermedia\.actifit\.io|imgur\.com|i\.imgur\.com|blurt\.media)/i;
 async function hiveRpc(method, params) {
-  for (const node of HIVE_NODES) {
+  for (const node of _sortedNodes()) {
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
       const res = await fetch(node, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({jsonrpc:'2.0', method, params, id:1})
+        body: JSON.stringify({jsonrpc:'2.0', method, params, id:1}),
+        signal: controller.signal
       });
-      if (!res.ok) continue;
+      clearTimeout(timer);
+      if (!res.ok) { _nodePenalties.set(node, (_nodePenalties.get(node) || 0) + 1); continue; }
       const data = await res.json();
-      if (data.result) return data.result;
-    } catch(e) { /* try next node */ }
+      if ('result' in data) { _nodePenalties.delete(node); return data.result; }
+      _nodePenalties.set(node, (_nodePenalties.get(node) || 0) + 1);
+    } catch(e) {
+      _nodePenalties.set(node, (_nodePenalties.get(node) || 0) + 1);
+    }
   }
   return null;
 }
