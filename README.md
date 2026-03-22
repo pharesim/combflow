@@ -154,7 +154,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — Open Graph meta tags on post deep links for rich previews on Discord, Twitter, etc.
-- **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection
+- **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed iframe handling)
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
 
 ---

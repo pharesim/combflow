@@ -497,7 +497,26 @@ document.addEventListener('error', function(e) {
   }
 }, true);
 
+// Raw-text HTML elements that break marked's parsing by swallowing all
+// subsequent content as literal text until their closing tag appears.
+const _RAW_TEXT_TAGS = /<\/?(?:textarea|xmp|plaintext|style|noscript|noembed|noframes|title|script|html|head|body)\b[^>]*>/gi;
+
 function normalizeMarkdown(md) {
+  // Strip raw-text HTML element tags before marked sees them,
+  // but only outside code fences so code examples are preserved.
+  let inFence = false;
+  const fenced = [];
+  md = md.split('\n').map(line => {
+    if (/^```/.test(line.trim())) inFence = !inFence;
+    fenced.push(inFence);
+    return inFence ? line : line.replace(_RAW_TEXT_TAGS, '');
+  }).join('\n');
+  // Also strip structural tags split across lines (e.g. <html\n>)
+  // that start HTML blocks in marked. Only outside code fences.
+  md = md.replace(/<\/?\s*(?:html|head|body)\b[^>]*(?:\n[^>]*)*>/gi, (m, offset) => {
+    const lineNum = md.slice(0, offset).split('\n').length - 1;
+    return fenced[lineNum] ? m : '';
+  });
   // @mentions → links
   md = md.replace(/(^|[\s(])@([a-z0-9][a-z0-9.-]{1,15})(?=[\s,.;:!?)}\]]|$)/gim,
     '$1[@$2](https://peakd.com/@$2)');
@@ -674,8 +693,11 @@ function renderHiveBody(raw) {
   let html = marked.parse(md, { breaks: true, gfm: true });
   // Add slugified IDs to headings for anchor links
   html = html.replace(/<h([1-6])>(.*?)<\/h\1>/gi, (m, level, inner) => {
-    const slug = inner.replace(/<[^>]+>/g, '').toLowerCase().trim()
-      .replace(/[^\w\s-]/g, '').replace(/[\s]+/g, '-');
+    // Decode HTML entities before slugifying so IDs match markdown anchors
+    const tmp = document.createElement('span');
+    tmp.innerHTML = inner.replace(/<[^>]+>/g, '');
+    const slug = (tmp.textContent || '').toLowerCase().trim()
+      .replace(/[^\w\s-]/g, '').replace(/\s/g, '-');
     return `<h${level} id="${slug}">${inner}</h${level}>`;
   });
   // Strip non-allowed HTML tags at string level before DOM parsing.
@@ -684,6 +706,9 @@ function renderHiveBody(raw) {
   // would discard the nested content along with the tag.
   html = html.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (m, tag) =>
     _ALLOWED_HTML.has(tag.toLowerCase()) ? m : '');
+  // Close unclosed <iframe> tags so they can't swallow subsequent content
+  // during DOM parsing. Legitimate iframes are built in embedVideos() later.
+  html = html.replace(/<iframe\b[^>]*>/gi, '$&</iframe>');
   const clean = sanitizeContent(html);
   const div = document.createElement('div');
   div.innerHTML = clean;
