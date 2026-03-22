@@ -913,11 +913,11 @@ function renderCards(posts, container) {
     const voted = _votedPosts[key];
     card.innerHTML = `
       <div class="post-card-thumb${thumb ? '' : ' no-thumb'}" ${thumb ? `data-thumb="${safeCssUrl(thumb)}"` : `style="${noThumbStyle}"`}>
-        ${thumb ? '' : `<span>@${esc(p.author)}</span>`}
+        ${thumb ? '' : `<img class="no-thumb-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar" alt="@${esc(p.author)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'@${esc(p.author)}'}))">`}
       </div>
       <div class="post-card-body">
         <div class="post-card-title">${esc(title)}</div>
-        <div class="post-card-author"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="18" height="18">@${esc(p.author)}${p.created ? ' · ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''}</div>
+        <div class="post-card-author"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="24" height="24">@${esc(p.author)}${p.created ? ' · ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''}</div>
         <div class="post-card-meta">${tagsHtml}</div>
       </div>
       <button type="button" class="vote-btn${voted ? ' voted' : ''}" data-vote-key="${esc(key)}" aria-label="${voted ? 'Voted' : 'Vote'}" onclick="event.preventDefault();event.stopPropagation();handleVote('${esc(p.author)}','${esc(p.permlink)}',this)"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>`;
@@ -957,11 +957,11 @@ function renderList(posts, container) {
     const voted = _votedPosts[key];
     row.innerHTML = `
       <div class="list-thumb" ${thumb ? `data-thumb="${safeCssUrl(thumb)}"` : ''}>
-        ${thumb ? '' : `<span>@${esc(p.author).slice(0,2)}</span>`}
+        ${thumb ? '' : `<img class="no-thumb-avatar list-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="@${esc(p.author)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'@${esc(p.author).slice(0,2)}'}))">`}
       </div>
       <div class="list-content">
         <div class="list-title">${esc(title)}</div>
-        <div class="list-meta"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="16" height="16">@${esc(p.author)} · ${p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''} ${tagsHtml}</div>
+        <div class="list-meta"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="20" height="20">@${esc(p.author)} · ${p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''} ${tagsHtml}</div>
       </div>
       <button type="button" class="vote-btn${voted ? ' voted' : ''}" data-vote-key="${esc(key)}" aria-label="${voted ? 'Voted' : 'Vote'}" onclick="event.preventDefault();event.stopPropagation();handleVote('${esc(p.author)}','${esc(p.permlink)}',this)"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>`;
     container.appendChild(row);
@@ -1020,7 +1020,7 @@ function createHexElement(p, x, y) {
     <div class="hex-inner${thumb ? '' : ' no-img'}">
       ${thumb
         ? `<div class="hex-img" data-thumb="${safeCssUrl(thumb)}"></div>`
-        : `<div class="hex-placeholder">@${esc(p.author)}</div>`
+        : `<div class="hex-placeholder"><img class="no-thumb-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar" alt="@${esc(p.author)}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'@${esc(p.author)}'}))"></div>`
       }
       <div class="hex-overlay">
         <div class="hex-title">${esc(cachedTitle)}</div>
@@ -1366,7 +1366,7 @@ async function openModal(post, skipPush) {
                       '', `/@${post.author}/${post.permlink}`);
   }
   document.getElementById('modal-title').textContent = 'Loading...';
-  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="24" height="24">@${esc(post.author)}`;
+  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="28" height="28">@${esc(post.author)}`;
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;
