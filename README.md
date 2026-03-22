@@ -473,7 +473,10 @@ combflow/combflow/
 │   │   └── templates/
 │   │       ├── discover.html  # HoneyComb discovery UI (Alpine.js reactive templates)
 │   │       └── static/
-│   │           ├── shared.js    # auth, Keychain broadcasting, validation, rendering
+│   │           ├── shared.js    # auth, validation, read tracking, focus trap, toasts
+│   │           ├── shared/      # shared modules
+│   │           │   ├── keychain.js  # Keychain broadcasting (vote, comment, post, follow, mute, subscribe)
+│   │           │   └── markdown.js  # Hive markdown rendering, sanitization, video embeds
 │   │           └── discover/    # 12 focused JS modules
 │   │               ├── state.js, filters.js, rendering.js, voting.js,
 │   │               ├── social.js, comments.js, modal.js, auth.js,
