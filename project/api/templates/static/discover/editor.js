@@ -196,16 +196,12 @@ async function uploadImageToHive(file) {
 
   try {
     const buf = await file.arrayBuffer();
-    const prefix = new TextEncoder().encode('ImageSigningChallenge');
-    const combined = new Uint8Array(prefix.length + buf.byteLength);
-    combined.set(prefix, 0);
-    combined.set(new Uint8Array(buf), prefix.length);
-    const hashBuf = await crypto.subtle.digest('SHA-256', combined);
-    const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const fileHashBuf = await crypto.subtle.digest('SHA-256', buf);
+    const fileHashHex = Array.from(new Uint8Array(fileHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
     const signature = await new Promise((resolve, reject) => {
       if (!window.hive_keychain) { reject(new Error('Hive Keychain not found')); return; }
-      window.hive_keychain.requestSignBuffer(auth.username, hashHex, 'Posting', res => {
+      window.hive_keychain.requestSignBuffer(auth.username, 'ImageSigningChallenge' + fileHashHex, 'Posting', res => {
         if (res.success) resolve(res.result);
         else reject(new Error(res.message || 'Signature rejected'));
       });
@@ -213,7 +209,7 @@ async function uploadImageToHive(file) {
 
     const form = new FormData();
     form.append('file', file);
-    const resp = await fetch(`https://images.hive.blog/${auth.username}/${signature}`, {
+    const resp = await fetch(`https://images.hive.blog/cs/${auth.username}/${signature}`, {
       method: 'POST',
       body: form,
     });
