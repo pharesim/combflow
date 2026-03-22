@@ -37,7 +37,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 1. **Seed script** runs on your GPU. Fetches Hive posts (with stratified sampling for rare categories), classifies them with a local LLM, optionally uses multi-model ensemble voting, computes per-category centroid vectors, and uploads them.
 2. **Worker** streams blocks from Hive (live) and walks backwards through HAFSQL (backfill). For each post: embeds the body in-process (`all-MiniLM-L6-v2`), compares against centroids, detects languages (`langdetect` + `json_metadata`), analyses sentiment (embedding-based), auto-maps Hive communities to categories (embedding community title+about, +0.08 boost), and saves everything directly to PostgreSQL.
 3. **HoneyComb UI** shows posts in a honeycomb hex grid with collapsible chip-based filters (category, sentiment, language), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible. Three layout modes (hex grid, card grid, list). Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Cross-post thumbnail support.
-4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension. JWT is stored in an httpOnly cookie. Accounts with negative reputation are blocked at login. Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
+4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension. JWT is stored in an httpOnly cookie. Accounts with negative reputation are blocked at login. Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), follow/unfollow users, and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
 
 ### Category hierarchy (2 levels)
 
@@ -139,6 +139,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Post authoring** — pen icon opens a full editor with title, preview description (120 chars, stored in `json_metadata.description`), markdown body with formatting toolbar (bold, italic, headings, links, images, lists, quotes, code blocks, tables, center, @mentions — plus Ctrl+B/I/K shortcuts), markdown help modal, tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
 - **Location picker** — map button in the editor opens a Leaflet/OpenStreetMap modal; click to place a pin or use "My Location" (browser geolocation). Reverse geocoding via Nominatim auto-fills the location name. Inserts a worldmappin-compatible hidden tag in the post body
 - **Upvoting** — heart button on posts (card, list, and modal views). Dynamic vote weight adjusts automatically based on voting mana with configurable floor (default 50%) and max weight (default 25%) — users never run out of votes. Settings saved on-chain.
+- **Follow users** — follow/unfollow button in post modal broadcasts Hive-native follow via Keychain. "Following" toggle in the filter bar shows only followed users' posts (active by default after login). Followed list synced from chain on login, cached in localStorage. Manage followed users in settings modal.
 - **Mute users** — mute button in post modal broadcasts Hive-native mute via Keychain. Muted users' posts are hidden client-side. Unmute available in settings. Muted list synced from chain on login.
 - **Profile avatars** — Hive profile pictures shown next to usernames in header, cards, list rows, and post modal
 - **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with hivel.ink link
@@ -279,12 +280,12 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-255 tests across 12 files:
+261 tests across 12 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `test_worker_utils.py` | 59 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
-| `test_browse.py` | 36 | Browse with all filter combinations, single + multi community filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
+| `test_browse.py` | 42 | Browse with all filter combinations, single + multi community filter, authors filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
 | `test_hafsql.py` | 33 | Reputation conversion, comment fetching, community metadata parsing, connection pool, cursor lifecycle |
 | `test_auth.py` | 24 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
 | `test_api.py` | 21 | Health, categories, HTML page routes, GZip middleware, auth key enforcement, schema validation, 404s |
@@ -311,7 +312,7 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | GET | `/health` | Liveness check |
 | GET | `/categories` | Full 2-level category tree |
 | GET | `/posts/{author}/{permlink}` | Post detail with categories, languages, sentiment |
-| GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `communities`, `limit`, `offset`) |
+| GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `communities`, `authors`, `limit`, `offset`) |
 | GET | `/api/languages` | Available languages with post counts |
 | GET | `/api/stats` | Overview statistics |
 | POST | `/api/auth/challenge` | Generate a Keychain login challenge |
@@ -356,6 +357,9 @@ curl 'https://your-server:8000/api/browse?community=hive-174578'
 
 # Filter by multiple communities (e.g. all communities you've joined)
 curl 'https://your-server:8000/api/browse?communities=hive-174578&communities=hive-163772'
+
+# Filter by authors (e.g. users you follow)
+curl 'https://your-server:8000/api/browse?authors=alice&authors=bob'
 
 # Filter by language and sentiment
 curl 'https://your-server:8000/api/browse?language=en&sentiment=positive&limit=20'
@@ -481,7 +485,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 266 tests
+├── tests/                   # 261 tests
 ├── Dockerfile
 ├── docker-compose.yml
 └── deploy.sh

@@ -301,6 +301,61 @@ function calculateVoteWeight(manaPercent, floor, maxWeight) {
   return Math.max(100, Math.round(weight * 100));
 }
 
+// ── Hive Follow/Unfollow ──
+function broadcastFollow(targetUser) {
+  return new Promise((resolve, reject) => {
+    const auth = getStoredAuth();
+    if (!auth) return reject(new Error('Not logged in'));
+    if (!isKeychainInstalled()) return reject(new Error('Hive Keychain not installed'));
+
+    const op = ['custom_json', {
+      required_auths: [],
+      required_posting_auths: [auth.username],
+      id: 'follow',
+      json: JSON.stringify(['follow', {
+        follower: auth.username,
+        following: targetUser,
+        what: ['blog'],
+      }]),
+    }];
+
+    window.hive_keychain.requestBroadcast(auth.username, [op], 'Posting', (response) => {
+      if (response.success) {
+        resolve();
+      } else {
+        reject(new Error(response.message || 'Follow failed'));
+      }
+    });
+  });
+}
+
+function broadcastUnfollow(targetUser) {
+  return new Promise((resolve, reject) => {
+    const auth = getStoredAuth();
+    if (!auth) return reject(new Error('Not logged in'));
+    if (!isKeychainInstalled()) return reject(new Error('Hive Keychain not installed'));
+
+    const op = ['custom_json', {
+      required_auths: [],
+      required_posting_auths: [auth.username],
+      id: 'follow',
+      json: JSON.stringify(['follow', {
+        follower: auth.username,
+        following: targetUser,
+        what: [],
+      }]),
+    }];
+
+    window.hive_keychain.requestBroadcast(auth.username, [op], 'Posting', (response) => {
+      if (response.success) {
+        resolve();
+      } else {
+        reject(new Error(response.message || 'Unfollow failed'));
+      }
+    });
+  });
+}
+
 // ── Hive Mute/Unmute ──
 function broadcastMute(targetUser) {
   return new Promise((resolve, reject) => {

@@ -475,6 +475,70 @@ async def test_browse_communities_empty_list(client, seeded_db):
     assert resp.json()["total"] >= 3
 
 
+# ── Authors filter ─────────────────────────────────────────────────────────
+
+async def test_browse_filter_by_authors(client, seeded_db):
+    """The authors param filters posts to specific authors."""
+    resp = await client.get("/api/browse?authors=alice")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 1
+    for post in posts:
+        assert post["author"] == "alice"
+
+
+async def test_browse_filter_by_multiple_authors(client, seeded_db):
+    """Multiple authors param returns posts from all specified authors."""
+    resp = await client.get("/api/browse?authors=alice&authors=bob")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 2
+    returned_authors = {p["author"] for p in posts}
+    assert returned_authors <= {"alice", "bob"}
+
+
+async def test_browse_authors_excludes_others(client, seeded_db):
+    """Authors filter excludes posts from non-matching authors."""
+    resp = await client.get("/api/browse?authors=alice")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    for post in posts:
+        assert post["author"] != "bob"
+        assert post["author"] != "carol"
+
+
+async def test_browse_authors_total_reflects_filter(client, seeded_db):
+    """Total count reflects the authors filter."""
+    all_resp = await client.get("/api/browse")
+    all_total = all_resp.json()["total"]
+
+    filtered_resp = await client.get("/api/browse?authors=alice")
+    filtered_total = filtered_resp.json()["total"]
+
+    assert filtered_total >= 1
+    assert filtered_total < all_total
+
+
+async def test_browse_authors_no_match(client, seeded_db):
+    """Authors filter with unknown author returns empty."""
+    resp = await client.get("/api/browse?authors=nobody")
+    assert resp.status_code == 200
+    assert resp.json()["posts"] == []
+    assert resp.json()["total"] == 0
+
+
+async def test_browse_authors_combined_with_category(client, seeded_db):
+    """Authors filter works together with category filter."""
+    leaf = seeded_db["leaf_name"]
+    resp = await client.get(f"/api/browse?authors=alice&category={leaf}")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 1
+    for post in posts:
+        assert post["author"] == "alice"
+        assert leaf in post["categories"]
+
+
 async def test_browse_communities_total_reflects_filter(client, seeded_db):
     """Total count reflects the multi-community filter."""
     from tests.conftest import AUTH

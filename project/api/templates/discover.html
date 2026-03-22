@@ -51,6 +51,7 @@
   <span class="filters-bar-label">Filters <span class="filters-bar-toggle" aria-hidden="true">&#9660;</span></span>
   <div class="filters-bar-actions" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">
     <button type="button" class="my-communities-toggle" id="my-communities-toggle" style="display:none" aria-pressed="false" onclick="toggleMyCommunities()">My Communities</button>
+    <button type="button" class="my-communities-toggle" id="following-toggle" style="display:none" aria-pressed="false" onclick="toggleFollowing()">Following</button>
     <div class="layout-toggle" role="group" aria-label="Layout" id="layout-toggle">
       <button type="button" class="active" data-layout="hex" aria-pressed="true" onclick="setLayout('hex')"><span aria-hidden="true">&#x2B21;</span> Hex grid</button>
       <button type="button" data-layout="card" aria-pressed="false" onclick="setLayout('card')"><span aria-hidden="true">&#x25A6;</span> Card grid</button>
@@ -148,6 +149,10 @@
       <h3 class="settings-section-title">Muted Users</h3>
       <div id="settings-muted"></div>
     </div>
+    <div class="settings-section">
+      <h3 class="settings-section-title">Followed Users</h3>
+      <div id="settings-followed"></div>
+    </div>
     <div style="display:flex;gap:12px;margin-top:24px;justify-content:center">
       <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:12px 32px" onclick="saveSettings()">Save &amp; Start Browsing</button>
       <button type="button" class="btn btn-ghost" onclick="skipSettings()">Skip</button>
@@ -173,6 +178,7 @@
       <a id="modal-hivelink" target="_blank" rel="noopener noreferrer">Hivel.ink</a>
       <button type="button" class="copy-link" id="modal-copy-link" aria-label="Copy link to clipboard" onclick="copyPostLink()">Copy link</button>
       <div style="flex:1"></div>
+      <button type="button" class="follow-btn" id="modal-follow-btn" style="display:none">Follow</button>
       <button type="button" class="mute-btn" id="modal-mute-btn" style="display:none">Mute</button>
     </div>
     <div class="comments-section" id="comments-section">

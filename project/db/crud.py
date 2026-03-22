@@ -321,12 +321,13 @@ async def _attach_categories_and_languages(
 # ── Browse & discovery ────────────────────────────────────────────────────────
 
 
-def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None):
+def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None, authors=None):
     raw = _json.dumps({"c": sorted(categories or []),
                        "l": sorted(languages or []),
                        "s": sentiment,
                        "m": community,
-                       "ms": sorted(communities) if communities else None}, sort_keys=True)
+                       "ms": sorted(communities) if communities else None,
+                       "a": sorted(authors) if authors else None}, sort_keys=True)
     return f"browse_count:{hashlib.md5(raw.encode()).hexdigest()}"
 
 @retry_transient
@@ -337,6 +338,7 @@ async def browse_posts(
     sentiment: str | None = None,
     community: str | None = None,
     communities: list[str] | None = None,
+    authors: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
     cursor: str | None = None,
@@ -391,6 +393,12 @@ async def browse_posts(
         conditions.append("p.community_id = :community")
         params["community"] = community
 
+    if authors:
+        author_placeholders = ", ".join(f":author_{i}" for i in range(len(authors)))
+        conditions.append(f"p.author IN ({author_placeholders})")
+        for i, a in enumerate(authors):
+            params[f"author_{i}"] = a
+
     cat_join = ""
     if categories:
         cat_join = (
@@ -410,7 +418,7 @@ async def browse_posts(
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     # Filtered total count — cached with 30s TTL, keyed by filter combination.
-    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities)
+    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors)
     total = _cache.get(count_key)
     if total is None:
         count_conditions = [c for c in conditions if ":cursor_created" not in c]

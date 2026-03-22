@@ -456,3 +456,13 @@ body{overflow-x:hidden}
 .muted-user-item:last-child{border-bottom:none}
 .muted-user-name{font-size:13px;color:var(--hive-red)}
 .muted-user-unmute{padding:4px 10px;font-size:11px}
+
+/* ── Follow button ── */
+.follow-btn{background:none;border:1px solid #ffffff20;color:var(--text-dim);padding:4px 12px;border-radius:12px;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.follow-btn:hover{color:var(--gold);border-color:var(--gold)}
+
+/* ── Followed users list ── */
+.followed-user-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ffffff08}
+.followed-user-item:last-child{border-bottom:none}
+.followed-user-name{font-size:13px;color:var(--gold)}
+.followed-user-unfollow{padding:4px 10px;font-size:11px}

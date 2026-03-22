@@ -23,6 +23,11 @@ const MANA_CACHE_TTL = 60000; // 60s
 let _mutedUsers = new Set(); // localStorage-backed for instant filtering
 const MUTED_KEY = 'honeycomb_muted';
 
+// Follow state
+let _followedUsers = new Set();
+const FOLLOWED_KEY = 'honeycomb_followed';
+let _followingFilterActive = false;
+
 // Endless scrolling state
 const PAGE_SIZE = 60;
 
@@ -373,10 +378,84 @@ function filterMutedPosts(posts) {
   return posts.filter(p => !_mutedUsers.has(p.author));
 }
 
+// ── Followed users ──
+function loadFollowedUsers() {
+  try { _followedUsers = new Set(JSON.parse(localStorage.getItem(FOLLOWED_KEY) || '[]')); } catch(e) { _followedUsers = new Set(); }
+}
+function saveFollowedUsers() {
+  localStorage.setItem(FOLLOWED_KEY, JSON.stringify(Array.from(_followedUsers)));
+}
+
+async function fetchFollowedList() {
+  const auth = getStoredAuth();
+  if (!auth) return;
+  try {
+    let allFollowed = [];
+    let start = '';
+    for (let i = 0; i < 100; i++) { // max 10000 followed users
+      const result = await hiveRpc('condenser_api.get_following', [auth.username, start, 'blog', 100]);
+      if (!result || result.length === 0) break;
+      allFollowed = allFollowed.concat(result.map(r => r.following));
+      if (result.length < 100) break;
+      start = result[result.length - 1].following;
+    }
+    _followedUsers = new Set(allFollowed);
+    saveFollowedUsers();
+  } catch(e) {}
+}
+
+async function handleFollowUser(username) {
+  const auth = getStoredAuth();
+  if (!auth) { showLoginPrompt(); return; }
+  try {
+    await broadcastFollow(username);
+    _followedUsers.add(username);
+    saveFollowedUsers();
+    showToast(`Following @${username}`, 'success');
+    const btn = document.getElementById('modal-follow-btn');
+    if (btn) { btn.textContent = `Unfollow @${username}`; btn.onclick = () => handleUnfollowUser(username); }
+  } catch(e) {
+    showToast(e.message || 'Could not follow user', 'error');
+  }
+}
+
+async function handleUnfollowUser(username) {
+  try {
+    await broadcastUnfollow(username);
+    _followedUsers.delete(username);
+    saveFollowedUsers();
+    showToast(`Unfollowed @${username}`, 'success');
+    // Update modal button if open
+    const btn = document.getElementById('modal-follow-btn');
+    if (btn && btn.style.display !== 'none') { btn.textContent = `Follow @${username}`; btn.onclick = () => handleFollowUser(username); }
+    // Re-render followed list in settings if open
+    renderFollowedUsersList();
+  } catch(e) {
+    showToast(e.message || 'Could not unfollow user', 'error');
+  }
+}
+
+function renderFollowedUsersList() {
+  const container = document.getElementById('settings-followed');
+  if (!container) return;
+  if (_followedUsers.size === 0) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:13px">No followed users.</p>';
+    return;
+  }
+  container.innerHTML = '';
+  _followedUsers.forEach(user => {
+    const item = document.createElement('div');
+    item.className = 'followed-user-item';
+    item.innerHTML = `<span class="followed-user-name">@${esc(user)}</span><button type="button" class="btn btn-ghost followed-user-unfollow" onclick="handleUnfollowUser('${esc(user)}')">Unfollow</button>`;
+    container.appendChild(item);
+  });
+}
+
 // ── Init ──
 async function init() {
   loadVotedPosts();
   loadMutedUsers();
+  loadFollowedUsers();
   showSkeletons();
 
   let statsRes, catsRes, langsRes, postsRes, communitiesRes;
@@ -578,7 +657,9 @@ function buildFilterUrl(limit, offset) {
   let url = `/api/browse?limit=${limit}&offset=${offset}`;
   cats.forEach(c => url += `&category=${encodeURIComponent(c)}`);
   langs.forEach(l => url += `&language=${encodeURIComponent(l)}`);
-  if (_myCommunitiesActive && _userCommunities && _userCommunities.length > 0) {
+  if (_followingFilterActive && _followedUsers.size > 0) {
+    _followedUsers.forEach(u => url += `&authors=${encodeURIComponent(u)}`);
+  } else if (_myCommunitiesActive && _userCommunities && _userCommunities.length > 0) {
     _userCommunities.forEach(c => url += `&communities=${encodeURIComponent(c.id)}`);
   } else if (_activeCommunityFilter) {
     url += `&community=${encodeURIComponent(_activeCommunityFilter)}`;
@@ -739,6 +820,7 @@ function resetFilters() {
   });
   _activeCommunityFilter = null;
   setMyCommunitiesActive(false);
+  setFollowingActive(false);
   updateFilterCounts();
   document.getElementById('suggestions-bar').style.display = 'none';
   applyFilters();
@@ -1076,7 +1158,7 @@ const LIVE_INTERVAL = 30000;
 let newestCreated = null;
 
 function hasActiveFilters() {
-  return document.querySelectorAll('.chip.active').length > 0;
+  return document.querySelectorAll('.chip.active').length > 0 || _followingFilterActive;
 }
 
 async function pollNewPosts() {
@@ -1407,14 +1489,24 @@ async function openModal(post, skipPush) {
   modalVoteBtn.setAttribute('aria-label', _votedPosts[voteKey] ? 'Voted' : 'Vote');
   modalVoteBtn.onclick = () => handleVote(post.author, post.permlink, modalVoteBtn);
 
-  // Mute button in modal
-  const muteBtn = document.getElementById('modal-mute-btn');
+  // Follow/Mute buttons in modal
   const auth = getStoredAuth();
+  const followBtn = document.getElementById('modal-follow-btn');
+  const muteBtn = document.getElementById('modal-mute-btn');
   if (auth && auth.username !== post.author) {
+    if (_followedUsers.has(post.author)) {
+      followBtn.textContent = `Unfollow @${post.author}`;
+      followBtn.onclick = () => handleUnfollowUser(post.author);
+    } else {
+      followBtn.textContent = `Follow @${post.author}`;
+      followBtn.onclick = () => handleFollowUser(post.author);
+    }
+    followBtn.style.display = '';
     muteBtn.textContent = `Mute @${post.author}`;
     muteBtn.onclick = () => handleMuteUser(post.author);
     muteBtn.style.display = '';
   } else {
+    followBtn.style.display = 'none';
     muteBtn.style.display = 'none';
   }
 
@@ -1482,11 +1574,13 @@ function renderAuthUI() {
       '<a class="auth-logout" href="#" onclick="doLogout();return false">Logout</a>';
     document.getElementById('btn-save-prefs').style.display = '';
     document.getElementById('my-communities-toggle').style.display = '';
+    document.getElementById('following-toggle').style.display = '';
     fetchUserCommunities(auth.username).then(list => { _userCommunities = list; });
   } else {
     area.innerHTML = '<a class="auth-login" href="#" onclick="showLoginPrompt();return false">Login</a>';
     document.getElementById('btn-save-prefs').style.display = 'none';
     document.getElementById('my-communities-toggle').style.display = 'none';
+    document.getElementById('following-toggle').style.display = 'none';
   }
 }
 
@@ -1526,6 +1620,9 @@ async function doLogin() {
     closeLogin();
     renderAuthUI();
     fetchMutedList(); // background fetch
+    fetchFollowedList().then(() => {
+      if (_followedUsers.size > 0) { setFollowingActive(true); scheduleFilter(); }
+    }); // background fetch
     const prefs = await loadAndApplyPreferences();
     if (isFirstLogin(prefs)) {
       showSettingsModal();
@@ -1547,6 +1644,7 @@ async function doLogout() {
   _votedPosts = {};
   _manaCache = null;
   setMyCommunitiesActive(false);
+  setFollowingActive(false);
   renderAuthUI();
   resetFilters();
 }
@@ -1774,8 +1872,9 @@ async function showSettingsModal() {
     document.getElementById('settings-vote-max-val').textContent = vm + '%';
   }
 
-  // Render muted users
+  // Render muted + followed users
   renderMutedUsersList();
+  renderFollowedUsersList();
 
   wireSettingsOnce();
 
@@ -2025,6 +2124,7 @@ async function handleJoinCommunity(communityId, communityName, btn) {
 function toggleMyCommunities() {
   setMyCommunitiesActive(!_myCommunitiesActive);
   if (_myCommunitiesActive) {
+    setFollowingActive(false);
     _activeCommunityFilter = null;
     updateSuggestionActiveState();
   }
@@ -2034,6 +2134,26 @@ function toggleMyCommunities() {
 function setMyCommunitiesActive(active) {
   _myCommunitiesActive = active;
   const btn = document.getElementById('my-communities-toggle');
+  if (btn) {
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  }
+}
+
+// ── "Following" toggle ──
+function toggleFollowing() {
+  setFollowingActive(!_followingFilterActive);
+  if (_followingFilterActive) {
+    setMyCommunitiesActive(false);
+    _activeCommunityFilter = null;
+    updateSuggestionActiveState();
+  }
+  scheduleFilter();
+}
+
+function setFollowingActive(active) {
+  _followingFilterActive = active;
+  const btn = document.getElementById('following-toggle');
   if (btn) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', String(active));
