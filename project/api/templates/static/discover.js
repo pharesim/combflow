@@ -1288,7 +1288,7 @@ function renderAuthUI() {
   const auth = getStoredAuth();
   if (auth) {
     area.innerHTML =
-      '<button type="button" class="auth-login" onclick="openEditor()" style="background:var(--hive-red);color:#fff;border-color:var(--hive-red)">Write Post</button>' +
+      '<button type="button" class="auth-login" onclick="openEditor()" style="background:var(--hive-red);color:#fff;border-color:var(--hive-red);padding:6px 10px" title="Write Post"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>' +
       '<span class="auth-user">@' + esc(auth.username) + '</span>' +
       '<a class="auth-settings" href="#" onclick="showSettingsModal();return false" title="Filter preferences">Settings</a>' +
       '<a class="auth-logout" href="#" onclick="doLogout();return false">Logout</a>';

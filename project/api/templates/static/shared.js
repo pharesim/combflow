@@ -354,6 +354,8 @@ function renderHiveBody(raw) {
   // Convert [<img src="...">](url) to <a><img></a> — marked won't parse
   // markdown links inside HTML blocks like <center>
   md = md.replace(/\[(<img\s[^>]*>)\]\((https?:\/\/[^)]+)\)/gim, '<a href="$2">$1</a>');
+  // Convert remaining markdown links to <a> — marked skips these inside HTML blocks
+  md = md.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gim, '<a href="$2">$1</a>');
   const html = marked.parse(md, { breaks: true, gfm: true });
   DOMPurify.addHook('uponSanitizeElement', (node, data) => {
     if (data.tagName === 'iframe') {
