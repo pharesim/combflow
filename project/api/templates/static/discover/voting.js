@@ -64,6 +64,7 @@ async function confirmManualVote() {
     saveVotedPost(key);
     state.manaCache = null;
     updateVoteButtons(key, true);
+    bumpVoteCount(key, 1);
     showToast('Voted!', 'success');
   } catch(e) {
     showToast(e.message || 'Vote failed', 'error');
@@ -82,6 +83,7 @@ async function handleVote(author, permlink, btn) {
       await broadcastVote(author, permlink, 0);
       removeVotedPost(key);
       updateVoteButtons(key, false);
+      bumpVoteCount(key, -1);
     } catch(e) {
       showToast(e.message || 'Unvote failed', 'error');
     }
@@ -104,11 +106,33 @@ async function handleVote(author, permlink, btn) {
     saveVotedPost(key);
     state.manaCache = null;
     updateVoteButtons(key, true);
+    bumpVoteCount(key, 1);
     showToast('Voted!', 'success');
   } catch(e) {
     showToast(e.message || 'Vote failed', 'error');
   }
   btn.disabled = false;
+}
+
+function bumpVoteCount(key, delta) {
+  const cached = state.metaCache[key];
+  if (cached && cached.votes != null) {
+    cached.votes = Math.max(0, cached.votes + delta);
+    Alpine.store('app').metaRev++;
+  }
+  document.querySelectorAll(`.vote-count[data-vote-key="${CSS.escape(key)}"]`).forEach(el => {
+    el.classList.remove('vote-bump');
+    void el.offsetWidth;
+    el.classList.add('vote-bump');
+  });
+  const modalCount = document.getElementById('modal-vote-count');
+  if (modalCount && Alpine.store('app').modalOpen) {
+    const cur = parseInt(modalCount.textContent) || 0;
+    modalCount.textContent = Math.max(0, cur + delta);
+    modalCount.classList.remove('vote-bump');
+    void modalCount.offsetWidth;
+    modalCount.classList.add('vote-bump');
+  }
 }
 
 // Check if user already voted on a post (from bridge.get_post active_votes)

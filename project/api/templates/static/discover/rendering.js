@@ -139,6 +139,8 @@ async function fetchSingleMeta(p, retries = 2) {
     cacheMetaEntry(key, {
       title: result.title || '',
       thumbnail: images.length ? images[0] : '',
+      votes: (result.stats && result.stats.total_votes) || (result.active_votes || []).length,
+      children: result.children || 0,
     });
     // Bump Alpine metaRev so reactive templates re-evaluate
     Alpine.store('app').metaRev++;
@@ -150,7 +152,7 @@ function seedMetaFromServer(posts) {
     if (!p.title) continue;
     const key = `${p.author}/${p.permlink}`;
     if (state.metaCache[key]) continue;
-    cacheMetaEntry(key, { title: p.title, thumbnail: '' });
+    cacheMetaEntry(key, { title: p.title, thumbnail: '', votes: null, children: null });
   }
 }
 
@@ -187,7 +189,9 @@ function getPostMeta(p) {
   const borderColor = sentimentColor(p.sentiment_score);
   const catLabel = (p.categories || []).slice(0, 2);
   const voted = state.votedPosts[key];
-  return { key, title, thumb, borderColor, catLabel, voted };
+  const votes = cached ? cached.votes : null;
+  const children = cached ? cached.children : null;
+  return { key, title, thumb, borderColor, catLabel, voted, votes, children };
 }
 
 // ── Alpine template helper: build tags HTML for card/hex views ──

@@ -38,6 +38,7 @@ async function openModal(post, skipPush) {
   });
 
   document.getElementById('modal-score').textContent = '';
+  document.getElementById('modal-vote-count').textContent = '';
   document.getElementById('modal-hivelink').href = `https://hivel.ink/@${post.author}/${post.permlink}`;
   document.getElementById('cross-post-banner').style.display = 'none';
 
@@ -82,6 +83,15 @@ async function openModal(post, skipPush) {
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');
+    // Vote count in modal
+    const voteCount = (result.stats && result.stats.total_votes) || (result.active_votes || []).length;
+    document.getElementById('modal-vote-count').textContent = voteCount;
+    cacheMetaEntry(`${post.author}/${post.permlink}`, {
+      ...state.metaCache[`${post.author}/${post.permlink}`],
+      votes: voteCount,
+      children: result.children || 0,
+    });
+    Alpine.store('app').metaRev++;
     // Show post tags
     const postTagsEl = document.getElementById('modal-post-tags');
     postTagsEl.innerHTML = '';

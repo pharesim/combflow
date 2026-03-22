@@ -473,11 +473,21 @@ body{overflow-x:hidden}
 .vote-btn.voted{color:var(--hive-red)}
 .vote-btn.voted svg{fill:var(--hive-red);stroke:var(--hive-red)}
 .vote-btn:disabled{opacity:.5;cursor:not-allowed}
+.post-stats{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.stat-count{display:flex;align-items:center;gap:2px;font-size:12px;color:var(--text-dim)}
+.comment-stat svg{opacity:.7}
+.vote-wrap{display:flex;align-items:center;gap:3px;flex-shrink:0}
+.vote-count{font-size:12px;color:var(--text-dim)}
 .post-card{position:relative}
-.post-card .vote-btn{position:absolute;bottom:10px;right:10px;z-index:2}
-.list-row .vote-btn{margin-left:auto}
-.modal-vote-btn{padding:6px}
+.post-card .post-stats{position:absolute;bottom:10px;right:10px;z-index:2}
+.post-card .vote-btn{position:static}
+.list-row .post-stats{margin-left:auto}
+.list-row .vote-btn{margin-left:0}
+.modal-vote-count{font-size:14px;color:var(--text-dim)}
+.modal-vote-btn{padding:4px 2px}
 .modal-vote-btn svg{width:22px;height:22px}
+@keyframes vote-bump{0%{transform:scale(1)}40%{transform:scale(1.4);color:var(--hive-red)}100%{transform:scale(1)}}
+.vote-bump{animation:vote-bump .35s ease-out}
 
 /* ── Mute button ── */
 .mute-btn{background:none;border:1px solid #ffffff20;color:var(--text-dim);padding:4px 12px;border-radius:12px;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
