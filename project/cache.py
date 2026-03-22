@@ -1,4 +1,5 @@
 """Lightweight in-process TTL cache for near-static data."""
+import functools
 import time
 
 _store: dict[str, tuple[float, object]] = {}  # key -> (expires_at, value)
@@ -20,6 +21,21 @@ def put(key: str, value: object, ttl: float) -> None:
 
 def invalidate(key: str) -> None:
     _store.pop(key, None)
+
+
+def cached_response(key: str, ttl: int):
+    """Decorator that caches endpoint return values."""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            result = get(key)
+            if result is not None:
+                return result
+            result = await func(*args, **kwargs)
+            put(key, result, ttl=ttl)
+            return result
+        return wrapper
+    return decorator
 
 
 def clear() -> None:

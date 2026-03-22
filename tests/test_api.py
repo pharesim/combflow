@@ -70,20 +70,6 @@ async def test_get_post_not_found(client, seeded_db):
     assert resp.status_code == 404
 
 
-# ── Middleware ───────────────────────────────────────────────────────────────
-
-async def test_request_id_header(client):
-    resp = await client.get("/health")
-    assert "x-request-id" in resp.headers
-    assert len(resp.headers["x-request-id"]) == 8
-
-
-async def test_request_id_unique(client):
-    r1 = await client.get("/health")
-    r2 = await client.get("/health")
-    assert r1.headers["x-request-id"] != r2.headers["x-request-id"]
-
-
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
 async def test_cors_headers(client):
@@ -164,6 +150,12 @@ async def test_ui_post_page_returns_html(client):
     assert "text/html" in resp.headers.get("content-type", "")
 
 
+async def test_prefixed_post_url_returns_html(client):
+    resp = await client.get("/hive-139531/@alice/some-post")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+
+
 # ── GZip middleware ──────────────────────────────────────────────────────────
 
 async def test_gzip_large_response(client, seeded_db):
@@ -179,10 +171,11 @@ async def test_gzip_large_response(client, seeded_db):
     assert "posts" in resp.json()
 
 
-async def test_gzip_varies_on_accept_encoding(client, setup_db):
-    """GZip middleware sets Vary: Accept-Encoding header."""
-    resp = await client.get("/health", headers={"Accept-Encoding": "gzip"})
+async def test_gzip_varies_on_accept_encoding(client, seeded_db):
+    """GZip middleware sets Vary: Accept-Encoding header on large responses."""
+    resp = await client.get("/api/browse", headers={"Accept-Encoding": "gzip"})
     assert resp.status_code == 200
+    # Large enough response should trigger gzip and set Vary header.
     assert "Accept-Encoding" in resp.headers.get("vary", "")
 
 

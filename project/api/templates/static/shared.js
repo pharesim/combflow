@@ -497,24 +497,27 @@ document.addEventListener('error', function(e) {
   }
 }, true);
 
-function renderHiveBody(raw) {
-  let md = raw;
+function normalizeMarkdown(md) {
+  // @mentions → links
   md = md.replace(/(^|[\s(])@([a-z0-9][a-z0-9.-]{1,15})(?=[\s,.;:!?)}\]]|$)/gim,
     '$1[@$2](https://peakd.com/@$2)');
+  // Bare image URLs with [Source] suffix
   md = md.replace(/(https?:\/\/[^\s<>"\[\]]+\.(?:jpe?g|png|gif|webp|svg)(?:\?[^\s<>"\[\]]*)?)\[(?:Source|source)\]\(([^)]+)\)/gim,
     '![]($1)');
+  // Bare image URLs on their own line
   md = md.replace(/(^|>|\n)\s*(https?:\/\/[^\s<>"]+\.(?:jpe?g|png|gif|webp|svg)(?:\?[^\s<>"]*)?)\s*(?=<|\n|$)/gim,
     '$1\n![]($2)\n');
   // Convert all markdown images to <img> before marked parses.
-  // marked would do the same for non-HTML-block images; this also fixes
-  // images inside HTML blocks (e.g. <center>) which marked treats as raw text.
+  // Also fixes images inside HTML blocks (e.g. <center>) which marked treats as raw text.
   md = md.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/gim, '<img alt="$1" src="$2">');
-  // Convert [<img src="...">](url) to <a><img></a> — marked won't parse
-  // markdown links inside HTML blocks like <center>
+  // Convert [<img src="...">](url) to <a><img></a>
   md = md.replace(/\[(<img\s[^>]*>)\]\((https?:\/\/[^)]+)\)/gim, '<a href="$2">$1</a>');
   // Convert remaining markdown links to <a> — marked skips these inside HTML blocks
   md = md.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gim, '<a href="$2">$1</a>');
-  const html = marked.parse(md, { breaks: true, gfm: true });
+  return md;
+}
+
+function sanitizeContent(html) {
   DOMPurify.addHook('uponSanitizeElement', (node, data) => {
     if (data.tagName === 'iframe') {
       const src = node.getAttribute('src') || '';
@@ -545,26 +548,10 @@ function renderHiveBody(raw) {
     ADD_ATTR: ['target', 'data-direct-src'],
   });
   DOMPurify.removeAllHooks();
-  const div = document.createElement('div');
-  div.innerHTML = clean;
-  // Sandbox all inline iframes and set lazy loading
-  div.querySelectorAll('iframe').forEach(iframe => {
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
-    iframe.loading = 'lazy';
-  });
-  // Sanitize style attributes — only allow layout-related CSS properties
-  div.querySelectorAll('[style]').forEach(el => {
-    const raw = el.getAttribute('style');
-    const safe = raw.split(';').map(s => s.trim()).filter(s => {
-      const prop = s.split(':')[0]?.trim().toLowerCase();
-      return prop && ALLOWED_CSS_PROPS.has(prop);
-    }).join('; ');
-    if (safe) {
-      el.setAttribute('style', safe);
-    } else {
-      el.removeAttribute('style');
-    }
-  });
+  return clean;
+}
+
+function proxyImages(div) {
   div.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || '';
     if (src && !src.startsWith('data:')) {
@@ -579,7 +566,9 @@ function renderHiveBody(raw) {
     img.removeAttribute('height');
     img.loading = 'lazy';
   });
-  // Video embeds + external link attributes
+}
+
+function embedVideos(div) {
   const embeddedVideos = new Set();
   div.querySelectorAll('a').forEach(a => {
     const href = a.getAttribute('href') || '';
@@ -647,6 +636,40 @@ function renderHiveBody(raw) {
     a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener noreferrer');
   });
+}
+
+function sandboxIframes(div) {
+  div.querySelectorAll('iframe').forEach(iframe => {
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
+    iframe.loading = 'lazy';
+  });
+}
+
+function sanitizeStyles(div) {
+  div.querySelectorAll('[style]').forEach(el => {
+    const raw = el.getAttribute('style');
+    const safe = raw.split(';').map(s => s.trim()).filter(s => {
+      const prop = s.split(':')[0]?.trim().toLowerCase();
+      return prop && ALLOWED_CSS_PROPS.has(prop);
+    }).join('; ');
+    if (safe) {
+      el.setAttribute('style', safe);
+    } else {
+      el.removeAttribute('style');
+    }
+  });
+}
+
+function renderHiveBody(raw) {
+  const md = normalizeMarkdown(raw);
+  const html = marked.parse(md, { breaks: true, gfm: true });
+  const clean = sanitizeContent(html);
+  const div = document.createElement('div');
+  div.innerHTML = clean;
+  sandboxIframes(div);
+  sanitizeStyles(div);
+  proxyImages(div);
+  embedVideos(div);
   return div.innerHTML;
 }
 

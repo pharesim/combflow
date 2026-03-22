@@ -4,188 +4,66 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 import pytest
 
-
-# ── _clean_post_body ─────────────────────────────────────────────────────────
-
-class TestCleanPostBody:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _clean_post_body
-        self.clean = _clean_post_body
-
-    def test_strips_markdown_images(self):
-        assert "![" not in self.clean("Hello ![alt](http://img.png) world")
-
-    def test_strips_html_tags(self):
-        assert "<div>" not in self.clean("<div>Hello</div> world")
-
-    def test_strips_urls(self):
-        result = self.clean("Check https://example.com for details")
-        assert "https://" not in result
-        assert "Check" in result
-
-    def test_keeps_link_text(self):
-        result = self.clean("See [my post](http://example.com) here")
-        assert "my post" in result
-        assert "http://" not in result
-
-    def test_strips_headers(self):
-        result = self.clean("## Hello\nSome text")
-        assert result.startswith("Hello")
-
-    def test_strips_dividers(self):
-        result = self.clean("Above\n---\nBelow")
-        assert "---" not in result
-
-    def test_collapses_whitespace(self):
-        result = self.clean("Hello    world")
-        assert "    " not in result
-
-    def test_empty_input(self):
-        assert self.clean("") == ""
-
-    def test_preserves_plain_text(self):
-        text = "This is a normal paragraph with no special formatting."
-        assert self.clean(text) == text
-
-
-# ── _classify ────────────────────────────────────────────────────────────────
-
-class TestClassify:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _classify
-        self.classify = _classify
-
-    def test_empty_centroids(self):
-        from sentence_transformers import SentenceTransformer
-        embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        assert self.classify("hello world", embedder, {}, 0.3) == []
-
-    def test_no_embedder(self):
-        assert self.classify("hello", None, {"cat": np.ones(384)}, 0.3) == []
-
-    def test_respects_threshold(self):
-        from sentence_transformers import SentenceTransformer
-        embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        # A random vector should have low similarity — threshold of 0.99 filters it.
-        rng = np.random.RandomState(42)
-        centroids = {"random": rng.randn(384).astype(np.float32)}
-        centroids["random"] /= np.linalg.norm(centroids["random"])
-        result = self.classify("hello world", embedder, centroids, 0.99)
-        assert result == []
-
-    def test_max_three_categories(self):
-        from sentence_transformers import SentenceTransformer
-        embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        # Create 5 identical centroids — all should score the same.
-        emb = embedder.encode("technology and programming", normalize_embeddings=True)
-        centroids = {f"cat{i}": emb.copy() for i in range(5)}
-        result = self.classify("technology and programming", embedder, centroids, 0.0)
-        assert len(result) <= 3
-
-
-# ── _analyze_sentiment ───────────────────────────────────────────────────────
-
-class TestSentiment:
-    @pytest.fixture(autouse=True)
-    def _setup(self):
-        from sentence_transformers import SentenceTransformer
-        from project.worker.hive import _analyze_sentiment, _build_sentiment_anchors
-        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        self.pos, self.neg = _build_sentiment_anchors(self.embedder)
-        self.analyze = _analyze_sentiment
-
-    def test_positive_text(self):
-        label, score = self.analyze(
-            "I absolutely love this, it's the best thing ever!", self.embedder, self.pos, self.neg
-        )
-        assert label == "positive"
-        assert score > 0.05
-
-    def test_negative_text(self):
-        label, score = self.analyze(
-            "This is terrible, I hate everything about it", self.embedder, self.pos, self.neg
-        )
-        assert label == "negative"
-        assert score < -0.05
-
-    def test_score_range(self):
-        _, score = self.analyze("something", self.embedder, self.pos, self.neg)
-        assert -1.0 <= score <= 1.0
+from project.worker.hive import (
+    _classify_from_embedding, _detect_languages, _extract_community_id,
+    _sentiment_from_embedding, _resolve_community, _community_cache,
+    _build_sentiment_anchors, _classify_and_save, _persisted_communities,
+    _persist_community_mapping,
+)
 
 
 # ── _detect_languages ────────────────────────────────────────────────────────
 
 class TestDetectLanguages:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _detect_languages
-        self.detect = _detect_languages
-
     def test_english_detection(self):
-        assert "en" in self.detect("Hello, how are you doing today?")
+        assert "en" in _detect_languages("Hello, how are you doing today?")
 
     def test_metadata_takes_precedence(self):
-        langs = self.detect("Hello, how are you?", meta_langs=["de"])
+        langs = _detect_languages("Hello, how are you?", meta_langs=["de"])
         assert langs[0] == "de"
 
     def test_deduplication(self):
-        langs = self.detect("Hello, how are you?", meta_langs=["en"])
+        langs = _detect_languages("Hello, how are you?", meta_langs=["en"])
         assert langs.count("en") == 1
 
     def test_empty_text(self):
-        result = self.detect("")
+        result = _detect_languages("")
         assert isinstance(result, list)
 
     def test_non_latin_script(self):
-        langs = self.detect("今日はとても良い天気です。東京は暑いですね。")
+        langs = _detect_languages("今日はとても良い天気です。東京は暑いですね。")
         assert len(langs) > 0
 
 
 # ── _extract_community_id ───────────────────────────────────────────────────
 
 class TestExtractCommunityId:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _extract_community_id
-        self.extract = _extract_community_id
-
     def test_valid_community_id(self):
-        assert self.extract("hive-174578") == "hive-174578"
+        assert _extract_community_id("hive-174578") == "hive-174578"
 
     def test_blog_post_tag(self):
-        assert self.extract("photography") is None
+        assert _extract_community_id("photography") is None
 
     def test_none_input(self):
-        assert self.extract(None) is None
+        assert _extract_community_id(None) is None
 
     def test_empty_string(self):
-        assert self.extract("") is None
+        assert _extract_community_id("") is None
 
     def test_invalid_hive_pattern(self):
-        assert self.extract("hive-abc") is None
+        assert _extract_community_id("hive-abc") is None
 
 
-# ── _classify_from_embedding_with_boost ─────────────────────────────────────
+# ── _classify_from_embedding with boost ──────────────────────────────────────
 
 class TestClassifyWithBoost:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _classify_from_embedding_with_boost
-        self.classify_boost = _classify_from_embedding_with_boost
-
     def test_boost_lifts_below_threshold(self):
         """A category below threshold is lifted above by the boost."""
-        # emb dot centroid = 0.28 (below 0.30), but boost of 0.08 -> 0.36
         emb = np.array([1.0] + [0.0] * 383, dtype=np.float32)
-        centroid = np.array([0.28] + [0.0] * 383, dtype=np.float32)
-        centroid /= np.linalg.norm(centroid)
         emb_norm = emb / np.linalg.norm(emb)
-        # Construct centroid so dot product is exactly 0.28
         centroid_exact = np.zeros(384, dtype=np.float32)
         centroid_exact[0] = 0.28
-        result = self.classify_boost(emb_norm, {"photo": centroid_exact}, 0.30, "photo", 0.08)
+        result = _classify_from_embedding(emb_norm, {"photo": centroid_exact}, 0.30, "photo", 0.08)
         assert "photo" in result
 
     def test_boost_no_effect_on_off_topic(self):
@@ -194,7 +72,7 @@ class TestClassifyWithBoost:
         emb[0] = 1.0
         centroid = np.zeros(384, dtype=np.float32)
         centroid[0] = 0.10
-        result = self.classify_boost(emb, {"photo": centroid}, 0.30, "photo", 0.08)
+        result = _classify_from_embedding(emb, {"photo": centroid}, 0.30, "photo", 0.08)
         assert result == []
 
     def test_boost_only_applies_to_target_category(self):
@@ -207,30 +85,24 @@ class TestClassifyWithBoost:
         }
         centroids["photo"][0] = 0.28
         centroids["travel"][0] = 0.28
-        result = self.classify_boost(emb, centroids, 0.30, "photo", 0.08)
+        result = _classify_from_embedding(emb, centroids, 0.30, "photo", 0.08)
         assert "photo" in result
-        # travel is at 0.28 (below 0.30) and gets no boost
         assert "travel" not in result
 
 
 # ── _classify_from_embedding ────────────────────────────────────────────────
 
 class TestClassifyFromEmbedding:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _classify_from_embedding
-        self.classify = _classify_from_embedding
-
     def test_empty_centroids(self):
         emb = np.ones(384, dtype=np.float32)
-        assert self.classify(emb, {}, 0.3) == []
+        assert _classify_from_embedding(emb, {}, 0.3) == []
 
     def test_returns_top_categories(self):
         emb = np.zeros(384, dtype=np.float32)
         emb[0] = 1.0
         centroids = {"match": np.zeros(384, dtype=np.float32)}
         centroids["match"][0] = 0.5
-        result = self.classify(emb, centroids, 0.3)
+        result = _classify_from_embedding(emb, centroids, 0.3)
         assert "match" in result
 
     def test_filters_below_threshold(self):
@@ -238,7 +110,7 @@ class TestClassifyFromEmbedding:
         emb[0] = 1.0
         centroids = {"low": np.zeros(384, dtype=np.float32)}
         centroids["low"][0] = 0.1
-        assert self.classify(emb, centroids, 0.3) == []
+        assert _classify_from_embedding(emb, centroids, 0.3) == []
 
     def test_max_three_results(self):
         emb = np.zeros(384, dtype=np.float32)
@@ -246,7 +118,7 @@ class TestClassifyFromEmbedding:
         centroids = {f"c{i}": np.zeros(384, dtype=np.float32) for i in range(5)}
         for c in centroids.values():
             c[0] = 0.5
-        result = self.classify(emb, centroids, 0.3)
+        result = _classify_from_embedding(emb, centroids, 0.3)
         assert len(result) <= 3
 
     def test_close_scores_included(self):
@@ -261,7 +133,7 @@ class TestClassifyFromEmbedding:
         centroids["top"][0] = 0.50
         centroids["close"][0] = 0.48  # within 0.03
         centroids["far"][0] = 0.35   # outside 0.03
-        result = self.classify(emb, centroids, 0.3)
+        result = _classify_from_embedding(emb, centroids, 0.3)
         assert "top" in result
         assert "close" in result
         assert "far" not in result
@@ -270,17 +142,12 @@ class TestClassifyFromEmbedding:
 # ── _sentiment_from_embedding ───────────────────────────────────────────────
 
 class TestSentimentFromEmbedding:
-    @pytest.fixture(autouse=True)
-    def _import(self):
-        from project.worker.hive import _sentiment_from_embedding
-        self.sentiment = _sentiment_from_embedding
-
     def test_neutral_when_equal(self):
         """Equal similarity to pos and neg anchors = neutral."""
         emb = np.ones(384, dtype=np.float32) / np.sqrt(384)
         pos = np.ones(384, dtype=np.float32) / np.sqrt(384)
         neg = np.ones(384, dtype=np.float32) / np.sqrt(384)
-        label, score = self.sentiment(emb, pos, neg)
+        label, score = _sentiment_from_embedding(emb, pos, neg)
         assert label == "neutral"
         assert abs(score) <= 0.05
 
@@ -291,7 +158,7 @@ class TestSentimentFromEmbedding:
         pos[0] = 1.0  # aligned with emb
         neg = np.zeros(384, dtype=np.float32)
         neg[1] = 1.0  # orthogonal
-        label, score = self.sentiment(emb, pos, neg)
+        label, score = _sentiment_from_embedding(emb, pos, neg)
         assert label == "positive"
         assert score > 0.05
 
@@ -302,7 +169,7 @@ class TestSentimentFromEmbedding:
         pos[1] = 1.0  # orthogonal
         neg = np.zeros(384, dtype=np.float32)
         neg[0] = 1.0  # aligned
-        label, score = self.sentiment(emb, pos, neg)
+        label, score = _sentiment_from_embedding(emb, pos, neg)
         assert label == "negative"
         assert score < -0.05
 
@@ -311,7 +178,7 @@ class TestSentimentFromEmbedding:
         emb = np.ones(384, dtype=np.float32)
         pos = np.ones(384, dtype=np.float32)
         neg = -np.ones(384, dtype=np.float32)
-        _, score = self.sentiment(emb, pos, neg)
+        _, score = _sentiment_from_embedding(emb, pos, neg)
         assert -1.0 <= score <= 1.0
 
 
@@ -320,26 +187,23 @@ class TestSentimentFromEmbedding:
 class TestResolveCommunity:
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from project.worker.hive import _resolve_community, _community_cache
-        self.resolve = _resolve_community
-        self._cache = _community_cache
-        self._cache.clear()
+        _community_cache.clear()
         yield
-        self._cache.clear()
+        _community_cache.clear()
 
     def test_cache_hit(self):
-        self._cache["hive-999"] = ("photography", "Cached Community", 0.55)
-        result = self.resolve("hive-999", None, {})
+        _community_cache["hive-999"] = ("photography", "Cached Community", 0.55)
+        result = _resolve_community("hive-999", None, {})
         assert result == ("photography", "Cached Community", 0.55)
 
     def test_no_metadata(self):
         with patch("project.worker.hive.get_community", return_value=None):
-            result = self.resolve("hive-888", None, {})
+            result = _resolve_community("hive-888", None, {})
         assert result == (None, "", 0.0)
 
     def test_no_embedder(self):
         with patch("project.worker.hive.get_community", return_value={"title": "Test", "about": "desc"}):
-            result = self.resolve("hive-777", None, {"cat": np.ones(384)})
+            result = _resolve_community("hive-777", None, {"cat": np.ones(384)})
         assert result[0] is None
         assert result[1] == "Test"
 
@@ -350,9 +214,8 @@ class TestResolveCommunity:
         centroids = {"crypto": centroid}
         with patch("project.worker.hive.get_community",
                    return_value={"title": "LeoFinance", "about": "Cryptocurrency and finance community"}):
-            cat, name, score = self.resolve("hive-666", embedder, centroids)
+            cat, name, score = _resolve_community("hive-666", embedder, centroids)
         assert name == "LeoFinance"
-        # The match should have a meaningful score (may or may not exceed threshold).
         assert score > 0.0
 
     def test_below_threshold_returns_none_category(self):
@@ -364,9 +227,7 @@ class TestResolveCommunity:
         centroids = {"random_topic": random_centroid}
         with patch("project.worker.hive.get_community",
                    return_value={"title": "Generic Community", "about": "Nothing specific"}):
-            cat, name, score = self.resolve("hive-555", embedder, centroids)
-        # With a random centroid and generic text, score is typically below 0.40.
-        # Even if it happens to match, the test validates the function runs without error.
+            cat, name, score = _resolve_community("hive-555", embedder, centroids)
         assert name == "Generic Community"
         assert isinstance(score, float)
 
@@ -376,7 +237,6 @@ class TestResolveCommunity:
 class TestBuildSentimentAnchors:
     def test_anchors_normalized(self):
         from sentence_transformers import SentenceTransformer
-        from project.worker.hive import _build_sentiment_anchors
         embedder = SentenceTransformer("all-MiniLM-L6-v2")
         pos, neg = _build_sentiment_anchors(embedder)
         assert abs(np.linalg.norm(pos) - 1.0) < 1e-5
@@ -384,10 +244,8 @@ class TestBuildSentimentAnchors:
 
     def test_anchors_different(self):
         from sentence_transformers import SentenceTransformer
-        from project.worker.hive import _build_sentiment_anchors
         embedder = SentenceTransformer("all-MiniLM-L6-v2")
         pos, neg = _build_sentiment_anchors(embedder)
-        # Positive and negative anchors should not be identical.
         assert not np.allclose(pos, neg)
 
 
@@ -396,23 +254,17 @@ class TestBuildSentimentAnchors:
 class TestClassifyAndSave:
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from project.worker.hive import (
-            _classify_and_save, _community_cache, _persisted_communities,
-        )
-        self.classify_and_save = _classify_and_save
-        self._community_cache = _community_cache
-        self._persisted_communities = _persisted_communities
-        self._community_cache.clear()
-        self._persisted_communities.clear()
+        _community_cache.clear()
+        _persisted_communities.clear()
         yield
-        self._community_cache.clear()
-        self._persisted_communities.clear()
+        _community_cache.clear()
+        _persisted_communities.clear()
 
     def test_skips_diff_posts(self):
         """Posts starting with @@ (diff/edit markers) should be skipped."""
         mock_db = MagicMock()
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="p", title="Edit",
                 body="@@ -1,3 +1,5 @@ some diff content that is long enough",
@@ -423,7 +275,7 @@ class TestClassifyAndSave:
         """Posts with < 80 chars clean body should be skipped."""
         mock_db = MagicMock()
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="p", title="Short", body="Too short",
             )
@@ -434,7 +286,7 @@ class TestClassifyAndSave:
         mock_db = MagicMock()
         body = "This is a long enough body for the test. " * 5
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="no-embedder",
                 title="Test Post", body=body,
@@ -454,17 +306,15 @@ class TestClassifyAndSave:
 
         with patch("project.worker.hive._save_post"), \
              patch("project.worker.hive._classify_from_embedding", return_value=["crypto"]) as mock_classify:
-            # Use a mock embedder.
             mock_embedder = MagicMock()
             mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
                 np.zeros(384), np.zeros(384),
                 author="alice", permlink="tags-test",
                 title="Bitcoin Post", body=body,
                 json_metadata=meta,
             )
-        # The encode call should include the tags.
         encode_text = mock_embedder.encode.call_args[0][0]
         assert "crypto" in encode_text
         assert "bitcoin" in encode_text
@@ -477,7 +327,7 @@ class TestClassifyAndSave:
         meta = json.dumps({"language": "de"})
 
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="lang-str",
                 title="German Post", body=body,
@@ -494,7 +344,7 @@ class TestClassifyAndSave:
         meta = json.dumps({"language": ["en", "es"]})
 
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="lang-list",
                 title="Bilingual", body=body,
@@ -510,7 +360,7 @@ class TestClassifyAndSave:
         body = "Valid long body content for testing malformed metadata handling. " * 3
 
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="bad-meta",
                 title="Post", body=body,
@@ -525,7 +375,7 @@ class TestClassifyAndSave:
 
         with patch("project.worker.hive._save_post") as mock_save, \
              patch("project.worker.hive._persist_community_mapping"):
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="comm-test",
                 title="Post", body=body,
@@ -540,7 +390,7 @@ class TestClassifyAndSave:
         body = "Long enough body for blog post without community testing. " * 3
 
         with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="blog-test",
                 title="Post", body=body,
@@ -553,15 +403,15 @@ class TestClassifyAndSave:
         """Community boost should be applied when community maps above threshold."""
         mock_db = MagicMock()
         body = "Long enough body for community boost classification testing. " * 3
-        self._community_cache["hive-100"] = ("crypto", "CryptoComm", 0.55)
+        _community_cache["hive-100"] = ("crypto", "CryptoComm", 0.55)
 
         mock_embedder = MagicMock()
         mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
 
         with patch("project.worker.hive._save_post"), \
              patch("project.worker.hive._persist_community_mapping"), \
-             patch("project.worker.hive._classify_from_embedding_with_boost", return_value=["crypto"]) as mock_boost:
-            self.classify_and_save(
+             patch("project.worker.hive._classify_from_embedding", return_value=["crypto"]) as mock_boost:
+            _classify_and_save(
                 mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
                 np.zeros(384), np.zeros(384),
                 author="alice", permlink="boost-test",
@@ -574,7 +424,7 @@ class TestClassifyAndSave:
         """Community boost should NOT be applied when score < 0.40."""
         mock_db = MagicMock()
         body = "Long enough body for community no-boost classification testing. " * 3
-        self._community_cache["hive-200"] = (None, "LowScore", 0.20)
+        _community_cache["hive-200"] = (None, "LowScore", 0.20)
 
         mock_embedder = MagicMock()
         mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
@@ -582,7 +432,7 @@ class TestClassifyAndSave:
         with patch("project.worker.hive._save_post"), \
              patch("project.worker.hive._persist_community_mapping"), \
              patch("project.worker.hive._classify_from_embedding", return_value=[]) as mock_classify:
-            self.classify_and_save(
+            _classify_and_save(
                 mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
                 np.zeros(384), np.zeros(384),
                 author="alice", permlink="no-boost-test",
@@ -591,19 +441,88 @@ class TestClassifyAndSave:
             )
         mock_classify.assert_called_once()
 
+    def test_cross_post_uses_original_body(self):
+        """Cross-posts should classify using the original post's body."""
+        mock_db = MagicMock()
+        short_body = "Cross-posted this."  # too short on its own
+        original_body = "This is the full original post body with enough content for classification. " * 3
+        import json
+        meta = json.dumps({"cross_post_key": "bob/original-permlink"})
+
+        with patch("project.worker.hive._save_post") as mock_save, \
+             patch("project.worker.hive.get_post_body", return_value=original_body) as mock_fetch:
+            _classify_and_save(
+                mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
+                author="alice", permlink="cross-post-test",
+                title="Cross Post", body=short_body,
+                json_metadata=meta,
+            )
+        mock_fetch.assert_called_once_with("bob", "original-permlink")
+        mock_save.assert_called_once()
+
+    def test_cross_post_falls_back_when_original_not_found(self):
+        """If original post body can't be fetched, use the cross-post's own body."""
+        mock_db = MagicMock()
+        body = "This cross-post body is long enough to pass the minimum length check for testing. " * 3
+        import json
+        meta = json.dumps({"cross_post_key": "bob/missing-permlink"})
+
+        with patch("project.worker.hive._save_post") as mock_save, \
+             patch("project.worker.hive.get_post_body", return_value=None):
+            _classify_and_save(
+                mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
+                author="alice", permlink="cross-fallback",
+                title="Cross Post", body=body,
+                json_metadata=meta,
+            )
+        mock_save.assert_called_once()
+
+    def test_cross_post_skipped_when_original_too_short(self):
+        """If original body is too short after cleaning, skip the post."""
+        mock_db = MagicMock()
+        short_body = "Short cross-post blurb"
+        import json
+        meta = json.dumps({"cross_post_key": "bob/short-original"})
+
+        with patch("project.worker.hive._save_post") as mock_save, \
+             patch("project.worker.hive.get_post_body", return_value="Also short"):
+            _classify_and_save(
+                mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
+                author="alice", permlink="cross-short",
+                title="Post", body=short_body,
+                json_metadata=meta,
+            )
+        mock_save.assert_not_called()
+
+    def test_cross_post_key_without_slash_ignored(self):
+        """Malformed cross_post_key without '/' should be ignored."""
+        mock_db = MagicMock()
+        body = "This is a long enough body for the cross-post key parsing test. " * 3
+        import json
+        meta = json.dumps({"cross_post_key": "malformed-no-slash"})
+
+        with patch("project.worker.hive._save_post") as mock_save, \
+             patch("project.worker.hive.get_post_body") as mock_fetch:
+            _classify_and_save(
+                mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
+                author="alice", permlink="bad-key",
+                title="Post", body=body,
+                json_metadata=meta,
+            )
+        mock_fetch.assert_not_called()
+        mock_save.assert_called_once()
+
 
 # ── _persist_community_mapping ──────────────────────────────────────────────
 
 class TestPersistCommunityMapping:
     @pytest.fixture(autouse=True)
     def _setup(self):
-        from project.worker.hive import _persisted_communities
         _persisted_communities.clear()
         yield
         _persisted_communities.clear()
 
     def test_persists_on_first_encounter(self):
-        from project.worker.hive import _persist_community_mapping
         mock_db = MagicMock()
         mock_db.run = MagicMock(side_effect=lambda coro: coro.close())
         _persist_community_mapping(mock_db, "hive-100", "crypto", "CryptoComm", 0.55)
@@ -611,18 +530,15 @@ class TestPersistCommunityMapping:
 
     def test_db_failure_logs_warning(self):
         """DB write failure should log warning, not crash."""
-        from project.worker.hive import _persist_community_mapping
         mock_db = MagicMock()
         def _run_and_fail(coro):
             coro.close()
             raise Exception("DB down")
         mock_db.run.side_effect = _run_and_fail
-        # Should not raise.
         _persist_community_mapping(mock_db, "hive-200", "food", "Foodies", 0.45)
 
     def test_persisted_set_prevents_duplicates(self):
         """_persisted_communities set should prevent duplicate DB writes."""
-        from project.worker.hive import _persisted_communities
         mock_db = MagicMock()
         body = "Long enough body for dedup testing of community mapping. " * 3
 
@@ -631,8 +547,7 @@ class TestPersistCommunityMapping:
         with patch("project.worker.hive._save_post"), \
              patch("project.worker.hive._resolve_community", return_value=("crypto", "Name", 0.5)), \
              patch("project.worker.hive._persist_community_mapping") as mock_persist, \
-             patch("project.worker.hive._classify_from_embedding_with_boost", return_value=[]):
-            from project.worker.hive import _classify_and_save
+             patch("project.worker.hive._classify_from_embedding", return_value=[]):
             mock_embedder = MagicMock()
             mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
             _classify_and_save(
@@ -643,5 +558,3 @@ class TestPersistCommunityMapping:
                 parent_permlink="hive-300",
             )
         mock_persist.assert_not_called()
-
-

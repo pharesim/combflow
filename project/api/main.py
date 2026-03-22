@@ -1,7 +1,6 @@
 import json
 import logging
 import logging.config
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,7 +9,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from .routes import router
@@ -101,17 +99,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        request_id = str(uuid.uuid4())[:8]
-        request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
-
-
-app.add_middleware(RequestIDMiddleware)
-
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.add_middleware(

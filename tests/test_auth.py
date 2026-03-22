@@ -237,43 +237,19 @@ async def test_me_missing_sub_claim(client):
     assert resp.status_code in (401, 500)
 
 
-# ── Rate limit cleanup ──────────────────────────────────────────────────────
-
-def test_rate_log_purges_stale_entries():
-    """When _rate_log exceeds _RATE_LOG_MAX, stale entries should be purged."""
-    from project.api.routes.auth import _rate_log, _check_rate, _RATE_LOG_MAX
-    from unittest.mock import MagicMock
-    _rate_log.clear()
-
-    # Fill rate log with stale entries.
-    import collections
-    now = time.monotonic()
-    for i in range(_RATE_LOG_MAX + 1):
-        _rate_log[f"stale:{i}"] = collections.deque([now - 120])  # expired (> 60s)
-
-    # Add one fresh entry to trigger the purge path.
-    mock_request = MagicMock()
-    mock_request.client.host = "127.0.0.1"
-    _check_rate(mock_request, "test", 100)
-
-    # Stale entries should have been purged.
-    assert len(_rate_log) < _RATE_LOG_MAX
-    _rate_log.clear()
-
-
 # ── Rate limit boundary ─────────────────────────────────────────────────────
 
 async def test_challenge_rate_limit_boundary(client):
     """Exactly at limit should succeed, one over should fail."""
-    from project.api.routes.auth import _rate_log
-    _rate_log.clear()
+    from project.api.routes.auth import _challenge_limiter
+    _challenge_limiter._log.clear()
     for i in range(10):
         resp = await client.post("/api/auth/challenge", json={"username": "alice"})
         assert resp.status_code == 200, f"Request {i+1} should succeed"
 
     resp = await client.post("/api/auth/challenge", json={"username": "alice"})
     assert resp.status_code == 429
-    _rate_log.clear()
+    _challenge_limiter._log.clear()
 
 
 # ── Auth deps edge cases ─────────────────────────────────────────────────────

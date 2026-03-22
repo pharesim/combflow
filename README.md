@@ -36,7 +36,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 
 1. **Seed script** runs on your GPU. Fetches Hive posts (with stratified sampling for rare categories), classifies them with a local LLM, optionally uses multi-model ensemble voting, computes per-category centroid vectors, and uploads them.
 2. **Worker** streams blocks from Hive (live) and walks backwards through HAFSQL (backfill). For each post: embeds the body in-process (`all-MiniLM-L6-v2`), compares against centroids, detects languages (`langdetect` + `json_metadata`), analyses sentiment (embedding-based), auto-maps Hive communities to categories (embedding community title+about, +0.08 boost), and saves everything directly to PostgreSQL.
-3. **HoneyComb UI** shows posts in a honeycomb hex grid with collapsible chip-based filters (category, sentiment, language, author), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible with full keyboard navigation. Three layout modes (hex grid, card grid, list). Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Open Graph meta tags for social media previews. Cross-post thumbnail support.
+3. **HoneyComb UI** shows posts in a honeycomb hex grid built with **Alpine.js** (~17KB, CDN-loaded, no build step) for reactive rendering. Collapsible chip-based filters (category, sentiment, language, author), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible with full keyboard navigation. Three layout modes (hex grid, card grid, list) rendered via Alpine `x-for` loops. Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Open Graph meta tags for social media previews. Cross-post thumbnail support.
 4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension. JWT is stored in an httpOnly cookie. Accounts with negative reputation are blocked at login. Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), follow/unfollow users, and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
 
 ### Category hierarchy (2 levels)
@@ -152,6 +152,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Toast notifications** — non-blocking feedback for saves, errors, etc.
 - **Click to filter by author** — click any username to see only that author's posts, with a dismissible filter chip
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
+- **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — Open Graph meta tags on post deep links for rich previews on Discord, Twitter, etc.
 - **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
@@ -284,7 +285,7 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-261 tests across 12 files:
+250 tests across 12 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -468,10 +469,15 @@ combflow/combflow/
 │   │   │   ├── posts.py     # POST /posts, GET /posts/{author}/{permlink}, comments tree + cache
 │   │   │   ├── ui.py        # HTML pages, browse API
 │   │   │   └── internal.py  # centroid upload + stream cursors
+│   │   ├── rate_limit.py  # shared sliding-window rate limiter
 │   │   └── templates/
-│   │       ├── discover.html  # HoneyComb discovery UI
+│   │       ├── discover.html  # HoneyComb discovery UI (Alpine.js reactive templates)
 │   │       └── static/
-│   │           └── shared.js  # auth, Keychain broadcasting, validation, rendering
+│   │           ├── shared.js    # auth, Keychain broadcasting, validation, rendering
+│   │           └── discover/    # 12 focused JS modules
+│   │               ├── state.js, filters.js, rendering.js, voting.js,
+│   │               ├── social.js, comments.js, modal.js, auth.js,
+│   │               └── preferences.js, communities.js, editor.js, location.js
 │   ├── db/
 │   │   ├── models.py      # ORM models (Post, Category, etc.)
 │   │   ├── session.py     # async engine + session
@@ -489,7 +495,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 261 tests
+├── tests/                   # 250 tests
 ├── Dockerfile
 ├── docker-compose.yml
 └── deploy.sh

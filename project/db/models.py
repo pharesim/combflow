@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, DateTime, Float, ForeignKey, Integer, String,
-    Table, Text, UniqueConstraint, func,
+    Table, UniqueConstraint, func,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -48,18 +48,6 @@ class Category(Base):
     parent_id = Column(Integer, ForeignKey("categories.id"), index=True)
     parent = relationship("Category", remote_side=[id], backref="children")
     posts = relationship("Post", secondary=post_category, back_populates="categories")
-
-
-class CategoryCentroid(Base):
-    __tablename__ = "category_centroids"
-
-    id = Column(Integer, primary_key=True)
-    category_name = Column(String(100), nullable=False, unique=True)
-    centroid = Column(Text, nullable=False)
-    post_count = Column(Integer, nullable=False, server_default="0")
-    llm_model = Column(String(200), nullable=False, server_default="")
-    embedding_model = Column(String(200), nullable=False, server_default="")
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class StreamCursor(Base):

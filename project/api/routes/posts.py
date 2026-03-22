@@ -1,7 +1,5 @@
 """Post endpoints — ingestion, detail, and comments."""
-import collections
 import logging
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,32 +8,15 @@ from ... import cache
 from ...db import crud
 from ...hafsql import get_comments as hafsql_get_comments
 from ..deps import get_db, require_api_key, require_jwt
+from ..rate_limit import RateLimiter
 from ..schemas import PostCreate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ── Per-user rate limiting for comment cache invalidation (proposal 003) ─────
-_RATE_WINDOW = 60  # seconds
-_RATE_MAX_INVALIDATE = 5  # max cache invalidations per user per window
-_rate_log: dict[str, collections.deque] = {}
-_RATE_LOG_MAX = 50_000
-
-
-def _check_user_rate(username: str, limit: int) -> None:
-    now = time.time()
-    key = f"comment_cache:{username}"
-    bucket = _rate_log.setdefault(key, collections.deque())
-    while bucket and bucket[0] < now - _RATE_WINDOW:
-        bucket.popleft()
-    if len(bucket) >= limit:
-        raise HTTPException(429, "Too many requests, try again later")
-    bucket.append(now)
-    if len(_rate_log) > _RATE_LOG_MAX:
-        stale = [k for k, v in _rate_log.items() if not v or v[-1] < now - _RATE_WINDOW]
-        for k in stale:
-            del _rate_log[k]
+# Per-user rate limiting for comment cache invalidation (proposal 003).
+_cache_invalidation_limiter = RateLimiter(window_seconds=60, max_requests=5)
 
 
 # ── Post ingestion (authenticated — used by worker fallback / external tools) ─
@@ -167,5 +148,5 @@ async def invalidate_comment_cache(
     permlink: str = Path(..., max_length=256),
     username: str = Depends(require_jwt),
 ):
-    _check_user_rate(username, _RATE_MAX_INVALIDATE)
+    _cache_invalidation_limiter.check(username, "Too many requests, try again later")
     cache.invalidate(f"comments:{author}/{permlink}")

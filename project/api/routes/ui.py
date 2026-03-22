@@ -19,15 +19,11 @@ _TEMPLATES = {
 }
 
 
-def _read_template(name: str) -> str:
-    return _TEMPLATES[name]
-
-
 # ── HTML pages ────────────────────────────────────────────────────────────────
 
 @router.get("/", include_in_schema=False)
 async def root():
-    return HTMLResponse(_read_template("discover.html"))
+    return HTMLResponse(_TEMPLATES["discover.html"])
 
 
 @router.get("/ui", include_in_schema=False)
@@ -35,9 +31,14 @@ async def discover_page_redirect():
     return RedirectResponse("/", status_code=301)
 
 
+@router.get("/{prefix}/@{author}/{permlink}", include_in_schema=False)
+async def discover_prefixed_post(prefix: str, author: str, permlink: str):
+    return HTMLResponse(_TEMPLATES["discover.html"])
+
+
 @router.get("/@{author}/{permlink}", include_in_schema=False)
 async def discover_post(author: str, permlink: str):
-    return HTMLResponse(_read_template("discover.html"))
+    return HTMLResponse(_TEMPLATES["discover.html"])
 
 
 # ── Browse API ────────────────────────────────────────────────────────────────
@@ -67,24 +68,16 @@ async def browse_posts(
 
 
 @router.get("/api/languages", tags=["discovery"], summary="Available languages")
+@cache.cached_response("languages", ttl=3600)
 async def available_languages(db: AsyncSession = Depends(get_db)):
-    cached = cache.get("languages")
-    if cached is not None:
-        return cached
-    result = {"languages": await crud.get_available_languages(db)}
-    cache.put("languages", result, ttl=3600)
-    return result
+    return {"languages": await crud.get_available_languages(db)}
 
 
 @router.get("/api/communities", tags=["discovery"], summary="Communities with post counts")
+@cache.cached_response("communities", ttl=300)
 async def available_communities(db: AsyncSession = Depends(get_db)):
-    cached = cache.get("communities")
-    if cached is not None:
-        return cached
     rows = await crud.get_available_communities(db)
-    result = {"communities": rows}
-    cache.put("communities", result, ttl=300)
-    return result
+    return {"communities": rows}
 
 
 @router.get("/api/communities/suggested", tags=["discovery"], summary="Suggested communities for given categories")
@@ -104,11 +97,8 @@ async def suggested_communities(
 
 
 @router.get("/api/stats", tags=["discovery"], summary="Overview statistics")
+@cache.cached_response("overview_stats", ttl=30)
 async def overview_stats(db: AsyncSession = Depends(get_db)):
-    cached = cache.get("overview_stats")
-    if cached is not None:
-        return cached
     result = await crud.get_overview_stats(db)
     result["api_base_url"] = settings.api_base_url
-    cache.put("overview_stats", result, ttl=30)
     return result

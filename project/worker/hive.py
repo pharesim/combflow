@@ -13,7 +13,6 @@ Pipeline per post:
   6. Save classification to local PostgreSQL (no chain data stored)
 """
 import asyncio
-import functools
 import json
 import logging
 import signal
@@ -30,7 +29,7 @@ from ..categories import CATEGORY_TREE
 from ..config import settings
 from ..db import crud
 from ..db.session import WorkerSessionLocal as AsyncSessionLocal, worker_engine as engine
-from ..hafsql import get_reputation, get_reputations, get_community, _raw_rep_to_score, build_dsn
+from ..hafsql import get_reputation, get_reputations, get_community, get_post_body, _raw_rep_to_score, build_dsn
 from ..text import clean_post_body as _clean_post_body
 
 logging.basicConfig(
@@ -50,9 +49,9 @@ _SEEDS_FILE = Path("/combflow/seeds/centroids.json")
 _BACKFILL_BATCH = 100
 _BACKFILL_PAUSE = 2  # seconds between batches
 _MIN_CLEAN_BODY = 80  # minimum chars after stripping markdown/HTML/URLs
+_EMBEDDING_DIM = 384
 
 MIN_AUTHOR_REPUTATION = 20.0
-_REP_CACHE_MAX = 50_000
 
 # Sentiment anchor phrases.
 _POSITIVE_ANCHORS = [
@@ -84,13 +83,6 @@ class _DB:
         with self._lock:
             self._loop.run_until_complete(engine.dispose())
             self._loop.close()
-
-
-# ── Reputation (via HAFSQL) ──────────────────────────────────────────────────
-
-@functools.lru_cache(maxsize=_REP_CACHE_MAX)
-def _get_author_rep(author: str) -> float:
-    return get_reputation(author)
 
 
 # ── Community resolution ─────────────────────────────────────────────────────
@@ -250,58 +242,23 @@ def _load_centroids(db: _DB) -> dict[str, np.ndarray]:
     return {cat: np.array(vec) for cat, vec in centroids.items()}
 
 
-def _classify(text: str, embedder, centroids: dict[str, np.ndarray], threshold: float) -> list[str]:
-    """Classify text against centroids. Kept for test compatibility."""
-    if not embedder or not centroids:
-        return []
-    emb = embedder.encode(text, normalize_embeddings=True)
-    return _classify_from_embedding(emb, centroids, threshold)
-
-
 def _classify_from_embedding(
-    emb: np.ndarray, centroids: dict[str, np.ndarray], threshold: float
-) -> list[str]:
-    """Classify a pre-computed embedding against centroids."""
-    if not centroids:
-        return []
-    scores = [(cat, float(np.dot(emb, centroid))) for cat, centroid in centroids.items()]
-    scores.sort(key=lambda x: x[1], reverse=True)
-
-    if not scores:
-        return []
-
-    top_score = scores[0][1]
-    if top_score < threshold:
-        return []
-
-    result = []
-    for cat, score in scores:
-        if score < threshold:
-            break
-        if score >= top_score - 0.03 and len(result) < 3:
-            result.append(cat)
-        else:
-            break
-    return result
-
-
-def _classify_from_embedding_with_boost(
     emb: np.ndarray, centroids: dict[str, np.ndarray], threshold: float,
-    boost_category: str, boost_amount: float,
+    boost_category: str | None = None, boost_amount: float = 0.0,
 ) -> list[str]:
-    """Classify with a community-based boost to one category's score."""
+    """Classify a pre-computed embedding against centroids.
+
+    Optionally applies a community-based boost to one category's score.
+    """
     if not centroids:
         return []
     scores = [(cat, float(np.dot(emb, centroid))) for cat, centroid in centroids.items()]
-    # Apply boost.
-    scores = [
-        (cat, score + boost_amount) if cat == boost_category else (cat, score)
-        for cat, score in scores
-    ]
+    if boost_category:
+        scores = [
+            (cat, s + boost_amount) if cat == boost_category else (cat, s)
+            for cat, s in scores
+        ]
     scores.sort(key=lambda x: x[1], reverse=True)
-
-    if not scores:
-        return []
 
     top_score = scores[0][1]
     if top_score < threshold:
@@ -316,14 +273,6 @@ def _classify_from_embedding_with_boost(
         else:
             break
     return result
-
-
-def _analyze_sentiment(
-    text: str, embedder, pos_anchor: np.ndarray, neg_anchor: np.ndarray
-) -> tuple[str, float]:
-    """Analyze sentiment from text. Kept for test compatibility."""
-    emb = embedder.encode(text[:500], normalize_embeddings=True)
-    return _sentiment_from_embedding(emb, pos_anchor, neg_anchor)
 
 
 def _sentiment_from_embedding(
@@ -358,18 +307,10 @@ def _classify_and_save(
     if body.lstrip().startswith("@@"):
         return
 
-    clean_body = _clean_post_body(body)
-    if len(clean_body) < _MIN_CLEAN_BODY:
-        return
-
-    # Skip bot/templated posts with very low text-to-markup ratio.
-    alpha_chars = sum(c.isalpha() for c in clean_body)
-    if len(clean_body) > 0 and alpha_chars / len(clean_body) < 0.50:
-        return
-
+    # Parse json_metadata early — needed for cross-post detection.
     tags_hint = ""
+    meta = json_metadata
     try:
-        meta = json_metadata
         if isinstance(meta, str) and meta:
             meta = json.loads(meta)
         if isinstance(meta, dict):
@@ -378,6 +319,25 @@ def _classify_and_save(
                 tags_hint = " ".join(tags)
     except Exception:
         pass
+
+    # Cross-post detection: classify using original post's body.
+    cross_post_key = None
+    if isinstance(meta, dict):
+        cross_post_key = meta.get("cross_post_key")
+    if cross_post_key and "/" in cross_post_key:
+        cp_author, cp_permlink = cross_post_key.split("/", 1)
+        original_body = get_post_body(cp_author, cp_permlink)
+        if original_body:
+            body = original_body
+
+    clean_body = _clean_post_body(body)
+    if len(clean_body) < _MIN_CLEAN_BODY:
+        return
+
+    # Skip bot/templated posts with very low text-to-markup ratio.
+    alpha_chars = sum(c.isalpha() for c in clean_body)
+    if alpha_chars / len(clean_body) < 0.50:
+        return
 
     # Extract metadata languages from json_metadata.
     meta_langs: list[str] = []
@@ -410,7 +370,7 @@ def _classify_and_save(
                 _persist_community_mapping(db, community_id, comm_cat, comm_name, comm_score)
                 _persisted_communities.add(community_id)
             if comm_cat and comm_score >= _COMMUNITY_MAP_THRESHOLD:
-                categories = _classify_from_embedding_with_boost(
+                categories = _classify_from_embedding(
                     emb, centroids, threshold, comm_cat, _COMMUNITY_BOOST,
                 )
             else:
@@ -809,7 +769,7 @@ def _stream() -> None:
     if embedder:
         pos_anchor, neg_anchor = _build_sentiment_anchors(embedder)
     else:
-        pos_anchor = neg_anchor = np.zeros(384)
+        pos_anchor = neg_anchor = np.zeros(_EMBEDDING_DIM)
 
     # Graceful shutdown via SIGTERM.
     stop_event = threading.Event()

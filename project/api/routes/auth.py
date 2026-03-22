@@ -1,6 +1,5 @@
 """Auth routes — Hive Keychain challenge-response authentication."""
 
-import collections
 import secrets
 import time
 from binascii import hexlify, unhexlify
@@ -13,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ...hafsql import get_posting_key, get_reputation
 from ..deps import JWT_COOKIE_NAME, _jwt_secret, require_jwt
+from ..rate_limit import RateLimiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -35,32 +35,8 @@ _CHALLENGE_MAX = 10_000
 _TOKEN_LIFETIME_DAYS = 7
 
 # Per-IP rate limiting for auth endpoints.
-_RATE_WINDOW = 60  # seconds
-_RATE_MAX_CHALLENGE = 10  # max challenges per IP per window
-_RATE_MAX_VERIFY = 5  # max verify attempts per IP per window
-_rate_log: dict[str, collections.deque] = {}
-
-
-_RATE_LOG_MAX = 50_000  # max tracked IPs before forced purge
-
-
-def _check_rate(request: Request, action: str, limit: int) -> None:
-    """Raise 429 if the client IP exceeds the rate limit for the given action."""
-    ip = request.client.host if request.client else "unknown"
-    key = f"{action}:{ip}"
-    now = time.monotonic()
-    bucket = _rate_log.setdefault(key, collections.deque())
-    # Expire old entries.
-    while bucket and bucket[0] < now - _RATE_WINDOW:
-        bucket.popleft()
-    if len(bucket) >= limit:
-        raise HTTPException(429, "Too many requests, try again later")
-    bucket.append(now)
-    # Periodically purge stale buckets to prevent unbounded memory growth.
-    if len(_rate_log) > _RATE_LOG_MAX:
-        stale = [k for k, v in _rate_log.items() if not v or v[-1] < now - _RATE_WINDOW]
-        for k in stale:
-            del _rate_log[k]
+_challenge_limiter = RateLimiter(window_seconds=60, max_requests=10)
+_verify_limiter = RateLimiter(window_seconds=60, max_requests=5)
 
 
 # ── Models ───────────────────────────────────────────────────────────────────
@@ -127,7 +103,8 @@ def _verify_hive_signature(
 
 @router.post("/challenge")
 async def create_challenge(payload: ChallengeRequest, request: Request) -> ChallengeResponse:
-    _check_rate(request, "challenge", _RATE_MAX_CHALLENGE)
+    ip = request.client.host if request.client else "unknown"
+    _challenge_limiter.check(f"challenge:{ip}", "Too many requests, try again later")
     now = time.time()
     # Purge expired challenges
     expired = [k for k, (_, exp) in _challenges.items() if exp < now]
@@ -144,7 +121,8 @@ async def create_challenge(payload: ChallengeRequest, request: Request) -> Chall
 
 @router.post("/verify")
 async def verify_signature(payload: VerifyAuthRequest, request: Request) -> AuthResponse:
-    _check_rate(request, "verify", _RATE_MAX_VERIFY)
+    ip = request.client.host if request.client else "unknown"
+    _verify_limiter.check(f"verify:{ip}", "Too many requests, try again later")
     # 1. Validate challenge
     entry = _challenges.pop(payload.challenge, None)
     if not entry:

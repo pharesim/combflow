@@ -9,7 +9,6 @@ Connection: direct PostgreSQL (psycopg2), not HTTP — much faster than RPC.
 
 import logging
 import math
-import time
 from contextlib import contextmanager
 
 import psycopg2
@@ -118,23 +117,22 @@ def get_reputations(authors: list[str]) -> dict[str, float]:
 
 # ── Posting key (cached) ─────────────────────────────────────────────────────
 
-_posting_key_cache: dict[str, tuple[str | None, float]] = {}
-_POSTING_KEY_TTL = 600  # 10 minutes
-
 
 def get_posting_key(username: str) -> str | None:
     """Get the primary public posting key for a Hive account.
 
-    Cached with a 10-minute TTL. Returns None on failure.
+    Cached with a 10-minute TTL via the shared cache module. Returns None on failure.
     """
-    now = time.monotonic()
-    cached = _posting_key_cache.get(username)
-    if cached and now - cached[1] < _POSTING_KEY_TTL:
-        return cached[0]
+    from . import cache
+
+    cache_key = f"posting_key:{username}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     key = _fetch_posting_key(username)
-    if key is not None:
-        _posting_key_cache[username] = (key, now)
+    if key:
+        cache.put(cache_key, key, ttl=600)  # 10 min
     return key
 
 
@@ -179,6 +177,25 @@ def get_comments(root_author: str, root_permlink: str) -> list[dict]:
     return []
 
 
+def get_post_body(author: str, permlink: str) -> str | None:
+    """Fetch a single post's body from HAFSQL.
+
+    Returns the body text or None if not found / unreachable.
+    """
+    try:
+        with _cursor() as cur:
+            cur.execute(
+                "SELECT body FROM hafsql.comments WHERE author = %s AND permlink = %s",
+                (author, permlink),
+            )
+            row = cur.fetchone()
+            if row:
+                return row["body"]
+    except Exception as exc:
+        logger.debug("hafsql post body lookup failed for %s/%s: %s", author, permlink, exc)
+    return None
+
+
 def get_community(community_id: str) -> dict | None:
     """Fetch community title and about via Hive API bridge.get_community.
 
@@ -193,7 +210,7 @@ def get_community(community_id: str) -> dict | None:
                 "params": {"name": community_id},
                 "id": 1,
             },
-            timeout=10,
+            timeout=4,
         )
         data = resp.json().get("result")
         if data is not None:

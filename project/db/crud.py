@@ -105,17 +105,22 @@ async def existing_author_permlinks(
     """Return the subset of (author, permlink) pairs that already exist."""
     if not pairs:
         return set()
-    authors = [a for a, _ in pairs]
-    permlinks = [p for _, p in pairs]
-    rows = await session.execute(
-        text(
-            "SELECT author, permlink FROM posts "
-            "WHERE (author, permlink) IN "
-            "(SELECT unnest(CAST(:authors AS text[])), unnest(CAST(:permlinks AS text[])))"
-        ),
-        {"authors": authors, "permlinks": permlinks},
-    )
-    return {(r[0], r[1]) for r in rows.fetchall()}
+    # Build VALUES list for index-friendly join.
+    values_clauses = []
+    params = {}
+    for i, (author, permlink) in enumerate(pairs):
+        values_clauses.append(f"(:a{i}, :p{i})")
+        params[f"a{i}"] = author
+        params[f"p{i}"] = permlink
+    values_sql = ", ".join(values_clauses)
+    query = text(f"""
+        SELECT p.author, p.permlink
+        FROM posts p
+        INNER JOIN (VALUES {values_sql}) AS v(author, permlink)
+          ON p.author = v.author AND p.permlink = v.permlink
+    """)
+    rows = (await session.execute(query, params)).fetchall()
+    return {(r[0], r[1]) for r in rows}
 
 
 @retry_transient
@@ -212,10 +217,6 @@ async def get_post_by_permlink(
 
 # ── Centroids (pgvector) ──────────────────────────────────────────────────────
 
-def _vec_to_pg(vec: list[float]) -> str:
-    return "[" + ",".join(f"{v:.8f}" for v in vec) + "]"
-
-
 async def get_centroids(session: AsyncSession) -> dict[str, list[float]]:
     rows = await session.execute(
         text("SELECT category_name, CAST(centroid AS text) FROM category_centroids")
@@ -246,7 +247,7 @@ async def save_centroids(
             ),
             {
                 "cat": cat,
-                "vec": _vec_to_pg(vec),
+                "vec": "[" + ",".join(f"{v:.8f}" for v in vec) + "]",
                 "count": metadata.get("posts_labeled", 0),
                 "llm": metadata.get("llm_model", ""),
                 "emb": metadata.get("embedding_model", ""),

@@ -1,7 +1,7 @@
 """Tests for comment tree endpoint (proposal 002) and cache invalidation (proposal 003)."""
 from unittest.mock import patch
 
-from project.api.routes.posts import _build_comment_tree, _rate_log
+from project.api.routes.posts import _build_comment_tree, _cache_invalidation_limiter
 from tests.conftest import jwt_headers
 
 # ── Tree building unit tests ─────────────────────────────────────────────────
@@ -202,7 +202,7 @@ async def test_invalidate_comment_cache_requires_auth(client):
 
 
 async def test_invalidate_comment_cache_rate_limit(client):
-    _rate_log.clear()
+    _cache_invalidation_limiter._log.clear()
     headers = jwt_headers("ratelimituser")
     for _ in range(5):
         resp = await client.delete("/posts/bob/test/comments/cache", headers=headers)
@@ -210,26 +210,27 @@ async def test_invalidate_comment_cache_rate_limit(client):
 
     resp = await client.delete("/posts/bob/test/comments/cache", headers=headers)
     assert resp.status_code == 429
-    _rate_log.clear()
+    _cache_invalidation_limiter._log.clear()
 
 
-# ── Comment rate limit cleanup ──────────────────────────────────────────────
+# ── Rate limiter purge test ──────────────────────────────────────────────────
 
-def test_comment_rate_log_purges_stale():
-    """When _rate_log exceeds _RATE_LOG_MAX, stale entries should be purged."""
-    import collections
+def test_rate_limiter_purges_stale():
+    """When purge counter fires, stale entries should be purged."""
     import time
-    from project.api.routes.posts import _rate_log, _check_user_rate, _RATE_LOG_MAX
-    _rate_log.clear()
+    from collections import deque
+    from project.api.rate_limit import RateLimiter
+    limiter = RateLimiter(window_seconds=60, max_requests=100)
 
-    now = time.time()
-    for i in range(_RATE_LOG_MAX + 1):
-        _rate_log[f"stale:{i}"] = collections.deque([now - 120])
+    now = time.monotonic()
+    for i in range(100):
+        limiter._log[f"stale:{i}"] = deque([now - 120])
 
-    # Trigger cleanup.
-    _check_user_rate("cleanup-test-user", 100)
-    assert len(_rate_log) < _RATE_LOG_MAX
-    _rate_log.clear()
+    # Force purge by setting counter near threshold.
+    limiter._purge_counter = 999
+    limiter.check("trigger-key")
+    # Stale entries should have been purged.
+    assert len(limiter._log) < 100
 
 
 # ── Comment tree edge cases ─────────────────────────────────────────────────
