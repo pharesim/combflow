@@ -6,7 +6,7 @@ async function openModal(post, skipPush) {
                       '', `/@${post.author}/${post.permlink}`);
   }
   document.getElementById('modal-title').textContent = 'Loading...';
-  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="28" height="28"><span class="clickable-author" onclick="filterByAuthor('${esc(post.author)}');closeModal()">@${esc(post.author)}</span>`;
+  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="28" height="28"><a class="clickable-author" href="/@${esc(post.author)}">@${esc(post.author)}</a>`;
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;
@@ -123,7 +123,7 @@ async function openModal(post, skipPush) {
         modalVoteBtn.onclick = () => handleVote(cpAuthor, cpPermlink, modalVoteBtn);
         const banner = document.getElementById('cross-post-banner');
         const communityName = result.community_title || result.category || '';
-        banner.innerHTML = `Cross-posted by <a href="/@${esc(post.author)}" onclick="event.preventDefault();filterByAuthor('${esc(post.author)}');closeModal()">@${esc(post.author)}</a>`
+        banner.innerHTML = `Cross-posted by <a href="/@${esc(post.author)}">@${esc(post.author)}</a>`
           + (communityName ? ` in ${esc(communityName)}` : '')
           + ` · <a href="/@${esc(cpAuthor)}/${esc(cpPermlink)}" onclick="event.preventDefault();closeModal();openModal({author:'${esc(cpAuthor)}',permlink:'${esc(cpPermlink)}'})">View original</a>`;
         banner.style.display = '';
@@ -188,7 +188,10 @@ document.getElementById('modal-body').addEventListener('click', function(e) {
 window.addEventListener('popstate', e => {
   if (e.state && e.state.author) {
     openModal({ author: e.state.author, permlink: e.state.permlink }, true);
+  } else if (e.state && e.state.authorFilter) {
+    filterByAuthor(e.state.authorFilter);
   } else {
     closeModal(true);
+    if (state.authorFilterUser) { clearAuthorFilter(); scheduleFilter(); }
   }
 });

@@ -156,6 +156,12 @@ async def test_prefixed_post_url_returns_html(client):
     assert "text/html" in resp.headers.get("content-type", "")
 
 
+async def test_author_profile_returns_html(client):
+    resp = await client.get("/@alice")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+
+
 # ── GZip middleware ──────────────────────────────────────────────────────────
 
 async def test_gzip_large_response(client, seeded_db):

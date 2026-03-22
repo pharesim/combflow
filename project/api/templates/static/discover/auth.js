@@ -1,18 +1,5 @@
 // ── Auth UI ──
 
-function toggleMyPosts() {
-  state.myPostsActive = !state.myPostsActive;
-  if (state.myPostsActive) {
-    clearAuthorFilter();
-    setMyCommunitiesActive(false);
-    setFollowingActive(false);
-    state.activeCommunityFilter = null;
-    syncCommunityChips();
-    updateSuggestionActiveState();
-  }
-  scheduleFilter();
-}
-
 function showLoginPrompt() {
   const overlay = document.getElementById('login-overlay');
   document.getElementById('login-error').textContent = '';

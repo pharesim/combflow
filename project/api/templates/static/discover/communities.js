@@ -187,10 +187,10 @@ function filterByAuthor(username) {
     clearAuthorFilter();
   } else {
     state.authorFilterUser = username;
-    state.myPostsActive = false;
     setMyCommunitiesActive(false);
     setFollowingActive(false);
     updateAuthorFilterBanner();
+    history.pushState({ authorFilter: username }, '', `/@${username}`);
   }
   scheduleFilter();
 }
@@ -198,6 +198,9 @@ function filterByAuthor(username) {
 function clearAuthorFilter() {
   state.authorFilterUser = null;
   updateAuthorFilterBanner();
+  if (window.location.pathname.match(/^\/@[^/]+$/)) {
+    history.pushState(null, '', '/');
+  }
 }
 
 function updateAuthorFilterBanner() {

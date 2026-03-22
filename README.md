@@ -150,7 +150,8 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Layout toggle** — switch between hex grid and card view (auto-selects cards on mobile)
 - **Live polling** — visibility-aware, only polls when the tab is active
 - **Toast notifications** — non-blocking feedback for saves, errors, etc.
-- **Click to filter by author** — click any username to see only that author's posts, with a dismissible filter chip
+- **Author profile URLs** — `/@username` shows posts filtered by that author; also triggered by clicking any username
+
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — Open Graph meta tags on post deep links for rich previews on Discord, Twitter, etc.

@@ -35,7 +35,7 @@
               <span class="auth-caret">&#9660;</span>
             </button>
             <div class="auth-dropdown-menu" :class="{ 'open': $store.app.authDropdownOpen }">
-              <a href="#" @click.prevent="toggleMyPosts(); $store.app.authDropdownOpen = false">My Posts</a>
+              <a :href="'/@' + $store.app.currentUser" @click="$store.app.authDropdownOpen = false">My Posts</a>
               <a href="#" @click.prevent="showSettingsModal(); $store.app.authDropdownOpen = false">Settings</a>
               <a href="#" @click.prevent="doLogout()">Logout</a>
             </div>
@@ -216,7 +216,7 @@
           <div class="hex-overlay">
             <div class="hex-title" x-text="(getPostMeta(p).title || '').slice(0, 40)"></div>
             <div class="hex-author"><span class="clickable-author"
-                 @click.prevent.stop="filterByAuthor(p.author)"
+                 @click.prevent.stop="window.location.href='/@' + p.author"
                  x-text="'@' + p.author"></span></div>
             <template x-if="p.community_name">
               <div class="hex-community" x-text="p.community_name"></div>
@@ -264,7 +264,7 @@
                :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
                alt="" width="24" height="24">
           <span class="clickable-author"
-                @click.prevent.stop="filterByAuthor(p.author)"
+                @click.prevent.stop="window.location.href='/@' + p.author"
                 x-text="'@' + p.author"></span>
           <template x-if="p.created">
             <span x-text="' \u00B7 ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'})"></span>
@@ -316,7 +316,7 @@
                :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
                alt="" width="20" height="20">
           <span class="clickable-author"
-                @click.prevent.stop="filterByAuthor(p.author)"
+                @click.prevent.stop="window.location.href='/@' + p.author"
                 x-text="'@' + p.author"></span>
           <span x-text="' \u00B7 ' + (p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : '') + ' '"></span>
           <span x-html="getListTagsHtml(p)"></span>

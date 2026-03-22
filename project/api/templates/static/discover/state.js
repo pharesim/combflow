@@ -14,7 +14,6 @@ const state = {
   mutedUsers: new Set(),
   followedUsers: new Set(),
   followingFilterActive: false,
-  myPostsActive: false,
   authorFilterUser: null,
   currentOffset: 0,
   loadingMore: false,

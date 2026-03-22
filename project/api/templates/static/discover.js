@@ -169,6 +169,12 @@ async function init() {
   enableFilterEffect();
   setupInfiniteScroll();
 
+  // Author profile URL (/@username with no permlink)
+  const authorMatch = window.location.pathname.match(/^\/@([^/]+)$/);
+  if (authorMatch) {
+    filterByAuthor(authorMatch[1]);
+  }
+
   // Open post from URL if present (e.g. /@author/permlink or /prefix/@author/permlink)
   const postMatch = window.location.pathname.match(/^\/@([^/]+)\/(.+)$/)
     || window.location.pathname.match(/^\/[^@][^/]*\/@([^/]+)\/(.+)$/);

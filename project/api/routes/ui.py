@@ -36,6 +36,11 @@ async def discover_prefixed_post(prefix: str, author: str, permlink: str):
     return HTMLResponse(_TEMPLATES["discover.html"])
 
 
+@router.get("/@{author}", include_in_schema=False)
+async def discover_author(author: str):
+    return HTMLResponse(_TEMPLATES["discover.html"])
+
+
 @router.get("/@{author}/{permlink}", include_in_schema=False)
 async def discover_post(author: str, permlink: str):
     return HTMLResponse(_TEMPLATES["discover.html"])

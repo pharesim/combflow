@@ -88,7 +88,7 @@ function updateResultsBar() {
   const f = Alpine.store('filters');
   const hasFilters = f.categories.size > 0 || f.languages.size > 0 || f.sentiments.size > 0
     || state.activeCommunityFilter || state.myCommunitiesActive || state.followingFilterActive
-    || state.authorFilterUser || state.myPostsActive;
+    || state.authorFilterUser;
   const displayTotal = hasFilters ? state.filteredTotalCount : state.totalPostCount;
   const filterLabel = hasFilters ? ' (filtered)' : '';
   bar.textContent = `Showing ${state.posts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
@@ -113,9 +113,6 @@ function buildFilterUrl(limit, offset) {
   langs.forEach(l => url += `&language=${encodeURIComponent(l)}`);
   if (state.authorFilterUser) {
     url += `&authors=${encodeURIComponent(state.authorFilterUser)}`;
-  } else if (state.myPostsActive) {
-    const auth = getStoredAuth();
-    if (auth) url += `&authors=${encodeURIComponent(auth.username)}`;
   } else if (state.followingFilterActive && state.followedUsers.size > 0) {
     state.followedUsers.forEach(u => url += `&authors=${encodeURIComponent(u)}`);
   } else if (state.myCommunitiesActive && state.userCommunities && state.userCommunities.length > 0) {
@@ -133,7 +130,6 @@ function resetFilters() {
   Alpine.store('filters').clear();
   // Clear community/author/following state
   state.activeCommunityFilter = null;
-  state.myPostsActive = false;
   clearAuthorFilter();
   setMyCommunitiesActive(false);
   setFollowingActive(false);

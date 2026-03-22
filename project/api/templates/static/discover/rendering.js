@@ -9,9 +9,9 @@ function setLayout(mode) {
     b.setAttribute('aria-pressed', active);
   });
   const effective = getEffectiveLayout();
-  // Recompute hex positions if switching to hex (defer to let Alpine show the container first)
+  // Recompute hex positions if switching to hex (wait for Alpine to show the container first)
   if (effective === 'hex') {
-    requestAnimationFrame(() => syncHexPositions(Alpine.store('app').posts.length));
+    Alpine.nextTick(() => syncHexPositions(Alpine.store('app').posts.length));
   }
 }
 
@@ -368,7 +368,7 @@ function hasActiveFilters() {
   const f = Alpine.store('filters');
   return f.categories.size > 0 || f.languages.size > 0 || f.sentiments.size > 0
     || state.activeCommunityFilter || state.myCommunitiesActive
-    || state.followingFilterActive || state.myPostsActive || state.authorFilterUser;
+    || state.followingFilterActive || state.authorFilterUser;
 }
 
 async function pollNewPosts() {
