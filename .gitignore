@@ -24,4 +24,5 @@ agents/
 
 # Seed pipeline artifacts
 seeds/checkpoint*.json
+seeds/centroids.*.json
 seeds/seed_run.log

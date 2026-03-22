@@ -28,6 +28,7 @@ let _followedUsers = new Set();
 const FOLLOWED_KEY = 'honeycomb_followed';
 let _followingFilterActive = false;
 let _myPostsActive = false;
+let _authorFilterUser = null; // filter by a specific author username
 
 // Endless scrolling state
 const PAGE_SIZE = 60;
@@ -761,7 +762,9 @@ function buildFilterUrl(limit, offset) {
   let url = `/api/browse?limit=${limit}&offset=${offset}`;
   cats.forEach(c => url += `&category=${encodeURIComponent(c)}`);
   langs.forEach(l => url += `&language=${encodeURIComponent(l)}`);
-  if (_myPostsActive) {
+  if (_authorFilterUser) {
+    url += `&authors=${encodeURIComponent(_authorFilterUser)}`;
+  } else if (_myPostsActive) {
     const auth = getStoredAuth();
     if (auth) url += `&authors=${encodeURIComponent(auth.username)}`;
   } else if (_followingFilterActive && _followedUsers.size > 0) {
@@ -933,6 +936,7 @@ function resetFilters() {
   });
   _activeCommunityFilter = null;
   _myPostsActive = false;
+  clearAuthorFilter();
   setMyCommunitiesActive(false);
   setFollowingActive(false);
   updateSuggestionActiveState();
@@ -1120,7 +1124,7 @@ function renderCards(posts, container) {
       </div>
       <div class="post-card-body">
         <div class="post-card-title">${esc(title)}</div>
-        <div class="post-card-author"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="24" height="24">@${esc(p.author)}${p.created ? ' · ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''}</div>
+        <div class="post-card-author"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="24" height="24"><span class="clickable-author" onclick="event.preventDefault();event.stopPropagation();filterByAuthor('${esc(p.author)}')">@${esc(p.author)}</span>${p.created ? ' · ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''}</div>
         <div class="post-card-meta">${tagsHtml}</div>
       </div>
       <button type="button" class="vote-btn${voted ? ' voted' : ''}" data-vote-key="${esc(key)}" aria-label="${voted ? 'Voted' : 'Vote'}" onclick="event.preventDefault();event.stopPropagation();handleVote('${esc(p.author)}','${esc(p.permlink)}',this)"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>`;
@@ -1164,7 +1168,7 @@ function renderList(posts, container) {
       </div>
       <div class="list-content">
         <div class="list-title">${esc(title)}</div>
-        <div class="list-meta"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="20" height="20">@${esc(p.author)} · ${p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''} ${tagsHtml}</div>
+        <div class="list-meta"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="20" height="20"><span class="clickable-author" onclick="event.preventDefault();event.stopPropagation();filterByAuthor('${esc(p.author)}')">@${esc(p.author)}</span> · ${p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''} ${tagsHtml}</div>
       </div>
       <button type="button" class="vote-btn${voted ? ' voted' : ''}" data-vote-key="${esc(key)}" aria-label="${voted ? 'Voted' : 'Vote'}" onclick="event.preventDefault();event.stopPropagation();handleVote('${esc(p.author)}','${esc(p.permlink)}',this)"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>`;
     container.appendChild(row);
@@ -1227,7 +1231,7 @@ function createHexElement(p, x, y) {
       }
       <div class="hex-overlay">
         <div class="hex-title">${esc(cachedTitle)}</div>
-        <div class="hex-author">@${esc(p.author)}</div>
+        <div class="hex-author"><span class="clickable-author" onclick="event.preventDefault();event.stopPropagation();filterByAuthor('${esc(p.author)}')">@${esc(p.author)}</span></div>
         ${communityHtml}
         <div class="hex-cats">${esc(catLabel)}</div>
       </div>
@@ -1290,7 +1294,7 @@ const LIVE_INTERVAL = 30000;
 let newestCreated = null;
 
 function hasActiveFilters() {
-  return document.querySelectorAll('.chip.active').length > 0 || _followingFilterActive || _myPostsActive;
+  return document.querySelectorAll('.chip.active').length > 0 || _followingFilterActive || _myPostsActive || _authorFilterUser;
 }
 
 async function pollNewPosts() {
@@ -1580,7 +1584,7 @@ async function openModal(post, skipPush) {
                       '', `/@${post.author}/${post.permlink}`);
   }
   document.getElementById('modal-title').textContent = 'Loading...';
-  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="28" height="28">@${esc(post.author)}`;
+  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="28" height="28"><span class="clickable-author" onclick="filterByAuthor('${esc(post.author)}');closeModal()">@${esc(post.author)}</span>`;
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;
@@ -1771,6 +1775,7 @@ document.addEventListener('click', e => {
 function toggleMyPosts() {
   _myPostsActive = !_myPostsActive;
   if (_myPostsActive) {
+    clearAuthorFilter();
     setMyCommunitiesActive(false);
     setFollowingActive(false);
     _activeCommunityFilter = null;
@@ -2378,6 +2383,7 @@ async function handleJoinCommunity(communityId, communityName, btn) {
 function toggleMyCommunities() {
   setMyCommunitiesActive(!_myCommunitiesActive);
   if (_myCommunitiesActive) {
+    clearAuthorFilter();
     setFollowingActive(false);
     _activeCommunityFilter = null;
     updateSuggestionActiveState();
@@ -2398,6 +2404,7 @@ function setMyCommunitiesActive(active) {
 function toggleFollowing() {
   setFollowingActive(!_followingFilterActive);
   if (_followingFilterActive) {
+    clearAuthorFilter();
     setMyCommunitiesActive(false);
     _activeCommunityFilter = null;
     updateSuggestionActiveState();
@@ -2425,6 +2432,37 @@ function filterByCommunity(communityId) {
   updateSuggestionActiveState();
   syncCommunityChips();
   scheduleFilter();
+}
+
+// ── Filter by author (click username) ──
+function filterByAuthor(username) {
+  if (_authorFilterUser === username) {
+    clearAuthorFilter();
+  } else {
+    _authorFilterUser = username;
+    _myPostsActive = false;
+    setMyCommunitiesActive(false);
+    setFollowingActive(false);
+    updateAuthorFilterBanner();
+  }
+  scheduleFilter();
+}
+
+function clearAuthorFilter() {
+  _authorFilterUser = null;
+  updateAuthorFilterBanner();
+}
+
+function updateAuthorFilterBanner() {
+  const banner = document.getElementById('author-filter-banner');
+  if (!banner) return;
+  if (_authorFilterUser) {
+    banner.innerHTML = `Posts by <strong>@${esc(_authorFilterUser)}</strong> <button type="button" class="author-filter-clear" aria-label="Clear author filter" onclick="clearAuthorFilter();scheduleFilter()">&times;</button>`;
+    banner.style.display = '';
+  } else {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  }
 }
 
 function syncCommunityChips() {

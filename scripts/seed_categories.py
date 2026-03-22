@@ -1001,6 +1001,15 @@ def adjust_contrastive(
 
 # ── Checkpoint ────────────────────────────────────────────────────────────────
 
+def _backup_file(path: Path) -> None:
+    """Create a timestamped backup before overwriting."""
+    if path.exists():
+        ts = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+        backup = path.with_suffix(f".{ts}{path.suffix}")
+        backup.write_bytes(path.read_bytes())
+        log.info("[BACKUP] %s -> %s", path.name, backup.name)
+
+
 def _save_checkpoint(posts: list[dict], labeled: list[dict]) -> None:
     SEEDS_DIR.mkdir(exist_ok=True)
     CHECKPOINT_FILE.write_text(json.dumps({
@@ -1405,6 +1414,8 @@ def main() -> None:
     }
     if ensemble_models:
         metadata["ensemble_models"] = ensemble_models
+    _backup_file(CHECKPOINT_FILE)
+    _backup_file(CENTROIDS_FILE)
     CENTROIDS_FILE.write_text(json.dumps({"metadata": metadata, "centroids": centroids}, indent=2))
     log.info("Saved %d centroids -> %s", len(centroids), CENTROIDS_FILE)
 
