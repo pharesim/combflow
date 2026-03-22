@@ -11,7 +11,7 @@ body{overflow-x:hidden}
 #auth-area .auth-login{color:var(--text);padding:6px 14px;border-radius:16px;background:var(--card);border:1px solid #ffffff15;transition:all .2s;cursor:pointer;font-size:13px}
 #auth-area .auth-login:hover{border-color:var(--hive-red);color:#fff}
 #auth-area .auth-settings{color:var(--text-dim);font-size:13px;text-decoration:none;transition:color .2s}
-#auth-area .auth-settings:hover{color:var(--hive-red)}
+#auth-area .auth-settings:hover{color:#fff !important}
 
 /* ── Login prompt ─── */
 .login-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:250;display:none;align-items:center;justify-content:center}
