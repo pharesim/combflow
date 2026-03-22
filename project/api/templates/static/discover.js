@@ -1294,6 +1294,7 @@ function renderAuthUI() {
       '<a class="auth-logout" href="#" onclick="doLogout();return false">Logout</a>';
     document.getElementById('btn-save-prefs').style.display = '';
     document.getElementById('my-communities-toggle').style.display = '';
+    fetchUserCommunities(auth.username).then(list => { _userCommunities = list; });
   } else {
     area.innerHTML = '<a class="auth-login" href="#" onclick="showLoginPrompt();return false">Login</a>';
     document.getElementById('btn-save-prefs').style.display = 'none';

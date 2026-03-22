@@ -383,8 +383,10 @@ async def browse_posts(
         conditions.append("p.sentiment = :sent")
         params["sent"] = sentiment
     if communities:
-        conditions.append("p.community_id = ANY(CAST(:communities AS text[]))")
-        params["communities"] = communities
+        comm_placeholders = ", ".join(f":comm_{i}" for i in range(len(communities)))
+        conditions.append(f"p.community_id IN ({comm_placeholders})")
+        for i, cid in enumerate(communities):
+            params[f"comm_{i}"] = cid
     elif community:
         conditions.append("p.community_id = :community")
         params["community"] = community
