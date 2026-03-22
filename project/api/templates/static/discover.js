@@ -882,8 +882,8 @@ async function loadMore() {
       newPosts = newPosts.filter(p => sentiments.includes(p.sentiment));
     }
     newPosts = filterMutedPosts(newPosts);
-    if (newPosts.length < PAGE_SIZE) noMorePosts = true;
     _lastCursor = data.next_cursor || null;
+    if (!_lastCursor) noMorePosts = true;
     if (newPosts.length > 0) {
       seedMetaFromServer(newPosts);
       const startIdx = allPosts.length;
@@ -1620,9 +1620,7 @@ async function doLogin() {
     closeLogin();
     renderAuthUI();
     fetchMutedList(); // background fetch
-    fetchFollowedList().then(() => {
-      if (_followedUsers.size > 0) { setFollowingActive(true); scheduleFilter(); }
-    }); // background fetch
+    fetchFollowedList(); // background fetch
     const prefs = await loadAndApplyPreferences();
     if (isFirstLogin(prefs)) {
       showSettingsModal();
