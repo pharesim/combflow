@@ -930,6 +930,9 @@ function resetFilters() {
   updateSuggestionActiveState();
   updateFilterCounts();
   document.getElementById('suggestions-bar').style.display = 'none';
+  // Clear cached filter prefs and save empty prefs on-chain
+  localStorage.removeItem('honeycomb_filterPrefs');
+  if (getStoredAuth()) savePreferences();
   applyFilters();
 }
 
@@ -1836,6 +1839,16 @@ async function doLogout() {
 async function loadAndApplyPreferences() {
   const auth = getStoredAuth();
   if (!auth) return null;
+  // Try localStorage first for instant UI
+  const cached = localStorage.getItem('honeycomb_filterPrefs');
+  if (cached) {
+    try {
+      const prefs = JSON.parse(cached);
+      applyPreferenceFilters(prefs);
+      return prefs;
+    } catch(e) {}
+  }
+  // No cache — fetch from on-chain and seed localStorage
   try {
     const accounts = await hiveRpc('condenser_api.get_accounts', [[auth.username]]);
     const account = accounts?.[0];
@@ -1843,6 +1856,12 @@ async function loadAndApplyPreferences() {
     let meta = {};
     try { meta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
     const prefs = meta.combflow || {};
+    const filterPrefs = {
+      default_categories: prefs.default_categories || [],
+      default_languages: prefs.default_languages || [],
+      default_sentiment: prefs.default_sentiment || null,
+    };
+    localStorage.setItem('honeycomb_filterPrefs', JSON.stringify(filterPrefs));
     applyPreferenceFilters(prefs);
     return prefs;
   } catch(e) { return null; }
@@ -1891,12 +1910,18 @@ async function savePreferences() {
     let postingMeta = {};
     try { postingMeta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
 
-    const prefs = {
+    const filterPrefs = {
       default_categories: cats,
       default_languages: langs,
       default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
     };
-    postingMeta.combflow = prefs;
+
+    // Cache filter prefs to localStorage for instant load
+    localStorage.setItem('honeycomb_filterPrefs', JSON.stringify(filterPrefs));
+
+    // Merge with existing on-chain prefs (preserve vote settings etc.)
+    const existing = postingMeta.combflow || {};
+    postingMeta.combflow = { ...existing, ...filterPrefs };
 
     const ops = [['account_update2', {
       account: auth.username,
@@ -2093,19 +2118,25 @@ async function saveSettings() {
         const voteFloor = Number(document.getElementById('settings-vote-floor').value);
         const voteMax = Number(document.getElementById('settings-vote-max').value);
         const voteManual = document.getElementById('settings-vote-manual').checked;
-        const prefs = {
-          default_categories: cats,
-          default_languages: langs,
-          default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
+        const votePrefs = {
           voteFloor: voteFloor,
           voteMaxWeight: voteMax,
           voteManual: voteManual,
         };
+        const filterPrefs = {
+          default_categories: cats,
+          default_languages: langs,
+          default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
+        };
+        // Cache filter prefs to localStorage for instant load
+        localStorage.setItem('honeycomb_filterPrefs', JSON.stringify(filterPrefs));
         // Cache vote prefs locally for immediate use
         localStorage.setItem('honeycomb_voteFloor', voteFloor);
         localStorage.setItem('honeycomb_voteMaxWeight', voteMax);
         localStorage.setItem('honeycomb_voteManual', voteManual);
-        postingMeta.combflow = prefs;
+        // Merge with existing on-chain prefs
+        const existing = postingMeta.combflow || {};
+        postingMeta.combflow = { ...existing, ...filterPrefs, ...votePrefs };
         const ops = [['account_update2', {
           account: auth.username,
           json_metadata: '',
