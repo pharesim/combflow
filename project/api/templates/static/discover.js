@@ -32,7 +32,7 @@ let _followingFilterActive = false;
 const PAGE_SIZE = 60;
 
 // Hive RPC nodes with automatic fallback
-const HIVE_NODES = ['https://api.deathwing.me', 'https://api.hive.blog', 'https://anyx.io'];
+const HIVE_NODES = ['https://api.deathwing.me', 'https://api.hive.blog', 'https://techcoderx.com'];
 const PROXY_DOMAINS = /(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|cdn\.steemitimages\.com|steemitimages\.com|usermedia\.actifit\.io|imgur\.com|i\.imgur\.com|blurt\.media)/i;
 async function hiveRpc(method, params) {
   for (const node of HIVE_NODES) {
