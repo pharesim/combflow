@@ -406,9 +406,9 @@ body{overflow-x:hidden}
   .modal-tags .tag{font-size:10px;padding:3px 8px}
   .modal-close{top:0}
   .filter-header{padding:12px 0}
-  .filters-bar{flex-wrap:wrap;padding:8px 16px}
-  .filters-bar-actions{width:100%;justify-content:flex-end}
-  #sort-select{display:inline-block;font-size:13px;padding:8px 12px;min-width:140px;border-radius:12px}
+  .filters-bar{padding:8px 16px}
+  .filters-bar-actions{gap:6px}
+  #sort-select{display:none}
 }
 
 /* ── Video embeds (click-to-play) ── */

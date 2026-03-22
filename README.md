@@ -486,7 +486,13 @@ combflow/combflow/
 │   │   ├── session.py     # async engine + session
 │   │   └── crud.py        # all DB operations (batch-optimized)
 │   └── worker/
-│       └── hive.py        # self-contained: live stream + two-phase backfill
+│       ├── hive.py        # entry point shim
+│       ├── main.py        # orchestrator, signal handling
+│       ├── classify.py    # classification, sentiment, language detection
+│       ├── community.py   # community → category mapping
+│       ├── stream.py      # live blockchain stream
+│       ├── backfill.py    # HAFSQL backfill thread
+│       └── bridge.py      # async DB bridge
 ├── alembic/
 │   ├── versions/
 │   │   ├── 001_initial_schema.py  # all tables + indexes (fresh install)
