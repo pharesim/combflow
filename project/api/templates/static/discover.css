@@ -279,14 +279,33 @@ body{overflow-x:hidden}
 .comment-skeleton-line:last-child{width:50%}
 
 /* ── Post editor ─── */
-.editor-modal{max-width:800px}
+.editor-modal{max-width:1200px}
 .editor-field{margin-bottom:16px}
 .editor-field label{display:block;font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
 .editor-field label small{text-transform:none;letter-spacing:0}
 .editor-field input[type="text"]{width:100%;background:var(--bg);color:var(--text);border:1px solid #ffffff15;border-radius:8px;padding:10px 12px;font-size:15px;font-family:inherit;outline:none}
 .editor-field input[type="text"]:focus{border-color:var(--hive-red)}
+.editor-toolbar{display:flex;flex-wrap:wrap;gap:2px;align-items:center;background:var(--bg);border:1px solid #ffffff15;border-bottom:none;padding:4px 6px;border-radius:0}
+.editor-toolbar button{background:none;border:1px solid transparent;color:var(--text-dim);width:30px;height:28px;border-radius:4px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;padding:0}
+.editor-toolbar button:hover{color:#fff;background:var(--card);border-color:#ffffff20}
+.editor-toolbar button b{font-weight:700;font-size:14px}
+.editor-toolbar button i{font-style:italic;font-size:14px}
+.toolbar-sep{width:1px;height:18px;background:#ffffff15;margin:0 4px;flex-shrink:0}
+.toolbar-help{font-weight:700;color:var(--text-dim) !important;font-size:14px !important}
 .editor-field textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid #ffffff15;border-radius:0 0 8px 8px;padding:12px;font-size:14px;font-family:'Consolas','Monaco',monospace;resize:vertical;min-height:200px;outline:none;border-top:none}
 .editor-field textarea:focus{border-color:var(--hive-red)}
+
+/* ── Markdown help modal ─── */
+.md-help-modal{max-width:800px}
+.md-help-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.md-help-grid section{background:var(--card);border-radius:10px;padding:14px 16px}
+.md-help-grid h3{font-size:13px;color:var(--hive-red);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px}
+.md-help-grid table{width:100%;border-collapse:collapse}
+.md-help-grid td{padding:4px 0;font-size:13px;color:var(--text);vertical-align:top}
+.md-help-grid td:first-child{color:var(--text-dim);white-space:nowrap;padding-right:12px;width:55%}
+.md-help-grid td code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px}
+.md-help-grid pre{background:var(--bg);padding:10px;border-radius:6px;font-size:12px;color:var(--text-dim);margin:0;overflow-x:auto}
+@media(max-width:600px){.md-help-grid{grid-template-columns:1fr}}
 .editor-char-count{font-size:11px;color:var(--text-dim);float:right;margin-top:4px}
 .editor-tabs{display:flex;gap:0;margin-top:4px}
 .editor-tab{background:var(--card);color:var(--text-dim);border:1px solid #ffffff15;border-bottom:none;padding:6px 16px;font-size:12px;cursor:pointer;border-radius:8px 8px 0 0}
@@ -305,6 +324,27 @@ body{overflow-x:hidden}
 #editor-crosspost-label{display:flex;align-items:center;gap:6px;cursor:pointer;text-transform:none;font-size:13px;color:var(--text);letter-spacing:0;margin-top:6px;margin-bottom:0}
 #editor-crosspost-label input[type="checkbox"]{accent-color:var(--hive-red)}
 .editor-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+
+/* ── Editor description + location ─── */
+.editor-description-wrap{display:flex;gap:8px;align-items:center}
+.editor-description-wrap input[type="text"]{flex:1}
+.editor-location-btn{background:var(--card);border:1px solid #ffffff15;color:var(--text-dim);width:40px;height:40px;border-radius:8px;font-size:18px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.editor-location-btn:hover{border-color:var(--hive-red);color:#fff}
+.editor-location-btn.has-location{border-color:var(--green);color:var(--green)}
+.editor-description-meta{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.editor-location-badge{font-size:11px;color:var(--green);cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.editor-location-badge:hover{color:#fff}
+.editor-location-badge .remove-location{font-size:14px;color:var(--text-dim);cursor:pointer;margin-left:2px}
+.editor-location-badge .remove-location:hover{color:#e74c3c}
+
+/* ── Location picker modal ─── */
+.location-modal{max-width:640px}
+.location-map{width:100%;height:350px;border-radius:8px;border:1px solid #ffffff15;margin-bottom:12px;background:var(--card)}
+.location-controls{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.location-controls input[type="text"]{flex:1;background:var(--bg);color:var(--text);border:1px solid #ffffff15;border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;outline:none}
+.location-controls input[type="text"]:focus{border-color:var(--hive-red)}
+.location-coords{font-size:11px;color:var(--text-dim);margin-bottom:12px;min-height:16px}
+.location-actions{display:flex;gap:10px;justify-content:flex-end}
 
 /* ── Editor community selector ─── */
 .editor-community-wrap{display:flex;align-items:center;gap:8px}

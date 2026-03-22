@@ -136,7 +136,8 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Post modal** — click a hex to see full content, categories, languages, and sentiment
 - **Comment threads** — hierarchical comments loaded from HAFSQL, reputation-filtered (rep <= 0 hidden), collapsible nested replies
 - **Comment posting** — logged-in users can post comments and replies via Hive Keychain, with 3-second cooldown and cache invalidation
-- **Post authoring** — "Write Post" button opens a full editor with title, markdown body (with preview), tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
+- **Post authoring** — pen icon opens a full editor with title, preview description (120 chars, stored in `json_metadata.description`), markdown body with formatting toolbar (bold, italic, headings, links, images, lists, quotes, code blocks, tables, center, @mentions — plus Ctrl+B/I/K shortcuts), markdown help modal, tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
+- **Location picker** — map button in the editor opens a Leaflet/OpenStreetMap modal; click to place a pin or use "My Location" (browser geolocation). Reverse geocoding via Nominatim auto-fills the location name. Inserts a worldmappin-compatible hidden tag in the post body
 - **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with PeakD link
 - **Community discovery** — suggestions bar shows related communities when category filters are active; logged-in users can join/leave communities directly via Keychain
 - **My Communities filter** — logged-in users can toggle a "My Communities" filter to show only posts from communities they've joined on Hive

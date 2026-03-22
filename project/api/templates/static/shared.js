@@ -126,7 +126,7 @@ function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 200);
 }
 
-function broadcastPost(title, body, tags, communityId) {
+function broadcastPost(title, body, tags, communityId, description) {
   return new Promise((resolve, reject) => {
     const auth = getStoredAuth();
     if (!auth) return reject(new Error('Not logged in'));
@@ -145,6 +145,7 @@ function broadcastPost(title, body, tags, communityId) {
       image: images,
       app: 'honeycomb/1.0',
     };
+    if (description) metadata.description = description;
     if (communityId) metadata.community = communityId;
 
     const commentOp = ['comment', {

@@ -182,7 +182,7 @@
         <div class="editor-community-loading" id="editor-community-loading" style="display:none"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div></div>
       </div>
       <div class="editor-community-hint" id="editor-community-hint" style="display:none"></div>
-      <label id="editor-crosspost-label" style="display:none"><input type="checkbox" id="editor-crosspost"> Also share to your blog</label>
+      <label id="editor-crosspost-label" style="display:none"><input type="checkbox" id="editor-crosspost"> Also share in my blog</label>
     </div>
     <div class="editor-field">
       <label for="editor-title">Title</label>
@@ -190,10 +190,47 @@
       <span class="editor-char-count" id="editor-title-count">0/256</span>
     </div>
     <div class="editor-field">
+      <label for="editor-description">Description <small>(optional preview text)</small></label>
+      <div class="editor-description-wrap">
+        <input type="text" id="editor-description" maxlength="120" placeholder="Short preview description" oninput="updateEditorDescCount();autoSaveDraft()">
+        <button type="button" class="editor-location-btn" id="editor-location-btn" aria-label="Add location" onclick="openLocationPicker()" title="Add location">&#x1F4CD;</button>
+      </div>
+      <div class="editor-description-meta">
+        <span class="editor-char-count" id="editor-desc-count">0/120</span>
+        <span class="editor-location-badge" id="editor-location-badge" style="display:none"></span>
+      </div>
+    </div>
+    <div class="editor-field">
       <label for="editor-body">Body <small>(Markdown)</small></label>
       <div class="editor-tabs">
         <button type="button" class="editor-tab active" id="editor-tab-write" onclick="showEditorTab('write')">Write</button>
         <button type="button" class="editor-tab" id="editor-tab-preview" onclick="showEditorTab('preview')">Preview</button>
+      </div>
+      <div class="editor-toolbar" id="editor-toolbar">
+        <button type="button" title="Bold (Ctrl+B)" onclick="editorInsert('**','**')"><b>B</b></button>
+        <button type="button" title="Italic (Ctrl+I)" onclick="editorInsert('*','*')"><i>I</i></button>
+        <span class="toolbar-sep"></span>
+        <button type="button" title="Heading 1" onclick="editorInsertLine('# ')">H1</button>
+        <button type="button" title="Heading 2" onclick="editorInsertLine('## ')">H2</button>
+        <button type="button" title="Heading 3" onclick="editorInsertLine('### ')">H3</button>
+        <span class="toolbar-sep"></span>
+        <button type="button" title="Link" onclick="editorInsertLink()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
+        <button type="button" title="Image" onclick="editorInsertImage()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
+        <span class="toolbar-sep"></span>
+        <button type="button" title="Bulleted list" onclick="editorInsertLine('- ')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg></button>
+        <button type="button" title="Numbered list" onclick="editorInsertLine('1. ')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><text x="2" y="8" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">1</text><text x="2" y="14" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">2</text><text x="2" y="20" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">3</text></svg></button>
+        <span class="toolbar-sep"></span>
+        <button type="button" title="Quote" onclick="editorInsertLine('> ')"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/></svg></button>
+        <button type="button" title="Code" onclick="editorInsert('`','`')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
+        <button type="button" title="Code block" onclick="editorInsert('\n```\n','\n```\n')">{ }</button>
+        <span class="toolbar-sep"></span>
+        <button type="button" title="Horizontal rule" onclick="editorInsertLine('\n---\n')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="2" y1="12" x2="22" y2="12"/></svg></button>
+        <button type="button" title="Table" onclick="editorInsertTable()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg></button>
+        <span class="toolbar-sep"></span>
+        <button type="button" title="Mention user" onclick="editorInsert('@','')">@</button>
+        <button type="button" title="Center text" onclick="editorInsert('\n<center>\n','\n</center>\n')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
+        <div style="flex:1"></div>
+        <button type="button" title="Markdown help" onclick="showMarkdownHelp()" class="toolbar-help">?</button>
       </div>
       <textarea id="editor-body" placeholder="Write your post in Markdown..." rows="12" oninput="autoSaveDraft()"></textarea>
       <div class="editor-preview rendered-body" id="editor-preview" style="display:none"></div>
@@ -223,6 +260,85 @@
 </footer>
 
 <button type="button" class="back-to-top" id="back-to-top" aria-label="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#9650;</button>
+
+<!-- Location picker modal -->
+<div class="modal-overlay" id="location-modal" role="dialog" aria-modal="true" aria-label="Pick a location" onclick="if(event.target===this)closeLocationPicker()">
+  <div class="modal location-modal">
+    <button type="button" class="modal-close" aria-label="Close" onclick="closeLocationPicker()">&times;</button>
+    <h2>Pick a Location</h2>
+    <div id="location-map" class="location-map"></div>
+    <div class="location-controls">
+      <button type="button" class="btn btn-ghost" id="location-myloc-btn" onclick="useMyLocation()">&#x1F4CD; My Location</button>
+      <input type="text" id="location-description" maxlength="100" placeholder="Location description (e.g. Paris, France)" oninput="_locationAutoFilled=!this.value.trim()">
+    </div>
+    <div class="location-coords" id="location-coords"></div>
+    <div class="location-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeLocationPicker()">Cancel</button>
+      <button type="button" class="btn comment-submit-btn" id="location-confirm-btn" onclick="confirmLocation()" disabled>Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Markdown help modal -->
+<div class="modal-overlay" id="md-help-modal" role="dialog" aria-modal="true" aria-label="Markdown help" onclick="if(event.target===this)closeMdHelp()">
+  <div class="modal md-help-modal">
+    <button type="button" class="modal-close" aria-label="Close" onclick="closeMdHelp()">&times;</button>
+    <h2>Markdown &amp; Hive Formatting</h2>
+    <div class="md-help-grid">
+      <section>
+        <h3>Text</h3>
+        <table><tbody>
+          <tr><td><code>**bold**</code></td><td><b>bold</b></td></tr>
+          <tr><td><code>*italic*</code></td><td><i>italic</i></td></tr>
+          <tr><td><code>~~strikethrough~~</code></td><td><s>strikethrough</s></td></tr>
+          <tr><td><code># Heading 1</code></td><td>Largest heading</td></tr>
+          <tr><td><code>## Heading 2</code></td><td>Medium heading</td></tr>
+          <tr><td><code>### Heading 3</code></td><td>Small heading</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h3>Links &amp; Images</h3>
+        <table><tbody>
+          <tr><td><code>[text](url)</code></td><td>Hyperlink</td></tr>
+          <tr><td><code>![alt](url)</code></td><td>Image</td></tr>
+          <tr><td><code>@username</code></td><td>Mention a Hive user</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h3>Lists</h3>
+        <table><tbody>
+          <tr><td><code>- item</code></td><td>Bulleted list</td></tr>
+          <tr><td><code>1. item</code></td><td>Numbered list</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h3>Other</h3>
+        <table><tbody>
+          <tr><td><code>&gt; quote</code></td><td>Blockquote</td></tr>
+          <tr><td><code>`code`</code></td><td>Inline code</td></tr>
+          <tr><td><code>```</code></td><td>Code block (on its own line)</td></tr>
+          <tr><td><code>---</code></td><td>Horizontal rule</td></tr>
+          <tr><td><code>&lt;center&gt;...&lt;/center&gt;</code></td><td>Center text/images</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h3>Hive-Specific</h3>
+        <table><tbody>
+          <tr><td><code>@username</code></td><td>Links to Hive profile</td></tr>
+          <tr><td>YouTube / 3Speak links</td><td>Auto-embedded as video players</td></tr>
+          <tr><td>Bare image URLs</td><td>Auto-rendered as images</td></tr>
+          <tr><td><code>&lt;center&gt;</code> blocks</td><td>Commonly used for layout on Hive</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h3>Tables</h3>
+        <pre>| Column 1 | Column 2 |
+|----------|----------|
+| Cell     | Cell     |</pre>
+      </section>
+    </div>
+  </div>
+</div>
 
 <script defer src="/static/discover.js"></script>
 </body>
