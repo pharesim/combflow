@@ -453,6 +453,7 @@ body{overflow-x:hidden}
 .settings-slider-row label{font-size:13px;color:var(--text-dim);min-width:120px;text-transform:none;letter-spacing:0}
 .settings-slider-row input[type="range"]{flex:1;accent-color:var(--hive-red);height:6px}
 .settings-slider-val{font-size:13px;color:var(--text);min-width:40px;text-align:right}
+.vote-estimate{font-size:11px;color:var(--text-dim);padding:4px 0}
 
 /* ── Manual vote popup ── */
 .vote-popup-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1100;align-items:center;justify-content:center}

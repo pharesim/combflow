@@ -272,7 +272,7 @@ function getVotePrefs() {
   // Read from on-chain prefs cached in settings, or use defaults
   return {
     floor: Number(localStorage.getItem('honeycomb_voteFloor') || 50),
-    maxWeight: Number(localStorage.getItem('honeycomb_voteMaxWeight') || 25),
+    maxWeight: Number(localStorage.getItem('honeycomb_voteMaxWeight') || 100),
     manual: localStorage.getItem('honeycomb_voteManual') === 'true',
   };
 }
@@ -346,11 +346,6 @@ async function handleVote(author, permlink, btn) {
   try {
     const manaPercent = await fetchManaPercent();
     const weight = calculateVoteWeight(manaPercent, prefs.floor, prefs.maxWeight);
-    if (weight === 0) {
-      showToast('Voting power too low, try again later', 'info');
-      btn.disabled = false;
-      return;
-    }
     await broadcastVote(author, permlink, weight);
     saveVotedPost(key);
     // Invalidate mana cache since we just voted
@@ -2008,6 +2003,26 @@ function wireSettingsOnce() {
   document.getElementById('settings-langs').addEventListener('click', handleSimpleChipClick);
 }
 
+function estimateVotes(floor, maxWeight) {
+  let mana = 100;
+  const target = floor + (100 - floor) * 0.1;
+  let votes = 0;
+  while (mana > target && votes < 10000) {
+    const ratio = (mana - floor) / (100 - floor);
+    const weight = Math.max(1, (1 - Math.pow(1 - ratio, 1.2)) * maxWeight);
+    mana -= (weight / 100) * 2;
+    votes++;
+  }
+  return votes;
+}
+
+function updateVoteEstimate() {
+  const floor = Number(document.getElementById('settings-vote-floor').value);
+  const maxWeight = Number(document.getElementById('settings-vote-max').value);
+  document.getElementById('vote-estimate').textContent =
+    '~' + estimateVotes(floor, maxWeight) + ' votes before reaching mana floor';
+}
+
 async function showSettingsModal() {
   const modal = document.getElementById('settings-modal');
 
@@ -2078,7 +2093,7 @@ async function showSettingsModal() {
   const voteManualInput = document.getElementById('settings-vote-manual');
   if (voteFloorInput) {
     const vf = savedPrefs.voteFloor != null ? savedPrefs.voteFloor : 50;
-    const vm = savedPrefs.voteMaxWeight != null ? savedPrefs.voteMaxWeight : 25;
+    const vm = savedPrefs.voteMaxWeight != null ? savedPrefs.voteMaxWeight : 100;
     const manual = savedPrefs.voteManual || false;
     voteFloorInput.value = vf;
     document.getElementById('settings-vote-floor-val').textContent = vf + '%';
@@ -2086,6 +2101,7 @@ async function showSettingsModal() {
     document.getElementById('settings-vote-max-val').textContent = vm + '%';
     voteManualInput.checked = manual;
     document.getElementById('auto-vote-settings').style.display = manual ? 'none' : '';
+    updateVoteEstimate();
   }
 
   // Render muted + followed users

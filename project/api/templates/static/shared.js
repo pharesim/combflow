@@ -295,8 +295,9 @@ function manaToPercent(currentMana, maxMana) {
 }
 
 function calculateVoteWeight(manaPercent, floor, maxWeight) {
-  if (manaPercent <= floor) return 0;
-  const weight = ((manaPercent - floor) / (100 - floor)) * maxWeight;
+  if (manaPercent <= floor) return 100; // minimum 1% vote weight
+  const ratio = (manaPercent - floor) / (100 - floor);
+  const weight = (1 - Math.pow(1 - ratio, 1.2)) * maxWeight;
   // Clamp to minimum 1% (100 out of 10000) when above floor
   return Math.max(100, Math.round(weight * 100));
 }

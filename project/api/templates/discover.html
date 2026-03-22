@@ -163,14 +163,15 @@
       <div id="auto-vote-settings">
         <div class="settings-slider-row">
           <label for="settings-vote-floor">Mana floor</label>
-          <input type="range" id="settings-vote-floor" min="20" max="95" value="50" oninput="document.getElementById('settings-vote-floor-val').textContent=this.value+'%'">
+          <input type="range" id="settings-vote-floor" min="20" max="95" value="50" oninput="document.getElementById('settings-vote-floor-val').textContent=this.value+'%';updateVoteEstimate()">
           <span class="settings-slider-val" id="settings-vote-floor-val">50%</span>
         </div>
         <div class="settings-slider-row">
           <label for="settings-vote-max">Max vote weight</label>
-          <input type="range" id="settings-vote-max" min="1" max="100" value="25" oninput="document.getElementById('settings-vote-max-val').textContent=this.value+'%'">
-          <span class="settings-slider-val" id="settings-vote-max-val">25%</span>
+          <input type="range" id="settings-vote-max" min="1" max="100" value="100" oninput="document.getElementById('settings-vote-max-val').textContent=this.value+'%';updateVoteEstimate()">
+          <span class="settings-slider-val" id="settings-vote-max-val">100%</span>
         </div>
+        <div class="vote-estimate" id="vote-estimate"></div>
       </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:16px;justify-content:center">
