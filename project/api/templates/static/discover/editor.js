@@ -196,7 +196,11 @@ async function uploadImageToHive(file) {
 
   try {
     const buf = await file.arrayBuffer();
-    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    const prefix = new TextEncoder().encode('ImageSigningChallenge');
+    const combined = new Uint8Array(prefix.length + buf.byteLength);
+    combined.set(prefix, 0);
+    combined.set(new Uint8Array(buf), prefix.length);
+    const hashBuf = await crypto.subtle.digest('SHA-256', combined);
     const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
     const signature = await new Promise((resolve, reject) => {
