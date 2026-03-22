@@ -32,17 +32,17 @@ let _followingFilterActive = false;
 const PAGE_SIZE = 60;
 
 // Hive RPC nodes with automatic fallback
-const HIVE_NODES = ['/hive-api', 'https://api.deathwing.me', 'https://rpc.ausbit.dev'];
+const HIVE_NODES = ['https://api.deathwing.me', 'https://api.hive.blog', 'https://rpc.ausbit.dev'];
 const PROXY_DOMAINS = /(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|cdn\.steemitimages\.com|steemitimages\.com|usermedia\.actifit\.io|imgur\.com|i\.imgur\.com|blurt\.media)/i;
 async function hiveRpc(method, params) {
   for (const node of HIVE_NODES) {
     try {
-      const url = node.startsWith('http') ? node : node + '/';
-      const res = await fetch(url, {
+      const res = await fetch(node, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({jsonrpc:'2.0', method, params, id:1})
       });
+      if (!res.ok) continue;
       const data = await res.json();
       if (data.result) return data.result;
     } catch(e) { /* try next node */ }
@@ -1146,12 +1146,23 @@ function renderHexGrid(posts) {
   });
 }
 
-// ── Incremental hex append (infinite scroll — no full rebuild) ──
+// ── Incremental hex append (infinite scroll) ──
 function appendHexes(newPosts, startIdx) {
+  // Absolute positioning means all positions are interdependent —
+  // recompute and update all hex positions, then append new elements.
   const grid = document.getElementById('hex-grid');
   const { positions, gridW, maxY } = computeHexLayout(allPosts.length);
   grid.style.width = gridW + 'px';
   grid.style.height = maxY + 'px';
+  // Reposition existing hexes
+  const existing = grid.querySelectorAll('.hex');
+  existing.forEach((el, i) => {
+    if (positions[i]) {
+      el.style.left = positions[i].x + 'px';
+      el.style.top = positions[i].y + 'px';
+    }
+  });
+  // Append new hexes
   newPosts.forEach((p, i) => {
     grid.appendChild(createHexElement(p, positions[startIdx + i].x, positions[startIdx + i].y));
   });
