@@ -542,7 +542,7 @@ function sanitizeContent(html) {
       'hr','div','span','sub','sup',
       'center',
     ],
-    ALLOWED_ATTR: ['href','src','alt','title','class','width','height',
+    ALLOWED_ATTR: ['href','src','alt','title','class','id','width','height',
                    'style','allowfullscreen','frameborder'],
     ALLOW_DATA_ATTR: false,
     ADD_ATTR: ['target', 'data-direct-src'],
@@ -633,6 +633,12 @@ function embedVideos(div) {
       a.replaceWith(embed);
       return;
     }
+    if (href.startsWith('#')) {
+      // Anchor link — keep as-is (delegated handler on modal-body scrolls to target)
+      a.removeAttribute('target');
+      a.removeAttribute('rel');
+      return;
+    }
     a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener noreferrer');
   });
@@ -660,9 +666,24 @@ function sanitizeStyles(div) {
   });
 }
 
+// Tags allowed through to DOMPurify (must match sanitizeContent's ALLOWED_TAGS)
+const _ALLOWED_HTML = new Set(['p','br','strong','b','em','i','u','s','del','strike','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','a','img','iframe','table','thead','tbody','tr','th','td','hr','div','span','sub','sup','center']);
+
 function renderHiveBody(raw) {
   const md = normalizeMarkdown(raw);
-  const html = marked.parse(md, { breaks: true, gfm: true });
+  let html = marked.parse(md, { breaks: true, gfm: true });
+  // Add slugified IDs to headings for anchor links
+  html = html.replace(/<h([1-6])>(.*?)<\/h\1>/gi, (m, level, inner) => {
+    const slug = inner.replace(/<[^>]+>/g, '').toLowerCase().trim()
+      .replace(/[^\w\s-]/g, '').replace(/[\s]+/g, '-');
+    return `<h${level} id="${slug}">${inner}</h${level}>`;
+  });
+  // Strip non-allowed HTML tags at string level before DOM parsing.
+  // Prevents unclosed tags (e.g. <video>, <textarea>) from swallowing
+  // subsequent content during DOM parsing — DOMPurify's FORBID_CONTENTS
+  // would discard the nested content along with the tag.
+  html = html.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (m, tag) =>
+    _ALLOWED_HTML.has(tag.toLowerCase()) ? m : '');
   const clean = sanitizeContent(html);
   const div = document.createElement('div');
   div.innerHTML = clean;

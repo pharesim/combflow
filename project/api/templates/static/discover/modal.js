@@ -174,6 +174,16 @@ function _fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 
+// ── Anchor links inside modal ──
+document.getElementById('modal-body').addEventListener('click', function(e) {
+  const a = e.target.closest('a[href^="#"]');
+  if (!a) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const target = document.getElementById(a.getAttribute('href').slice(1));
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
 // ── Popstate (browser back/forward) ──
 window.addEventListener('popstate', e => {
   if (e.state && e.state.author) {
