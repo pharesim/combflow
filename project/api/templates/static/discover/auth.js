@@ -16,8 +16,16 @@ function toggleMyPosts() {
 function showLoginPrompt() {
   const overlay = document.getElementById('login-overlay');
   document.getElementById('login-error').textContent = '';
+  const hasKeychain = isKeychainInstalled();
+  document.getElementById('login-form').style.display = hasKeychain ? '' : 'none';
+  document.getElementById('login-onboarding').style.display = hasKeychain ? 'none' : '';
+  document.getElementById('login-signup-link').style.display = hasKeychain ? '' : 'none';
   Alpine.store('app').loginOpen = true;
   trapFocus(overlay.querySelector('.login-box'));
+  if (hasKeychain) {
+    const input = document.getElementById('login-username');
+    if (input) input.focus();
+  }
 }
 
 function closeLogin() {

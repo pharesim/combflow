@@ -51,21 +51,59 @@
 <!-- Login prompt -->
 <div class="login-overlay" id="login-overlay" role="dialog" aria-modal="true" aria-label="Login" x-show="$store.app.loginOpen" x-cloak @click.self="closeLogin()">
   <div class="login-box" style="position:relative">
-    <button type="button" class="login-close" aria-label="Close" data-action="close-login">&times;</button>
-    <h3>Login with Hive Keychain</h3>
-    <p>Enter your Hive username to sign in securely.</p>
-    <label for="login-username" class="sr-only">Hive username</label>
-    <input id="login-username" placeholder="hive username" maxlength="16"
-           data-action="login-enter">
-    <button type="button" class="login-btn" id="login-btn" data-action="login">Sign In</button>
-    <div class="login-error" id="login-error"></div>
-    <p class="signup-link">No account? <a href="#" data-action="open-signup">Create one</a></p>
+    <button type="button" class="modal-close" aria-label="Close" data-action="close-login">&times;</button>
+    <!-- Login form (shown when Keychain is installed) -->
+    <div id="login-form">
+      <h3>Login with Hive Keychain</h3>
+      <p>Enter your Hive username to sign in securely.</p>
+      <label for="login-username" class="sr-only">Hive username</label>
+      <input id="login-username" placeholder="hive username" maxlength="16"
+             data-action="login-enter">
+      <button type="button" class="login-btn" id="login-btn" data-action="login">Sign In</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+    <!-- Onboarding guidance (shown when Keychain is NOT installed) -->
+    <div id="login-onboarding" style="display:none">
+      <h3>Welcome to HoneyComb</h3>
+      <p class="onboarding-intro">HoneyComb runs on <strong>Hive</strong> &mdash; an open, decentralized blockchain where your posts, votes, and communities belong to you, not a company. To get started, follow these steps:</p>
+      <div class="onboarding-steps">
+        <div class="onboarding-step">
+          <span class="onboarding-step-num">1</span>
+          <div>
+            <h4>Create a Hive account</h4>
+            <p>Set up your free account &mdash; it only takes a minute.</p>
+            <button type="button" class="onboarding-link" data-action="open-signup">Create Account</button>
+          </div>
+        </div>
+        <div class="onboarding-step">
+          <span class="onboarding-step-num">2</span>
+          <div>
+            <h4>Install Hive Keychain</h4>
+            <p>A browser extension that securely signs your transactions &mdash; your keys never leave your device.</p>
+            <div class="onboarding-links">
+              <a href="https://chromewebstore.google.com/detail/hive-keychain/jcacnejopjdphbnjgfaaobbfafkihpep" target="_blank" rel="noopener" class="onboarding-link">Chrome / Brave / Edge</a>
+              <a href="https://addons.mozilla.org/en-US/firefox/addon/hive-keychain/" target="_blank" rel="noopener" class="onboarding-link">Firefox</a>
+            </div>
+          </div>
+        </div>
+        <div class="onboarding-step">
+          <span class="onboarding-step-num">3</span>
+          <div>
+            <h4>Refresh &amp; log in</h4>
+            <p>Once Keychain is installed, refresh this page and click Login again.</p>
+          </div>
+        </div>
+      </div>
+      <p class="onboarding-hint">Need help? Join our <a href="https://discord.gg/VhgRMrHpnB" target="_blank" rel="noopener">Discord</a> and we'll help you get set up.</p>
+    </div>
+    <p class="signup-link" id="login-signup-link">No account? <a href="#" data-action="open-signup">Create one</a></p>
   </div>
 </div>
 
 <div class="signup-overlay" id="signup-overlay" role="dialog" aria-modal="true" aria-label="Create Account" x-show="$store.app.signupOpen" x-cloak @click.self="closeSignup()">
   <div class="signup-box">
-    <button type="button" class="login-close" aria-label="Close" data-action="close-signup">&times;</button>
+    <button type="button" class="modal-close" aria-label="Close" data-action="close-signup">&times;</button>
+    <p class="signup-discord-hint">Having trouble creating your account? Come to our <a href="https://discord.gg/VhgRMrHpnB" target="_blank" rel="noopener">Discord</a> and we'll get you set up.</p>
     <iframe src="about:blank" id="signup-iframe" loading="lazy"></iframe>
   </div>
 </div>

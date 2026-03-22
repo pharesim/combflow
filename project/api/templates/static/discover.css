@@ -25,7 +25,27 @@ body{overflow-x:hidden}
 .login-box .login-btn:hover{background:#ff2244}
 .login-box .login-btn:disabled{opacity:.5;cursor:not-allowed}
 .login-box .login-error{color:#e74c3c;font-size:12px;margin-top:8px;min-height:16px}
-.login-box .login-close{position:absolute;top:10px;right:14px;font-size:20px;color:var(--text-dim);background:none;border:none;cursor:pointer}
+.login-box .modal-close,.signup-box .modal-close{position:absolute;top:10px;right:14px;float:none;margin-top:0}
+
+/* ── Login onboarding ─── */
+#login-onboarding{text-align:left}
+.onboarding-intro{font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:18px}
+.onboarding-intro strong{color:var(--text)}
+.onboarding-steps{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
+.onboarding-step{display:flex;gap:12px;align-items:flex-start}
+.onboarding-step-num{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--hive-red);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.onboarding-step h4{font-size:14px;color:#fff;margin:0 0 3px}
+.onboarding-step p{font-size:12px;color:var(--text-dim);margin:0 0 8px;line-height:1.5}
+.onboarding-links{display:flex;gap:8px;flex-wrap:wrap}
+.onboarding-link{display:inline-block;padding:6px 14px;background:var(--card);color:var(--text);border:1px solid #ffffff15;border-radius:10px;font-size:12px;text-decoration:none;transition:all .2s;cursor:pointer;font-family:inherit}
+.onboarding-link:hover{border-color:var(--hive-red);color:#fff}
+.onboarding-hint{font-size:12px;color:var(--text-dim);text-align:center;margin-top:4px}
+.onboarding-hint a{color:var(--hive-red);text-decoration:none}
+.onboarding-hint a:hover{text-decoration:underline}
+/* ── Signup discord hint ─── */
+.signup-discord-hint{font-size:13px;color:var(--text-dim);text-align:center;padding:10px 16px;margin:0 0 8px;background:var(--card);border-radius:10px;line-height:1.5}
+.signup-discord-hint a{color:var(--hive-red);text-decoration:none}
+.signup-discord-hint a:hover{text-decoration:underline}
 
 /* ── Filter bar (collapsible wrapper) ─── */
 .filters-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:var(--bg2);border-bottom:1px solid #ffffff08;cursor:pointer;user-select:none;position:sticky;top:0;z-index:50}
