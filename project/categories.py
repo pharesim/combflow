@@ -14,7 +14,6 @@ CATEGORY_TREE: dict[str, list[str]] = {
         "programming",      # absorbs devops, data-science
         "ai",
         "cybersecurity",
-        "gaming",           # absorbs esports, tabletop-games
     ],
     "creative": [
         "photography",
@@ -52,6 +51,7 @@ CATEGORY_TREE: dict[str, list[str]] = {
         "entrepreneurship", # restored from p016 merge
     ],
     "entertainment": [
+        "gaming",           # absorbs esports, tabletop-games
         "movies-tv",
         "anime-manga",
         "books",

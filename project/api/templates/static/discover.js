@@ -1584,6 +1584,7 @@ async function openModal(post, skipPush) {
 
   const tagsEl = document.getElementById('modal-tags');
   tagsEl.innerHTML = '';
+  document.getElementById('modal-post-tags').innerHTML = '';
   (post.categories||[]).forEach(c => {
     const t = document.createElement('span');
     t.className = 'tag'; t.textContent = c; tagsEl.appendChild(t);
@@ -1642,6 +1643,17 @@ async function openModal(post, skipPush) {
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');
+    // Show post tags
+    const postTagsEl = document.getElementById('modal-post-tags');
+    postTagsEl.innerHTML = '';
+    let postTags = [];
+    try { postTags = (typeof result.json_metadata === 'string' ? JSON.parse(result.json_metadata) : result.json_metadata)?.tags || []; } catch(e) {}
+    postTags.forEach(tag => {
+      const t = document.createElement('span');
+      t.className = 'tag';
+      t.textContent = '#' + tag;
+      postTagsEl.appendChild(t);
+    });
     // Show mini map if post has worldmappin location
     const wmMatch = (result.body || '').match(/\[\/\/\]:#\s*\(!worldmappin\s+([\d.-]+)\s+lat\s+([\d.-]+)\s+long\s*(.*?)\s*d3scr\)/);
     if (wmMatch) {

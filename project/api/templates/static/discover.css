@@ -36,7 +36,7 @@ body{overflow-x:hidden}
 .filters-bar-actions{display:flex;align-items:center;gap:8px}
 
 /* ── Filters ─── */
-.filters{padding:12px 24px;display:flex;flex-direction:column;gap:0;background:var(--bg2);border-bottom:1px solid #ffffff08;position:sticky;top:37px;z-index:49}
+.filters{padding:12px 24px;display:flex;flex-direction:column;gap:0;background:var(--bg2);border-bottom:1px solid #ffffff08;position:sticky;top:37px;z-index:49;max-height:calc(100vh - 37px);overflow-y:auto}
 .filter-section{border-bottom:1px solid #ffffff06}
 .filter-section:last-child{border-bottom:none}
 .filter-header{display:flex;align-items:center;gap:6px;padding:8px 0;cursor:pointer;user-select:none;background:none;border:none;color:var(--text);width:100%}
@@ -170,6 +170,8 @@ body{overflow-x:hidden}
 .modal-body pre{padding:12px}
 .modal-body hr{margin:16px 0}
 .modal-tags{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.modal-post-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.modal-post-tags .tag{font-size:10px;padding:2px 8px;opacity:0.6}
 .modal-score{display:none}
 .modal-actions{display:flex;gap:16px;margin-top:16px;justify-content:flex-start;align-items:center}
 .modal-actions a{color:var(--hive-red);font-size:13px;text-decoration:none;transition:color .2s}
