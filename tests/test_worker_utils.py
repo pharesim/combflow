@@ -4,11 +4,14 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 import pytest
 
-from project.worker.hive import (
-    _classify_from_embedding, _detect_languages, _extract_community_id,
-    _sentiment_from_embedding, _resolve_community, _community_cache,
-    _build_sentiment_anchors, _classify_and_save, _persisted_communities,
-    _persist_community_mapping,
+from project.worker.classify import (
+    _classify_from_embedding, _detect_languages,
+    _sentiment_from_embedding,
+    _build_sentiment_anchors, _classify_and_save,
+)
+from project.worker.community import (
+    _extract_community_id, _resolve_community, _community_cache,
+    _persisted_communities, _persist_community_mapping,
 )
 
 
@@ -197,12 +200,12 @@ class TestResolveCommunity:
         assert result == ("photography", "Cached Community", 0.55)
 
     def test_no_metadata(self):
-        with patch("project.worker.hive.get_community", return_value=None):
+        with patch("project.worker.community.get_community", return_value=None):
             result = _resolve_community("hive-888", None, {})
         assert result == (None, "", 0.0)
 
     def test_no_embedder(self):
-        with patch("project.worker.hive.get_community", return_value={"title": "Test", "about": "desc"}):
+        with patch("project.worker.community.get_community", return_value={"title": "Test", "about": "desc"}):
             result = _resolve_community("hive-777", None, {"cat": np.ones(384)})
         assert result[0] is None
         assert result[1] == "Test"
@@ -212,7 +215,7 @@ class TestResolveCommunity:
         embedder = SentenceTransformer("all-MiniLM-L6-v2")
         centroid = embedder.encode("cryptocurrency bitcoin blockchain", normalize_embeddings=True)
         centroids = {"crypto": centroid}
-        with patch("project.worker.hive.get_community",
+        with patch("project.worker.community.get_community",
                    return_value={"title": "LeoFinance", "about": "Cryptocurrency and finance community"}):
             cat, name, score = _resolve_community("hive-666", embedder, centroids)
         assert name == "LeoFinance"
@@ -225,7 +228,7 @@ class TestResolveCommunity:
         random_centroid = rng.randn(384).astype(np.float32)
         random_centroid /= np.linalg.norm(random_centroid)
         centroids = {"random_topic": random_centroid}
-        with patch("project.worker.hive.get_community",
+        with patch("project.worker.community.get_community",
                    return_value={"title": "Generic Community", "about": "Nothing specific"}):
             cat, name, score = _resolve_community("hive-555", embedder, centroids)
         assert name == "Generic Community"
@@ -263,7 +266,7 @@ class TestClassifyAndSave:
     def test_skips_diff_posts(self):
         """Posts starting with @@ (diff/edit markers) should be skipped."""
         mock_db = MagicMock()
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="p", title="Edit",
@@ -274,7 +277,7 @@ class TestClassifyAndSave:
     def test_skips_short_body(self):
         """Posts with < 80 chars clean body should be skipped."""
         mock_db = MagicMock()
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="p", title="Short", body="Too short",
@@ -285,7 +288,7 @@ class TestClassifyAndSave:
         """Without embedder, post should still be saved with empty categories and neutral sentiment."""
         mock_db = MagicMock()
         body = "This is a long enough body for the test. " * 5
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="no-embedder",
@@ -304,8 +307,8 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"tags": ["crypto", "bitcoin"]})
 
-        with patch("project.worker.hive._save_post"), \
-             patch("project.worker.hive._classify_from_embedding", return_value=["crypto"]) as mock_classify:
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._classify_from_embedding", return_value=["crypto"]) as mock_classify:
             mock_embedder = MagicMock()
             mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
             _classify_and_save(
@@ -326,7 +329,7 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"language": "de"})
 
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="lang-str",
@@ -343,7 +346,7 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"language": ["en", "es"]})
 
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="lang-list",
@@ -359,7 +362,7 @@ class TestClassifyAndSave:
         mock_db = MagicMock()
         body = "Valid long body content for testing malformed metadata handling. " * 3
 
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="bad-meta",
@@ -373,8 +376,8 @@ class TestClassifyAndSave:
         mock_db = MagicMock()
         body = "Long enough body for community extraction testing here. " * 3
 
-        with patch("project.worker.hive._save_post") as mock_save, \
-             patch("project.worker.hive._persist_community_mapping"):
+        with patch("project.worker.classify._save_post") as mock_save, \
+             patch("project.worker.classify._persist_community_mapping"):
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="comm-test",
@@ -389,7 +392,7 @@ class TestClassifyAndSave:
         mock_db = MagicMock()
         body = "Long enough body for blog post without community testing. " * 3
 
-        with patch("project.worker.hive._save_post") as mock_save:
+        with patch("project.worker.classify._save_post") as mock_save:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="blog-test",
@@ -408,9 +411,9 @@ class TestClassifyAndSave:
         mock_embedder = MagicMock()
         mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
 
-        with patch("project.worker.hive._save_post"), \
-             patch("project.worker.hive._persist_community_mapping"), \
-             patch("project.worker.hive._classify_from_embedding", return_value=["crypto"]) as mock_boost:
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._persist_community_mapping"), \
+             patch("project.worker.classify._classify_from_embedding", return_value=["crypto"]) as mock_boost:
             _classify_and_save(
                 mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
                 np.zeros(384), np.zeros(384),
@@ -429,9 +432,9 @@ class TestClassifyAndSave:
         mock_embedder = MagicMock()
         mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
 
-        with patch("project.worker.hive._save_post"), \
-             patch("project.worker.hive._persist_community_mapping"), \
-             patch("project.worker.hive._classify_from_embedding", return_value=[]) as mock_classify:
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._persist_community_mapping"), \
+             patch("project.worker.classify._classify_from_embedding", return_value=[]) as mock_classify:
             _classify_and_save(
                 mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
                 np.zeros(384), np.zeros(384),
@@ -449,8 +452,8 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"cross_post_key": "bob/original-permlink"})
 
-        with patch("project.worker.hive._save_post") as mock_save, \
-             patch("project.worker.hive.get_post_body", return_value=original_body) as mock_fetch:
+        with patch("project.worker.classify._save_post") as mock_save, \
+             patch("project.worker.classify.get_post_body", return_value=original_body) as mock_fetch:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="cross-post-test",
@@ -467,8 +470,8 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"cross_post_key": "bob/missing-permlink"})
 
-        with patch("project.worker.hive._save_post") as mock_save, \
-             patch("project.worker.hive.get_post_body", return_value=None):
+        with patch("project.worker.classify._save_post") as mock_save, \
+             patch("project.worker.classify.get_post_body", return_value=None):
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="cross-fallback",
@@ -484,8 +487,8 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"cross_post_key": "bob/short-original"})
 
-        with patch("project.worker.hive._save_post") as mock_save, \
-             patch("project.worker.hive.get_post_body", return_value="Also short"):
+        with patch("project.worker.classify._save_post") as mock_save, \
+             patch("project.worker.classify.get_post_body", return_value="Also short"):
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="cross-short",
@@ -501,8 +504,8 @@ class TestClassifyAndSave:
         import json
         meta = json.dumps({"cross_post_key": "malformed-no-slash"})
 
-        with patch("project.worker.hive._save_post") as mock_save, \
-             patch("project.worker.hive.get_post_body") as mock_fetch:
+        with patch("project.worker.classify._save_post") as mock_save, \
+             patch("project.worker.classify.get_post_body") as mock_fetch:
             _classify_and_save(
                 mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
                 author="alice", permlink="bad-key",
@@ -544,10 +547,10 @@ class TestPersistCommunityMapping:
 
         _persisted_communities.add("hive-300")
 
-        with patch("project.worker.hive._save_post"), \
-             patch("project.worker.hive._resolve_community", return_value=("crypto", "Name", 0.5)), \
-             patch("project.worker.hive._persist_community_mapping") as mock_persist, \
-             patch("project.worker.hive._classify_from_embedding", return_value=[]):
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._resolve_community", return_value=("crypto", "Name", 0.5)), \
+             patch("project.worker.classify._persist_community_mapping") as mock_persist, \
+             patch("project.worker.classify._classify_from_embedding", return_value=[]):
             mock_embedder = MagicMock()
             mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
             _classify_and_save(

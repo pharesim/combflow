@@ -406,7 +406,9 @@ body{overflow-x:hidden}
   .modal-tags .tag{font-size:10px;padding:3px 8px}
   .modal-close{top:0}
   .filter-header{padding:12px 0}
-  #sort-select{display:none}
+  .filters-bar{flex-wrap:wrap;padding:8px 16px}
+  .filters-bar-actions{width:100%;justify-content:flex-end}
+  #sort-select{display:inline-block;font-size:13px;padding:8px 12px;min-width:140px;border-radius:12px}
 }
 
 /* ── Video embeds (click-to-play) ── */
@@ -439,7 +441,7 @@ body{overflow-x:hidden}
 .footer-links a:hover{color:var(--text)}
 
 /* Bottom padding so footer doesn't overlap content */
-.scroll-sentinel{margin-bottom:36px}
+.scroll-sentinel{margin-bottom:60px}
 
 /* ── Vote button (heart) ── */
 .vote-btn{background:none;border:none;cursor:pointer;padding:4px;color:var(--text-dim);transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
