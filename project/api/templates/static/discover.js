@@ -243,6 +243,10 @@ function saveVotedPost(key) {
   _votedPosts[key] = true;
   sessionStorage.setItem('honeycomb_voted', JSON.stringify(_votedPosts));
 }
+function removeVotedPost(key) {
+  delete _votedPosts[key];
+  sessionStorage.setItem('honeycomb_voted', JSON.stringify(_votedPosts));
+}
 
 async function fetchManaPercent() {
   if (_manaCache && Date.now() - _manaCache.fetchedAt < MANA_CACHE_TTL) return _manaCache.manaPercent;
@@ -273,7 +277,22 @@ async function handleVote(author, permlink, btn) {
   const auth = getStoredAuth();
   if (!auth) { showLoginPrompt(); return; }
   const key = `${author}/${permlink}`;
-  if (_votedPosts[key]) { showToast('Already voted', 'info'); return; }
+  if (_votedPosts[key]) {
+    btn.disabled = true;
+    try {
+      await broadcastVote(author, permlink, 0);
+      removeVotedPost(key);
+      document.querySelectorAll(`.vote-btn[data-vote-key="${CSS.escape(key)}"]`).forEach(el => {
+        el.classList.remove('voted');
+        el.setAttribute('aria-label', 'Vote');
+      });
+      showToast('Vote removed', 'success');
+    } catch(e) {
+      showToast(e.message || 'Unvote failed', 'error');
+    }
+    btn.disabled = false;
+    return;
+  }
 
   btn.disabled = true;
   try {
