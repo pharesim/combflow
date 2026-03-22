@@ -79,16 +79,15 @@ function broadcastPost(title, body, tags, communityId, description) {
   return keychainBroadcast(ops).then(() => ({ author: auth.username, permlink }));
 }
 
-function broadcastCrossPost(author, permlink, communityId) {
+function broadcastCrossPost(author, permlink) {
   const op = ['custom_json', {
     required_auths: [],
     required_posting_auths: [getStoredAuth().username],
-    id: 'community',
+    id: 'follow',
     json: JSON.stringify(['reblog', {
       account: getStoredAuth().username,
       author: author,
       permlink: permlink,
-      community: communityId,
     }]),
   }];
   return keychainBroadcast([op]).then(() => {});

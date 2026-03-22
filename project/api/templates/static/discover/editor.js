@@ -438,7 +438,7 @@ async function publishPost() {
     // Cross-post to blog if requested
     if (crossPost) {
       try {
-        await broadcastCrossPost(result.author, result.permlink, communityId);
+        await broadcastCrossPost(result.author, result.permlink);
         showToast('Cross-posted to my blog', 'success');
       } catch(e) {
         showToast('Post published to community. Cross-post failed \u2014 you can reblog manually.', 'info', 5000);
