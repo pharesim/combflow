@@ -447,9 +447,10 @@ async function fetchSingleMeta(p) {
     if (!images.length && result.body) {
       const body = result.body;
       const mdMatch = body.match(/!\[[^\]]*\]\(([^)]+)\)/);
-      const hostRe = /https?:\/\/(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|usermedia\.actifit\.io|images\.3speak\.tv|cdn\.steemitimages\.com)\/\S+/i;
-      const extRe = /https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp|svg)/i;
-      const found = mdMatch ? mdMatch[1] : ((body.match(hostRe) || body.match(extRe) || [])[0] || '');
+      const imgTagMatch = body.match(/<img[^>]+src=["']([^"']+)["']/i);
+      const hostRe = /https?:\/\/(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|usermedia\.actifit\.io|images\.3speak\.tv|cdn\.steemitimages\.com)\/[^\s"'<>)]+/i;
+      const extRe = /https?:\/\/[^\s"'<>)]+\.(?:jpg|jpeg|png|gif|webp|svg)/i;
+      const found = mdMatch ? mdMatch[1] : (imgTagMatch ? imgTagMatch[1] : ((body.match(hostRe) || body.match(extRe) || [])[0] || ''));
       if (found) images = [found];
     }
     if (!images.length && result.body) {

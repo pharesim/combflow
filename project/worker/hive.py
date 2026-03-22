@@ -431,7 +431,6 @@ def _classify_and_save(
         "sentiment": sentiment,
         "sentiment_score": sentiment_score,
         "community_id": community_id,
-        "title": title,
     })
     logger.info("%s processed %s/%s langs=%s sentiment=%s cats=%s community=%s",
                 label, author, permlink, languages, sentiment, categories, community_id)

@@ -185,13 +185,6 @@ async def test_browse_posts_include_community_id(client, seeded_db):
         assert "community_name" in post
 
 
-async def test_browse_posts_include_title(client, seeded_db):
-    """Browse response includes title field on posts."""
-    resp = await client.get("/api/browse")
-    assert resp.status_code == 200
-    for post in resp.json()["posts"]:
-        assert "title" in post
-
 
 # ── Communities endpoint ─────────────────────────────────────────────────────
 

@@ -445,19 +445,6 @@ class TestClassifyAndSave:
         assert saved_data["categories"] == []
         assert saved_data["sentiment"] == "neutral"
 
-    def test_saves_title(self):
-        """Title should be passed through to _save_post."""
-        mock_db = MagicMock()
-        body = "This is a long enough body for the test. " * 5
-        with patch("project.worker.hive._save_post") as mock_save:
-            self.classify_and_save(
-                mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
-                author="alice", permlink="title-test",
-                title="My Great Title", body=body,
-            )
-        saved_data = mock_save.call_args[0][1]
-        assert saved_data["title"] == "My Great Title"
-
     def test_extracts_tags_from_json_metadata(self):
         """tags_hint from json_metadata should be included in classify text."""
         mock_db = MagicMock()

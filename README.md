@@ -220,7 +220,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 | Table | Purpose |
 |-------|---------|
-| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, title) |
+| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id) |
 | `categories` | 2-level hierarchy (parent_id for nesting) |
 | `post_category` | Many-to-many: posts <-> categories |
 | `post_language` | Many-to-many: posts <-> languages |
@@ -240,7 +240,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 ### Migration
 
-Migrations: `001_initial_schema.py` (all tables, indexes, pgvector), `002_add_title.py` (title column), `003_drop_thumbnail_url.py` (removed — thumbnails fetched client-side from Hive). Verified by `alembic/verify_migration.py` on startup.
+Migrations: `001_initial_schema.py` (all tables, indexes, pgvector), `002_add_title.py` (title column), `003_drop_thumbnail_url.py` (thumbnails fetched client-side), `004_drop_title.py` (title fetched client-side). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
@@ -274,14 +274,14 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-256 tests across 12 files:
+251 tests across 12 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `test_worker_utils.py` | 59 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
 | `test_hafsql.py` | 33 | Reputation conversion, comment fetching, community metadata parsing, connection pool, cursor lifecycle |
 | `test_browse.py` | 32 | Browse with all filter combinations, community filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
-| `test_auth.py` | 29 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
+| `test_auth.py` | 24 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
 | `test_api.py` | 21 | Health, categories, HTML page routes, GZip middleware, auth key enforcement, schema validation, 404s |
 | `test_internal.py` | 19 | Internal API endpoints (centroids, stream cursors) |
 | `test_comments.py` | 19 | Hierarchical comment tree, multi-level nesting, orphaned comments, reputation filtering, cache invalidation, rate limit cleanup |
@@ -466,7 +466,8 @@ combflow/combflow/
 │   ├── versions/
 │   │   ├── 001_initial_schema.py  # all tables + indexes (fresh install)
 │   │   ├── 002_add_title.py       # title column on posts
-│   │   └── 003_drop_thumbnail_url.py  # thumbnails now client-side only
+│   │   ├── 003_drop_thumbnail_url.py  # thumbnails now client-side only
+│   │   └── 004_drop_title.py          # title now client-side only
 │   └── verify_migration.py        # post-migration table verification
 ├── scripts/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification

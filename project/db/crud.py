@@ -133,8 +133,6 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
         post.sentiment_score = data.get("sentiment_score")
         if "community_id" in data:
             post.community_id = data["community_id"]
-        if "title" in data:
-            post.title = data["title"]
         # Clear old categories and languages.
         await session.execute(
             text("DELETE FROM post_category WHERE post_id = :pid"),
@@ -153,7 +151,6 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
             sentiment=data.get("sentiment"),
             sentiment_score=data.get("sentiment_score"),
             community_id=data.get("community_id"),
-            title=data.get("title"),
         )
         session.add(post)
         await session.flush()
@@ -196,7 +193,6 @@ async def get_post_by_permlink(
             """
             SELECT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   p.title,
                    cm.community_name
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
@@ -427,7 +423,6 @@ async def browse_posts(
             f"""
             SELECT DISTINCT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   p.title,
                    cm.community_name
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
