@@ -56,7 +56,6 @@ async function fetchNotifications() {
 function renderNotifications(items, lastRead) {
   const list = document.getElementById('notif-list');
   if (!list) return;
-  // Clear existing items (preserve Alpine templates if any)
   list.querySelectorAll(':scope > *').forEach(el => el.remove());
   if (!items || items.length === 0) return;
   const lastReadTime = lastRead ? new Date(lastRead + 'Z').getTime() : 0;
@@ -64,16 +63,49 @@ function renderNotifications(items, lastRead) {
   items.forEach(n => {
     const itemTime = new Date(n.date + 'Z').getTime();
     const isUnread = itemTime > lastReadTime;
+    // Extract author from msg (starts with @username) or url (@author/permlink)
+    const msgMatch = n.msg && n.msg.match(/^@([^\s]+)/);
+    const urlMatch = n.url && n.url.match(/^@?([^/]+)/);
+    const notifAuthor = (msgMatch && msgMatch[1]) || (urlMatch && urlMatch[1]) || '';
+    // url from API is already "@author/permlink"
+    const postUrl = n.url ? '/' + (n.url.startsWith('@') ? n.url : '@' + n.url) : '#';
     const row = document.createElement('a');
     row.className = 'notif-item' + (isUnread ? ' unread' : '');
-    row.href = n.url ? '/@' + n.url : '#';
+    row.href = postUrl;
+    // Replace @username in msg with avatar + clickable link
+    let msgHtml = esc(n.msg);
+    if (notifAuthor) {
+      const avatarImg = avatarHtml(notifAuthor, 16);
+      msgHtml = msgHtml.replace('@' + esc(notifAuthor), '<span class="notif-author" data-author="' + esc(notifAuthor) + '">' + avatarImg + '@' + esc(notifAuthor) + '</span>');
+    }
     row.innerHTML =
       '<span class="notif-icon">' + notifTypeIcon(n.type) + '</span>' +
-      '<span class="notif-body"><span class="notif-msg">' + esc(n.msg) + '</span>' +
-      '<span class="notif-time">' + relativeTime(n.date) + '</span></span>';
+      '<span class="notif-msg">' + msgHtml + '</span>' +
+      '<span class="notif-time">' + relativeTime(n.date) + '</span>';
+    // Username click goes to profile, not the post
+    const authorEl = row.querySelector('.notif-author');
+    if (authorEl) {
+      authorEl.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.location.href = '/@' + authorEl.dataset.author;
+      });
+    }
     frag.appendChild(row);
   });
   list.appendChild(frag);
+}
+
+function notifTypeLabel(type) {
+  switch (type) {
+    case 'vote': return 'Vote';
+    case 'reply': return 'Reply';
+    case 'reply_comment': return 'Reply';
+    case 'follow': return 'Follow';
+    case 'mention': return 'Mention';
+    case 'reblog': return 'Reblog';
+    default: return type || 'Notification';
+  }
 }
 
 async function markAllRead() {

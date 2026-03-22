@@ -6,7 +6,7 @@ async function openModal(post, skipPush) {
                       '', `/@${post.author}/${post.permlink}`);
   }
   document.getElementById('modal-title').textContent = 'Loading...';
-  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="28" height="28"><a class="clickable-author" href="/@${esc(post.author)}">@${esc(post.author)}</a>`;
+  document.getElementById('modal-author').innerHTML = `${avatarHtml(post.author, 28)}<a class="clickable-author" href="/@${esc(post.author)}">@${esc(post.author)}</a>`;
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;

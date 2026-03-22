@@ -165,12 +165,12 @@ body{overflow-x:hidden}
 .loading-more{text-align:center;padding:24px;color:var(--text-dim);font-size:13px}
 .loading-more .spinner{width:28px;height:28px;border:3px solid var(--card);border-top-color:var(--hive-red);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px}
 
-/* ── Custom scrollbar ─── */
-.modal{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
-.modal::-webkit-scrollbar{width:8px}
-.modal::-webkit-scrollbar-track{background:transparent}
-.modal::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px}
-.modal::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.25)}
+/* ── Custom scrollbar (standard) ─── */
+.custom-scroll,.modal,.notif-list{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
+.custom-scroll::-webkit-scrollbar,.modal::-webkit-scrollbar,.notif-list::-webkit-scrollbar{width:8px}
+.custom-scroll::-webkit-scrollbar-track,.modal::-webkit-scrollbar-track,.notif-list::-webkit-scrollbar-track{background:transparent}
+.custom-scroll::-webkit-scrollbar-thumb,.modal::-webkit-scrollbar-thumb,.notif-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px}
+.custom-scroll::-webkit-scrollbar-thumb:hover,.modal::-webkit-scrollbar-thumb:hover,.notif-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.25)}
 
 /* ── Post modal ─── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -520,12 +520,16 @@ body{overflow-x:hidden}
 .notif-header .btn-ghost{background:none;border:none;color:var(--hive-red);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px;transition:background .15s}
 .notif-header .btn-ghost:hover{background:#ffffff10}
 .notif-list{max-height:400px;overflow-y:auto}
-.notif-item{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;cursor:pointer;transition:background .15s;border-bottom:1px solid #ffffff08;text-decoration:none;color:inherit}
+.notif-item{display:flex;align-items:center;gap:0;padding:8px 12px;cursor:pointer;transition:background .15s;border-bottom:1px solid #ffffff08;text-decoration:none;color:inherit}
 .notif-item:hover{background:var(--bg2)}
 .notif-item.unread{background:rgba(227,19,55,.06)}
-.notif-icon{width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#ffffff10;font-size:14px;color:var(--text-dim)}
-.notif-body{flex:1;display:flex;flex-direction:column;gap:2px}
-.notif-msg{font-size:13px;color:var(--text);line-height:1.4}
-.notif-time{font-size:11px;color:var(--text-dim)}
+.notif-icon{flex-shrink:0;display:flex;align-items:center;color:var(--text-dim);margin-right:10px}
+.notif-icon svg{width:16px;height:16px}
+.notif-author{color:var(--text);font-weight:600;text-decoration:none;white-space:nowrap}
+.notif-author{cursor:pointer}
+.notif-author:hover{text-decoration:underline}
+.notif-author .author-avatar{vertical-align:middle;margin-right:2px}
+.notif-msg{flex:1;min-width:0;font-size:13px;color:var(--text);line-height:1.5}
+.notif-time{font-size:11px;color:var(--text-dim);flex-shrink:0;white-space:nowrap;margin-left:6px}
 .notif-empty{padding:32px 16px;text-align:center;color:var(--text-dim);font-size:13px}
 @media(max-width:768px){.notif-dropdown{width:calc(100vw - 32px);right:-60px}}

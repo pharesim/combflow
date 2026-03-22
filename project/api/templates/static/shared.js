@@ -140,6 +140,11 @@ function esc(s) {
   return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function avatarHtml(author, size) {
+  size = size || 16;
+  return '<img class="author-avatar" src="https://images.hive.blog/u/' + encodeURIComponent(author) + '/avatar/small" alt="" width="' + size + '" height="' + size + '">';
+}
+
 // ── Focus trap for modals ──
 function trapFocus(container) {
   container._prevFocus = document.activeElement;
