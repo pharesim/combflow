@@ -95,11 +95,22 @@ async function fetchSingleMeta(p, retries = 2) {
       u.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[\])].*$/, ''));
     if (!images.length && result.body) {
       const body = result.body;
-      const mdMatch = body.match(/!\[[^\]]*\]\(([^)]+)\)/);
-      const imgTagMatch = body.match(/<img[^>]+src=["']([^"']+)["']/i);
-      const hostRe = /https?:\/\/(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|usermedia\.actifit\.io|images\.3speak\.tv|cdn\.steemitimages\.com)\/[^\s"'<>)]+/i;
-      const extRe = /https?:\/\/[^\s"'<>)]+\.(?:jpg|jpeg|png|gif|webp|svg)/i;
-      const found = mdMatch ? mdMatch[1] : (imgTagMatch ? imgTagMatch[1] : ((body.match(hostRe) || body.match(extRe) || [])[0] || ''));
+      // Collect all candidate image URLs from the body
+      const candidates = [];
+      // Markdown images: ![alt](url)
+      for (const m of body.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) candidates.push(m[1]);
+      // HTML img tags
+      for (const m of body.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) candidates.push(m[1]);
+      // Bare image URLs on their own line (common Hive pattern)
+      for (const m of body.matchAll(/^\s*(https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp|svg))\s*$/gim)) candidates.push(m[1]);
+      // Known Hive image hosts anywhere in text
+      const hostRe = /https?:\/\/(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|usermedia\.actifit\.io|images\.3speak\.tv|cdn\.steemitimages\.com|img\.leopedia\.io)\/[^\s"'<>)]+/gi;
+      for (const m of body.matchAll(hostRe)) candidates.push(m[0]);
+      // URLs with image extensions anywhere
+      for (const m of body.matchAll(/https?:\/\/[^\s"'<>)]+\.(?:jpg|jpeg|png|gif|webp|svg)/gi)) candidates.push(m[0]);
+      // Prefer non-gif, then fall back to gif
+      const nonGif = candidates.find(u => !/\.gif$/i.test(u));
+      const found = nonGif || candidates[0] || '';
       if (found) images = [found];
     }
     if (!images.length && result.body) {
