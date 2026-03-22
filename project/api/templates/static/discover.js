@@ -27,6 +27,7 @@ const MUTED_KEY = 'honeycomb_muted';
 let _followedUsers = new Set();
 const FOLLOWED_KEY = 'honeycomb_followed';
 let _followingFilterActive = false;
+let _myPostsActive = false;
 
 // Endless scrolling state
 const PAGE_SIZE = 60;
@@ -752,7 +753,10 @@ function buildFilterUrl(limit, offset) {
   let url = `/api/browse?limit=${limit}&offset=${offset}`;
   cats.forEach(c => url += `&category=${encodeURIComponent(c)}`);
   langs.forEach(l => url += `&language=${encodeURIComponent(l)}`);
-  if (_followingFilterActive && _followedUsers.size > 0) {
+  if (_myPostsActive) {
+    const auth = getStoredAuth();
+    if (auth) url += `&authors=${encodeURIComponent(auth.username)}`;
+  } else if (_followingFilterActive && _followedUsers.size > 0) {
     _followedUsers.forEach(u => url += `&authors=${encodeURIComponent(u)}`);
   } else if (_myCommunitiesActive && _userCommunities && _userCommunities.length > 0) {
     _userCommunities.forEach(c => url += `&communities=${encodeURIComponent(c.id)}`);
@@ -920,6 +924,7 @@ function resetFilters() {
     c.setAttribute('aria-pressed', 'false');
   });
   _activeCommunityFilter = null;
+  _myPostsActive = false;
   setMyCommunitiesActive(false);
   setFollowingActive(false);
   updateSuggestionActiveState();
@@ -1274,7 +1279,7 @@ const LIVE_INTERVAL = 30000;
 let newestCreated = null;
 
 function hasActiveFilters() {
-  return document.querySelectorAll('.chip.active').length > 0 || _followingFilterActive;
+  return document.querySelectorAll('.chip.active').length > 0 || _followingFilterActive || _myPostsActive;
 }
 
 async function pollNewPosts() {
@@ -1705,9 +1710,18 @@ function renderAuthUI() {
   if (auth) {
     area.innerHTML =
       '<button type="button" class="auth-login" onclick="openEditor()" style="background:var(--hive-red);color:#fff;border-color:var(--hive-red);padding:6px 10px" title="Write Post"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>' +
-      '<span class="auth-user"><img class="auth-avatar" src="https://images.hive.blog/u/' + encodeURIComponent(auth.username) + '/avatar/small" alt="" width="22" height="22">@' + esc(auth.username) + '</span>' +
-      '<a class="auth-settings" href="#" onclick="showSettingsModal();return false" title="Filter preferences">Settings</a>' +
-      '<a class="auth-logout" href="#" onclick="doLogout();return false">Logout</a>';
+      '<div class="auth-dropdown">' +
+        '<button type="button" class="auth-dropdown-toggle" onclick="toggleAuthDropdown()">' +
+          '<img class="auth-avatar" src="https://images.hive.blog/u/' + encodeURIComponent(auth.username) + '/avatar/small" alt="" width="22" height="22">' +
+          '<span class="auth-username">@' + esc(auth.username) + '</span>' +
+          '<span class="auth-caret">&#9660;</span>' +
+        '</button>' +
+        '<div class="auth-dropdown-menu" id="auth-dropdown-menu">' +
+          '<a href="#" onclick="toggleMyPosts();closeAuthDropdown();return false">My Posts</a>' +
+          '<a href="#" onclick="showSettingsModal();closeAuthDropdown();return false">Settings</a>' +
+          '<a href="#" onclick="doLogout();return false">Logout</a>' +
+        '</div>' +
+      '</div>';
     document.getElementById('btn-save-prefs').style.display = '';
     document.getElementById('my-communities-toggle').style.display = '';
     document.getElementById('following-toggle').style.display = '';
@@ -1718,6 +1732,29 @@ function renderAuthUI() {
     document.getElementById('my-communities-toggle').style.display = 'none';
     document.getElementById('following-toggle').style.display = 'none';
   }
+}
+
+function toggleAuthDropdown() {
+  document.getElementById('auth-dropdown-menu').classList.toggle('open');
+}
+function closeAuthDropdown() {
+  document.getElementById('auth-dropdown-menu').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  const dd = document.querySelector('.auth-dropdown');
+  if (dd && !dd.contains(e.target)) closeAuthDropdown();
+});
+
+function toggleMyPosts() {
+  _myPostsActive = !_myPostsActive;
+  if (_myPostsActive) {
+    setMyCommunitiesActive(false);
+    setFollowingActive(false);
+    _activeCommunityFilter = null;
+    syncCommunityChips();
+    updateSuggestionActiveState();
+  }
+  scheduleFilter();
 }
 
 function showLoginPrompt() {
@@ -1882,7 +1919,10 @@ function isFirstLogin(prefs) {
   if (!prefs) return false;
   return (!prefs.default_categories || prefs.default_categories.length === 0)
       && (!prefs.default_languages || prefs.default_languages.length === 0)
-      && !prefs.default_sentiment;
+      && !prefs.default_sentiment
+      && prefs.voteFloor == null
+      && prefs.voteMaxWeight == null
+      && prefs.voteManual == null;
 }
 
 // Wire settings modal chip handlers once
