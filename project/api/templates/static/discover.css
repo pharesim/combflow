@@ -161,7 +161,7 @@ body{overflow-x:hidden}
 .modal-close:hover{color:#fff}
 .modal h2{font-size:22px;margin-bottom:8px;color:#fff}
 .modal-meta{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.modal-author{color:var(--hive-red);font-size:14px}
+.modal-author{color:var(--hive-red);font-size:14px;display:inline-flex;align-items:center;gap:4px}
 .modal-date{color:var(--text-dim);font-size:13px}
 .modal-body{margin-bottom:16px}
 .modal-body h1,.modal-body h2,.modal-body h3,.modal-body h4{margin:16px 0 8px}
@@ -426,3 +426,33 @@ body{overflow-x:hidden}
 
 /* Bottom padding so footer doesn't overlap content */
 .scroll-sentinel{margin-bottom:36px}
+
+/* ── Vote button (heart) ── */
+.vote-btn{background:none;border:none;cursor:pointer;padding:4px;color:var(--text-dim);transition:all .2s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.vote-btn svg{fill:none;stroke:currentColor;stroke-width:1.5}
+.vote-btn:hover{color:var(--hive-red)}
+.vote-btn:hover svg{fill:rgba(227,19,55,0.2)}
+.vote-btn.voted{color:var(--hive-red)}
+.vote-btn.voted svg{fill:var(--hive-red);stroke:var(--hive-red)}
+.vote-btn:disabled{opacity:.5;cursor:not-allowed}
+.post-card{position:relative}
+.post-card .vote-btn{position:absolute;bottom:10px;right:10px;z-index:2}
+.list-row .vote-btn{margin-left:auto}
+.modal-vote-btn{padding:6px}
+.modal-vote-btn svg{width:22px;height:22px}
+
+/* ── Mute button ── */
+.mute-btn{background:none;border:1px solid #ffffff20;color:var(--text-dim);padding:4px 12px;border-radius:12px;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.mute-btn:hover{color:#e74c3c;border-color:#e74c3c}
+
+/* ── Vote settings sliders ── */
+.settings-slider-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.settings-slider-row label{font-size:13px;color:var(--text-dim);min-width:120px;text-transform:none;letter-spacing:0}
+.settings-slider-row input[type="range"]{flex:1;accent-color:var(--hive-red);height:6px}
+.settings-slider-val{font-size:13px;color:var(--text);min-width:40px;text-align:right}
+
+/* ── Muted users list ── */
+.muted-user-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ffffff08}
+.muted-user-item:last-child{border-bottom:none}
+.muted-user-name{font-size:13px;color:var(--hive-red)}
+.muted-user-unmute{padding:4px 10px;font-size:11px}

@@ -605,7 +605,7 @@ class TestPersistCommunityMapping:
     def test_persists_on_first_encounter(self):
         from project.worker.hive import _persist_community_mapping
         mock_db = MagicMock()
-        mock_db.run = MagicMock()
+        mock_db.run = MagicMock(side_effect=lambda coro: coro.close())
         _persist_community_mapping(mock_db, "hive-100", "crypto", "CryptoComm", 0.55)
         mock_db.run.assert_called_once()
 
@@ -613,7 +613,10 @@ class TestPersistCommunityMapping:
         """DB write failure should log warning, not crash."""
         from project.worker.hive import _persist_community_mapping
         mock_db = MagicMock()
-        mock_db.run.side_effect = Exception("DB down")
+        def _run_and_fail(coro):
+            coro.close()
+            raise Exception("DB down")
+        mock_db.run.side_effect = _run_and_fail
         # Should not raise.
         _persist_community_mapping(mock_db, "hive-200", "food", "Foodies", 0.45)
 

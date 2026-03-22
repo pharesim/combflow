@@ -138,7 +138,10 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Comment posting** — logged-in users can post comments and replies via Hive Keychain, with 3-second cooldown and cache invalidation
 - **Post authoring** — pen icon opens a full editor with title, preview description (120 chars, stored in `json_metadata.description`), markdown body with formatting toolbar (bold, italic, headings, links, images, lists, quotes, code blocks, tables, center, @mentions — plus Ctrl+B/I/K shortcuts), markdown help modal, tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
 - **Location picker** — map button in the editor opens a Leaflet/OpenStreetMap modal; click to place a pin or use "My Location" (browser geolocation). Reverse geocoding via Nominatim auto-fills the location name. Inserts a worldmappin-compatible hidden tag in the post body
-- **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with PeakD link
+- **Upvoting** — heart button on posts (card, list, and modal views). Dynamic vote weight adjusts automatically based on voting mana with configurable floor (default 50%) and max weight (default 25%) — users never run out of votes. Settings saved on-chain.
+- **Mute users** — mute button in post modal broadcasts Hive-native mute via Keychain. Muted users' posts are hidden client-side. Unmute available in settings. Muted list synced from chain on login.
+- **Profile avatars** — Hive profile pictures shown next to usernames in header, cards, list rows, and post modal
+- **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with hivel.ink link
 - **Community discovery** — suggestions bar shows related communities when category filters are active; logged-in users can join/leave communities directly via Keychain
 - **My Communities filter** — logged-in users can toggle a "My Communities" filter to show only posts from communities they've joined on Hive
 - **Lazy thumbnails** — loaded on-demand as hexes enter the viewport

@@ -14,6 +14,15 @@ let _activeCommunityFilter = null; // active community filter (community id)
 let _myCommunitiesActive = false; // "My Communities" multi-filter toggle
 let _userCommunities = null; // from bridge.list_all_subscriptions (for editor)
 
+// Voting state
+let _votedPosts = {}; // { "author/permlink": true } — sessionStorage-backed
+let _manaCache = null; // { manaPercent, fetchedAt }
+const MANA_CACHE_TTL = 60000; // 60s
+
+// Mute state
+let _mutedUsers = new Set(); // localStorage-backed for instant filtering
+const MUTED_KEY = 'honeycomb_muted';
+
 // Endless scrolling state
 const PAGE_SIZE = 60;
 
@@ -220,8 +229,154 @@ function updateResultsBar() {
   bar.textContent = `Showing ${allPosts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
 }
 
+// ── Voting ──
+function loadVotedPosts() {
+  try { _votedPosts = JSON.parse(sessionStorage.getItem('honeycomb_voted') || '{}'); } catch(e) { _votedPosts = {}; }
+}
+function saveVotedPost(key) {
+  _votedPosts[key] = true;
+  sessionStorage.setItem('honeycomb_voted', JSON.stringify(_votedPosts));
+}
+
+async function fetchManaPercent() {
+  if (_manaCache && Date.now() - _manaCache.fetchedAt < MANA_CACHE_TTL) return _manaCache.manaPercent;
+  const auth = getStoredAuth();
+  if (!auth) return 100;
+  const accounts = await hiveRpc('condenser_api.get_accounts', [[auth.username]]);
+  const account = accounts?.[0];
+  if (!account) return 100;
+  const vestingShares = parseFloat(account.vesting_shares);
+  const delegatedIn = parseFloat(account.received_vesting_shares || '0');
+  const delegatedOut = parseFloat(account.delegated_vesting_shares || '0');
+  const maxMana = (vestingShares + delegatedIn - delegatedOut) * 1e6;
+  const currentMana = computeCurrentMana(account.voting_manabar, maxMana);
+  const pct = manaToPercent(currentMana, maxMana);
+  _manaCache = { manaPercent: pct, fetchedAt: Date.now() };
+  return pct;
+}
+
+function getVotePrefs() {
+  // Read from on-chain prefs cached in settings, or use defaults
+  return {
+    floor: Number(localStorage.getItem('honeycomb_voteFloor') || 50),
+    maxWeight: Number(localStorage.getItem('honeycomb_voteMaxWeight') || 25),
+  };
+}
+
+async function handleVote(author, permlink, btn) {
+  const auth = getStoredAuth();
+  if (!auth) { showLoginPrompt(); return; }
+  const key = `${author}/${permlink}`;
+  if (_votedPosts[key]) { showToast('Already voted', 'info'); return; }
+
+  btn.disabled = true;
+  try {
+    const manaPercent = await fetchManaPercent();
+    const prefs = getVotePrefs();
+    const weight = calculateVoteWeight(manaPercent, prefs.floor, prefs.maxWeight);
+    if (weight === 0) {
+      showToast('Voting power too low, try again later', 'info');
+      btn.disabled = false;
+      return;
+    }
+    await broadcastVote(author, permlink, weight);
+    saveVotedPost(key);
+    // Invalidate mana cache since we just voted
+    _manaCache = null;
+    // Update all heart icons for this post
+    document.querySelectorAll(`.vote-btn[data-vote-key="${CSS.escape(key)}"]`).forEach(el => {
+      el.classList.add('voted');
+      el.setAttribute('aria-label', 'Voted');
+    });
+    showToast('Voted!', 'success');
+  } catch(e) {
+    showToast(e.message || 'Vote failed', 'error');
+  }
+  btn.disabled = false;
+}
+
+// Check if user already voted on a post (from bridge.get_post active_votes)
+function checkExistingVote(postResult, username) {
+  if (!postResult || !username) return false;
+  const votes = postResult.active_votes || [];
+  return votes.some(v => v.voter === username);
+}
+
+// ── Muting ──
+function loadMutedUsers() {
+  try { _mutedUsers = new Set(JSON.parse(localStorage.getItem(MUTED_KEY) || '[]')); } catch(e) { _mutedUsers = new Set(); }
+}
+function saveMutedUsers() {
+  localStorage.setItem(MUTED_KEY, JSON.stringify(Array.from(_mutedUsers)));
+}
+
+async function fetchMutedList() {
+  const auth = getStoredAuth();
+  if (!auth) return;
+  try {
+    const result = await hiveRpc('bridge.get_relationship_between_accounts', [auth.username, '']);
+    // Fallback: use condenser_api.get_following with type 'ignore'
+  } catch(e) {}
+  // Use condenser_api approach
+  try {
+    let allMuted = [];
+    let start = '';
+    for (let i = 0; i < 10; i++) { // max 1000 muted users
+      const result = await hiveRpc('condenser_api.get_following', [getStoredAuth().username, start, 'ignore', 100]);
+      if (!result || result.length === 0) break;
+      allMuted = allMuted.concat(result.map(r => r.following));
+      if (result.length < 100) break;
+      start = result[result.length - 1].following;
+    }
+    _mutedUsers = new Set(allMuted);
+    saveMutedUsers();
+  } catch(e) {}
+}
+
+async function handleMuteUser(username) {
+  const auth = getStoredAuth();
+  if (!auth) { showLoginPrompt(); return; }
+  if (_mutedUsers.has(username)) { showToast(`@${username} is already muted`, 'info'); return; }
+
+  // Show confirmation
+  if (!confirm(`Mute @${username}? Their posts will be hidden.`)) return;
+
+  try {
+    await broadcastMute(username);
+    _mutedUsers.add(username);
+    saveMutedUsers();
+    showToast(`Muted @${username}`, 'success');
+    closeModal();
+    // Remove muted user's posts from view
+    allPosts = allPosts.filter(p => p.author !== username);
+    renderAll(allPosts, true);
+    updateResultsBar();
+  } catch(e) {
+    showToast(e.message || 'Could not mute user', 'error');
+  }
+}
+
+async function handleUnmuteUser(username) {
+  try {
+    await broadcastUnmute(username);
+    _mutedUsers.delete(username);
+    saveMutedUsers();
+    showToast(`Unmuted @${username}`, 'success');
+    renderMutedUsersList();
+  } catch(e) {
+    showToast(e.message || 'Could not unmute user', 'error');
+  }
+}
+
+function filterMutedPosts(posts) {
+  if (_mutedUsers.size === 0) return posts;
+  return posts.filter(p => !_mutedUsers.has(p.author));
+}
+
 // ── Init ──
 async function init() {
+  loadVotedPosts();
+  loadMutedUsers();
   showSkeletons();
 
   let statsRes, catsRes, langsRes, postsRes, communitiesRes;
@@ -346,6 +501,7 @@ async function init() {
 
   // Auth UI + preferences
   renderAuthUI();
+  if (getStoredAuth()) fetchMutedList(); // background fetch
   await loadAndApplyPreferences();
 
   // Fetch suggestions based on active categories (from preferences or manual)
@@ -355,7 +511,7 @@ async function init() {
   if (document.querySelectorAll('.chip.active').length > 0) {
     await applyFilters();
   } else {
-    allPosts = postsRes.posts || [];
+    allPosts = filterMutedPosts(postsRes.posts || []);
     currentOffset = allPosts.length;
     noMorePosts = allPosts.length < PAGE_SIZE;
     if (allPosts.length > 0) newestCreated = allPosts[0].created;
@@ -606,6 +762,7 @@ async function applyFilters() {
     if (sentiments.length > 1) {
       allPosts = allPosts.filter(p => sentiments.includes(p.sentiment));
     }
+    allPosts = filterMutedPosts(allPosts);
     currentOffset = allPosts.length;
     noMorePosts = allPosts.length < PAGE_SIZE;
     seedMetaFromServer(allPosts);
@@ -642,6 +799,7 @@ async function loadMore() {
     if (sentiments.length > 1) {
       newPosts = newPosts.filter(p => sentiments.includes(p.sentiment));
     }
+    newPosts = filterMutedPosts(newPosts);
     if (newPosts.length < PAGE_SIZE) noMorePosts = true;
     _lastCursor = data.next_cursor || null;
     if (newPosts.length > 0) {
@@ -752,15 +910,17 @@ function renderCards(posts, container) {
     });
 
     const noThumbStyle = `background:linear-gradient(135deg,${borderColor}22 0%,var(--bg2) 60%)`;
+    const voted = _votedPosts[key];
     card.innerHTML = `
       <div class="post-card-thumb${thumb ? '' : ' no-thumb'}" ${thumb ? `data-thumb="${safeCssUrl(thumb)}"` : `style="${noThumbStyle}"`}>
         ${thumb ? '' : `<span>@${esc(p.author)}</span>`}
       </div>
       <div class="post-card-body">
         <div class="post-card-title">${esc(title)}</div>
-        <div class="post-card-author">@${esc(p.author)}${p.created ? ' · ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''}</div>
+        <div class="post-card-author"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="18" height="18">@${esc(p.author)}${p.created ? ' · ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''}</div>
         <div class="post-card-meta">${tagsHtml}</div>
-      </div>`;
+      </div>
+      <button type="button" class="vote-btn${voted ? ' voted' : ''}" data-vote-key="${esc(key)}" aria-label="${voted ? 'Voted' : 'Vote'}" onclick="event.preventDefault();event.stopPropagation();handleVote('${esc(p.author)}','${esc(p.permlink)}',this)"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>`;
     container.appendChild(card);
     // Lazy-load thumbnail
     const thumbEl = card.querySelector('[data-thumb]');
@@ -794,14 +954,16 @@ function renderList(posts, container) {
     }
     catLabel.forEach(c => { tagsHtml += `<span class="tag">${esc(c)}</span>`; });
 
+    const voted = _votedPosts[key];
     row.innerHTML = `
       <div class="list-thumb" ${thumb ? `data-thumb="${safeCssUrl(thumb)}"` : ''}>
         ${thumb ? '' : `<span>@${esc(p.author).slice(0,2)}</span>`}
       </div>
       <div class="list-content">
         <div class="list-title">${esc(title)}</div>
-        <div class="list-meta">@${esc(p.author)} · ${p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''} ${tagsHtml}</div>
-      </div>`;
+        <div class="list-meta"><img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(p.author)}/avatar/small" alt="" width="16" height="16">@${esc(p.author)} · ${p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : ''} ${tagsHtml}</div>
+      </div>
+      <button type="button" class="vote-btn${voted ? ' voted' : ''}" data-vote-key="${esc(key)}" aria-label="${voted ? 'Voted' : 'Vote'}" onclick="event.preventDefault();event.stopPropagation();handleVote('${esc(p.author)}','${esc(p.permlink)}',this)"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>`;
     container.appendChild(row);
     const thumbEl = row.querySelector('[data-thumb]');
     if (thumbEl) thumbObserver.observe(thumbEl);
@@ -925,9 +1087,9 @@ async function pollNewPosts() {
       fetch('/api/stats').then(r => r.json()),
     ]);
     totalPostCount = statsData.total_posts || totalPostCount;
-    const fresh = (browseData.posts || []).filter(p =>
+    const fresh = filterMutedPosts((browseData.posts || []).filter(p =>
       p.created > newestCreated && !allPosts.some(e => e.id === p.id)
-    );
+    ));
     if (fresh.length > 0) {
       seedMetaFromServer(fresh);
       allPosts = fresh.concat(allPosts);
@@ -1204,7 +1366,7 @@ async function openModal(post, skipPush) {
                       '', `/@${post.author}/${post.permlink}`);
   }
   document.getElementById('modal-title').textContent = 'Loading...';
-  document.getElementById('modal-author').textContent = `@${post.author}`;
+  document.getElementById('modal-author').innerHTML = `<img class="author-avatar" src="https://images.hive.blog/u/${encodeURIComponent(post.author)}/avatar/small" alt="" width="24" height="24">@${esc(post.author)}`;
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;
@@ -1235,9 +1397,27 @@ async function openModal(post, skipPush) {
   });
 
   document.getElementById('modal-score').textContent = '';
-  document.getElementById('modal-peakd-link').href = `https://peakd.com/@${post.author}/${post.permlink}`;
-  document.getElementById('modal-ecency-link').href = `https://ecency.com/@${post.author}/${post.permlink}`;
-  document.getElementById('modal-hiveblog-link').href = `https://hive.blog/@${post.author}/${post.permlink}`;
+  document.getElementById('modal-hivelink').href = `https://hivel.ink/@${post.author}/${post.permlink}`;
+
+  // Vote button in modal
+  const voteKey = `${post.author}/${post.permlink}`;
+  const modalVoteBtn = document.getElementById('modal-vote-btn');
+  modalVoteBtn.className = 'vote-btn modal-vote-btn' + (_votedPosts[voteKey] ? ' voted' : '');
+  modalVoteBtn.setAttribute('data-vote-key', voteKey);
+  modalVoteBtn.setAttribute('aria-label', _votedPosts[voteKey] ? 'Voted' : 'Vote');
+  modalVoteBtn.onclick = () => handleVote(post.author, post.permlink, modalVoteBtn);
+
+  // Mute button in modal
+  const muteBtn = document.getElementById('modal-mute-btn');
+  const auth = getStoredAuth();
+  if (auth && auth.username !== post.author) {
+    muteBtn.textContent = `Mute @${post.author}`;
+    muteBtn.onclick = () => handleMuteUser(post.author);
+    muteBtn.style.display = '';
+  } else {
+    muteBtn.style.display = 'none';
+  }
+
   const modalEl = document.getElementById('modal');
   modalEl.classList.add('open');
   trapFocus(modalEl.querySelector('.modal'));
@@ -1249,6 +1429,14 @@ async function openModal(post, skipPush) {
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');
+    // Check if user already voted
+    if (auth && checkExistingVote(result, auth.username) && !_votedPosts[voteKey]) {
+      saveVotedPost(voteKey);
+      document.querySelectorAll(`.vote-btn[data-vote-key="${CSS.escape(voteKey)}"]`).forEach(el => {
+        el.classList.add('voted');
+        el.setAttribute('aria-label', 'Voted');
+      });
+    }
   }
   if (!result) {
     document.getElementById('modal-title').textContent = post.permlink;
@@ -1289,7 +1477,7 @@ function renderAuthUI() {
   if (auth) {
     area.innerHTML =
       '<button type="button" class="auth-login" onclick="openEditor()" style="background:var(--hive-red);color:#fff;border-color:var(--hive-red);padding:6px 10px" title="Write Post"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></button>' +
-      '<span class="auth-user">@' + esc(auth.username) + '</span>' +
+      '<span class="auth-user"><img class="auth-avatar" src="https://images.hive.blog/u/' + encodeURIComponent(auth.username) + '/avatar/small" alt="" width="22" height="22">@' + esc(auth.username) + '</span>' +
       '<a class="auth-settings" href="#" onclick="showSettingsModal();return false" title="Filter preferences">Settings</a>' +
       '<a class="auth-logout" href="#" onclick="doLogout();return false">Logout</a>';
     document.getElementById('btn-save-prefs').style.display = '';
@@ -1337,6 +1525,7 @@ async function doLogin() {
     await loginWithKeychain(input);
     closeLogin();
     renderAuthUI();
+    fetchMutedList(); // background fetch
     const prefs = await loadAndApplyPreferences();
     if (isFirstLogin(prefs)) {
       showSettingsModal();
@@ -1353,7 +1542,10 @@ async function doLogin() {
 async function doLogout() {
   await logout();
   sessionStorage.removeItem('honeycomb_user_communities');
+  sessionStorage.removeItem('honeycomb_voted');
   _userCommunities = null;
+  _votedPosts = {};
+  _manaCache = null;
   setMyCommunitiesActive(false);
   renderAuthUI();
   resetFilters();
@@ -1376,6 +1568,9 @@ async function loadAndApplyPreferences() {
 }
 
 function applyPreferenceFilters(prefs) {
+  // Cache vote settings locally
+  if (prefs.voteFloor != null) localStorage.setItem('honeycomb_voteFloor', prefs.voteFloor);
+  if (prefs.voteMaxWeight != null) localStorage.setItem('honeycomb_voteMaxWeight', prefs.voteMaxWeight);
   // Activate category chips
   (prefs.default_categories || []).forEach(cat => {
     const chip = document.querySelector('#cat-chips .chip[data-cat="' + CSS.escape(cat) + '"]');
@@ -1567,6 +1762,21 @@ async function showSettingsModal() {
     c.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
 
+  // Set vote settings
+  const voteFloorInput = document.getElementById('settings-vote-floor');
+  const voteMaxInput = document.getElementById('settings-vote-max');
+  if (voteFloorInput) {
+    const vf = savedPrefs.voteFloor != null ? savedPrefs.voteFloor : 50;
+    const vm = savedPrefs.voteMaxWeight != null ? savedPrefs.voteMaxWeight : 25;
+    voteFloorInput.value = vf;
+    document.getElementById('settings-vote-floor-val').textContent = vf + '%';
+    voteMaxInput.value = vm;
+    document.getElementById('settings-vote-max-val').textContent = vm + '%';
+  }
+
+  // Render muted users
+  renderMutedUsersList();
+
   wireSettingsOnce();
 
   modal.classList.add('open');
@@ -1590,11 +1800,18 @@ async function saveSettings() {
       if (account) {
         let postingMeta = {};
         try { postingMeta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
+        const voteFloor = Number(document.getElementById('settings-vote-floor').value);
+        const voteMax = Number(document.getElementById('settings-vote-max').value);
         const prefs = {
           default_categories: cats,
           default_languages: langs,
           default_sentiment: sentiments.length === 1 ? sentiments[0] : null,
+          voteFloor: voteFloor,
+          voteMaxWeight: voteMax,
         };
+        // Cache vote prefs locally for immediate use
+        localStorage.setItem('honeycomb_voteFloor', voteFloor);
+        localStorage.setItem('honeycomb_voteMaxWeight', voteMax);
         postingMeta.combflow = prefs;
         const ops = [['account_update2', {
           account: auth.username,
@@ -1634,14 +1851,45 @@ function closeSettingsModal() {
   modal.classList.remove('open');
 }
 
+// ── Muted users list (in settings modal) ──
+function renderMutedUsersList() {
+  const container = document.getElementById('settings-muted');
+  if (!container) return;
+  if (_mutedUsers.size === 0) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:13px">No muted users.</p>';
+    return;
+  }
+  container.innerHTML = '';
+  _mutedUsers.forEach(user => {
+    const item = document.createElement('div');
+    item.className = 'muted-user-item';
+    item.innerHTML = `<span class="muted-user-name">@${esc(user)}</span><button type="button" class="btn btn-ghost muted-user-unmute" onclick="handleUnmuteUser('${esc(user)}')">Unmute</button>`;
+    container.appendChild(item);
+  });
+}
+
 // ── Copy post link ──
 function copyPostLink() {
   const url = window.location.href;
-  navigator.clipboard.writeText(url).then(() => {
-    showToast('Link copied to clipboard', 'success');
-  }).catch(() => {
-    showToast('Could not copy link', 'error');
-  });
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('Link copied', 'success');
+    }).catch(() => _fallbackCopy(url));
+  } else {
+    _fallbackCopy(url);
+  }
+}
+function _fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('Link copied', 'success');
+  } catch { showToast('Could not copy link', 'error'); }
+  document.body.removeChild(ta);
 }
 
 // ── Community suggestions ──

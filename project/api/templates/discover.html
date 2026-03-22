@@ -131,6 +131,23 @@
         <button type="button" class="chip sentiment-negative" data-sentiment="negative" aria-pressed="false">Negative</button>
       </div>
     </div>
+    <div class="settings-section">
+      <h3 class="settings-section-title">Vote Settings</h3>
+      <div class="settings-slider-row">
+        <label for="settings-vote-floor">Mana floor</label>
+        <input type="range" id="settings-vote-floor" min="20" max="95" value="50" oninput="document.getElementById('settings-vote-floor-val').textContent=this.value+'%'">
+        <span class="settings-slider-val" id="settings-vote-floor-val">50%</span>
+      </div>
+      <div class="settings-slider-row">
+        <label for="settings-vote-max">Max vote weight</label>
+        <input type="range" id="settings-vote-max" min="1" max="100" value="25" oninput="document.getElementById('settings-vote-max-val').textContent=this.value+'%'">
+        <span class="settings-slider-val" id="settings-vote-max-val">25%</span>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h3 class="settings-section-title">Muted Users</h3>
+      <div id="settings-muted"></div>
+    </div>
     <div style="display:flex;gap:12px;margin-top:24px;justify-content:center">
       <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:12px 32px" onclick="saveSettings()">Save &amp; Start Browsing</button>
       <button type="button" class="btn btn-ghost" onclick="skipSettings()">Skip</button>
@@ -152,10 +169,11 @@
     <div class="modal-body rendered-body" id="modal-body"></div>
     <div class="modal-score" id="modal-score"></div>
     <div class="modal-actions">
-      <a id="modal-peakd-link" target="_blank" rel="noopener noreferrer">PeakD</a>
-      <a id="modal-ecency-link" target="_blank" rel="noopener noreferrer">Ecency</a>
-      <a id="modal-hiveblog-link" target="_blank" rel="noopener noreferrer">Hive.blog</a>
+      <button type="button" class="vote-btn modal-vote-btn" id="modal-vote-btn" aria-label="Vote"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>
+      <a id="modal-hivelink" target="_blank" rel="noopener noreferrer">Hivel.ink</a>
       <button type="button" class="copy-link" id="modal-copy-link" aria-label="Copy link to clipboard" onclick="copyPostLink()">Copy link</button>
+      <div style="flex:1"></div>
+      <button type="button" class="mute-btn" id="modal-mute-btn" style="display:none">Mute</button>
     </div>
     <div class="comments-section" id="comments-section">
       <div class="comments-header">

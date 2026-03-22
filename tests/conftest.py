@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://combflow:change_me@db/combflow_test")
-os.environ.setdefault("API_KEY", "test-secret-key")
+os.environ.setdefault("API_KEY", "test-secret-key-long-enough-for-hs256")
 
 from datetime import datetime, timedelta, timezone
 

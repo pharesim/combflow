@@ -71,6 +71,7 @@ async def test_verify_username_mismatch(client):
     assert "mismatch" in resp.json()["detail"].lower()
 
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 async def test_verify_invalid_signature(client):
     """Valid challenge but bad signature is rejected."""
     challenge = secrets.token_urlsafe(32)
@@ -152,9 +153,11 @@ async def test_me_with_valid_jwt(client):
 
 
 async def test_me_with_cookie(client):
-    resp = await client.get("/api/auth/me", cookies=jwt_cookies("alice"))
+    client.cookies.set(JWT_COOKIE_NAME, make_jwt("alice"))
+    resp = await client.get("/api/auth/me")
     assert resp.status_code == 200
     assert resp.json()["username"] == "alice"
+    client.cookies.clear()
 
 
 async def test_me_without_auth(client):
@@ -169,7 +172,7 @@ async def test_me_with_expired_jwt(client):
 
 
 async def test_me_with_tampered_jwt(client):
-    token = pyjwt.encode({"sub": "alice", "exp": 9999999999}, "wrong-secret", algorithm="HS256")
+    token = pyjwt.encode({"sub": "alice", "exp": 9999999999}, "wrong-secret-long-enough-for-hs256", algorithm="HS256")
     resp = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401
 
@@ -206,11 +209,12 @@ def test_jwt_secret_falls_back_to_api_key():
 async def test_me_bearer_preferred_over_cookie(client):
     """If both Bearer header and cookie are present, Bearer wins (cookie checked first)."""
     headers = jwt_headers("bearer-user")
-    cookies = jwt_cookies("cookie-user")
-    resp = await client.get("/api/auth/me", headers=headers, cookies=cookies)
+    client.cookies.set(JWT_COOKIE_NAME, make_jwt("cookie-user"))
+    resp = await client.get("/api/auth/me", headers=headers)
     assert resp.status_code == 200
     # Cookie is checked first per deps.py logic.
     assert resp.json()["username"] == "cookie-user"
+    client.cookies.clear()
 
 
 async def test_me_malformed_bearer(client):
@@ -279,7 +283,7 @@ async def test_jwt_wrong_algorithm(client):
     from datetime import datetime, timezone, timedelta
     token = pyjwt.encode(
         {"sub": "alice", "exp": datetime.now(timezone.utc) + timedelta(days=1)},
-        _jwt_secret(), algorithm="HS384",
+        "a" * 48, algorithm="HS384",
     )
     resp = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401

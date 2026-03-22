@@ -255,6 +255,107 @@ function unsubscribeCommunity(communityId) {
   });
 }
 
+// ── Hive Voting ──
+function broadcastVote(author, permlink, weight) {
+  return new Promise((resolve, reject) => {
+    const auth = getStoredAuth();
+    if (!auth) return reject(new Error('Not logged in'));
+    if (!isKeychainInstalled()) return reject(new Error('Hive Keychain not installed'));
+
+    const op = ['vote', {
+      voter: auth.username,
+      author: author,
+      permlink: permlink,
+      weight: weight,
+    }];
+
+    window.hive_keychain.requestBroadcast(auth.username, [op], 'Posting', (response) => {
+      if (response.success) {
+        resolve();
+      } else {
+        reject(new Error(response.message || 'Vote failed'));
+      }
+    });
+  });
+}
+
+// Voting mana calculation (client-side)
+// manabar: { current_mana, last_update_time } from condenser_api.get_accounts
+// maxMana: derived from vesting_shares
+function computeCurrentMana(manabar, maxMana) {
+  const now = Math.floor(Date.now() / 1000);
+  const elapsed = now - manabar.last_update_time;
+  const regen = elapsed * maxMana / 432000; // 5 days full recharge
+  return Math.min(Number(manabar.current_mana) + regen, maxMana);
+}
+
+function manaToPercent(currentMana, maxMana) {
+  if (!maxMana || maxMana <= 0) return 100;
+  return (currentMana / maxMana) * 100;
+}
+
+function calculateVoteWeight(manaPercent, floor, maxWeight) {
+  if (manaPercent <= floor) return 0;
+  const weight = ((manaPercent - floor) / (100 - floor)) * maxWeight;
+  // Clamp to minimum 1% (100 out of 10000) when above floor
+  return Math.max(100, Math.round(weight * 100));
+}
+
+// ── Hive Mute/Unmute ──
+function broadcastMute(targetUser) {
+  return new Promise((resolve, reject) => {
+    const auth = getStoredAuth();
+    if (!auth) return reject(new Error('Not logged in'));
+    if (!isKeychainInstalled()) return reject(new Error('Hive Keychain not installed'));
+
+    const op = ['custom_json', {
+      required_auths: [],
+      required_posting_auths: [auth.username],
+      id: 'follow',
+      json: JSON.stringify(['follow', {
+        follower: auth.username,
+        following: targetUser,
+        what: ['ignore'],
+      }]),
+    }];
+
+    window.hive_keychain.requestBroadcast(auth.username, [op], 'Posting', (response) => {
+      if (response.success) {
+        resolve();
+      } else {
+        reject(new Error(response.message || 'Mute failed'));
+      }
+    });
+  });
+}
+
+function broadcastUnmute(targetUser) {
+  return new Promise((resolve, reject) => {
+    const auth = getStoredAuth();
+    if (!auth) return reject(new Error('Not logged in'));
+    if (!isKeychainInstalled()) return reject(new Error('Hive Keychain not installed'));
+
+    const op = ['custom_json', {
+      required_auths: [],
+      required_posting_auths: [auth.username],
+      id: 'follow',
+      json: JSON.stringify(['follow', {
+        follower: auth.username,
+        following: targetUser,
+        what: [],
+      }]),
+    }];
+
+    window.hive_keychain.requestBroadcast(auth.username, [op], 'Posting', (response) => {
+      if (response.success) {
+        resolve();
+      } else {
+        reject(new Error(response.message || 'Unmute failed'));
+      }
+    });
+  });
+}
+
 // ── Read post tracking ──
 const READ_KEY = 'honeycomb_read';
 const READ_MAX = 500;
