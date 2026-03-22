@@ -238,7 +238,7 @@ function renderHiveBody(raw) {
   html = html.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (m, tag) =>
     _ALLOWED_HTML.has(tag.toLowerCase()) ? m : '');
   // Close unclosed <iframe> tags so they can't swallow subsequent content
-  html = html.replace(/<iframe\b[^>]*>/gi, '$&</iframe>');
+  html = html.replace(/<iframe\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, '$&</iframe>');
   const clean = sanitizeContent(html);
   const div = document.createElement('div');
   div.innerHTML = clean;
