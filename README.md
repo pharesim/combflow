@@ -275,13 +275,13 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-266 tests across 12 files:
+255 tests across 12 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `test_worker_utils.py` | 59 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
+| `test_browse.py` | 36 | Browse with all filter combinations, single + multi community filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
 | `test_hafsql.py` | 33 | Reputation conversion, comment fetching, community metadata parsing, connection pool, cursor lifecycle |
-| `test_browse.py` | 32 | Browse with all filter combinations, community filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
 | `test_auth.py` | 24 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
 | `test_api.py` | 21 | Health, categories, HTML page routes, GZip middleware, auth key enforcement, schema validation, 404s |
 | `test_internal.py` | 19 | Internal API endpoints (centroids, stream cursors) |
