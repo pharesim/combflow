@@ -8,6 +8,7 @@ from ..hafsql import get_reputations
 from .blacklist import check_authors
 from .bridge import _set_cursor
 from .classify import _classify_and_save, MIN_AUTHOR_REPUTATION
+from .health import touch_heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ def _stream_range(
 
             if len(batch) >= _BATCH_SIZE or (time.monotonic() - batch_start) >= _BATCH_TIMEOUT:
                 _flush()
+                touch_heartbeat()
 
                 if post_count % _CURSOR_UPDATE_INTERVAL == 0 and post_count > 0:
                     _set_cursor(db, _CURSOR_KEY, last_block)

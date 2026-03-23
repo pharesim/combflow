@@ -12,6 +12,7 @@ from .backfill import _backfill_thread
 from .blacklist import sweep_thread as _blacklist_sweep_thread
 from .bridge import _DB, _get_cursor, _seed_categories
 from .classify import _load_embedder, _load_centroids, _build_sentiment_anchors, _EMBEDDING_DIM
+from .health import touch_heartbeat
 from .stream import _stream_range
 
 logging.basicConfig(
@@ -38,6 +39,8 @@ def _stream() -> None:
         pos_anchor, neg_anchor = _build_sentiment_anchors(embedder)
     else:
         pos_anchor = neg_anchor = np.zeros(_EMBEDDING_DIM)
+
+    touch_heartbeat()
 
     # Graceful shutdown via SIGTERM.
     stop_event = threading.Event()

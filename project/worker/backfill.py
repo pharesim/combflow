@@ -8,6 +8,7 @@ from ..hafsql import _raw_rep_to_score, build_dsn
 from .blacklist import is_blacklisted
 from .bridge import _get_cursor, _set_cursor, _existing_author_permlinks
 from .classify import _classify_and_save, MIN_AUTHOR_REPUTATION
+from .health import touch_heartbeat
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,8 @@ _BACKFILL_BATCH = 100
 _CATCHUP_BATCH = 1000
 _BACKFILL_PAUSE = 2  # seconds between batches
 _BACKFILL_CURSOR_KEY = "backfill_worker"
+_BACKOFF_MIN = 10    # seconds
+_BACKOFF_MAX = 300   # 5 minutes
 
 
 def _backfill_thread(
@@ -39,7 +42,6 @@ def _backfill_thread(
     total = 0
     skipped = 0
     retries = 0
-    max_retries = 10
 
     def _connect():
         nonlocal conn
@@ -51,11 +53,20 @@ def _backfill_thread(
         conn = psycopg2.connect(build_dsn())
         conn.autocommit = True
 
-    try:
-        _connect()
-    except Exception as exc:
-        logger.error("BACKFILL cannot connect to HAFSQL: %s", exc)
+    # Retry initial connection with exponential backoff.
+    while not stop_event.is_set():
+        try:
+            _connect()
+            break
+        except Exception as exc:
+            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
+            retries += 1
+            logger.warning("BACKFILL cannot connect to HAFSQL (retry %d, next in %ds): %s",
+                           retries, delay, exc)
+            stop_event.wait(delay)
+    else:
         return
+    retries = 0
 
     # The frontier is the farthest-back timestamp we've fully processed.
     saved_ts = _get_cursor(db, _BACKFILL_CURSOR_KEY)
@@ -96,13 +107,11 @@ def _backfill_thread(
             cur.close()
             retries = 0
         except Exception as exc:
+            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
             retries += 1
-            logger.warning("BACKFILL query failed (attempt %d/%d): %s",
-                           retries, max_retries, exc)
-            if retries >= max_retries:
-                logger.error("BACKFILL max retries — stopping")
-                break
-            time.sleep(5)
+            logger.warning("BACKFILL query failed (retry %d, next in %ds): %s",
+                           retries, delay, exc)
+            stop_event.wait(delay)
             try:
                 _connect()
             except Exception:
@@ -178,6 +187,7 @@ def _backfill_thread(
         phase = "CATCHUP" if catching_up else "BACKFILL"
         logger.info("%s cursor=%s total=%d batch=%d skipped=%d",
                      phase, cursor_dt.isoformat(), total, batch_processed, skipped)
+        touch_heartbeat()
 
         # During catch-up, skip pause when entire batch was already known.
         if catching_up and batch_processed == 0:
