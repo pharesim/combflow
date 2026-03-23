@@ -23,22 +23,25 @@ class Settings(BaseSettings):
 
     # Public URLs
     caddy_ui: str = ""  # e.g. "hivecomb.com" or "honeycomb.lvh.me:80" — UI domain
-    api_base_url: str = ""  # e.g. "https://api.example.com" — used in footer link
+    caddy_api: str = ""  # e.g. "api.example.com" or "combflow.lvh.me:80" — API domain
+
+    @staticmethod
+    def _host_to_url(host: str) -> str:
+        """Derive full URL from a Caddy host. Port 80 = HTTP, else HTTPS."""
+        if not host:
+            return ""
+        if host.endswith(":80") or host.endswith(":443"):
+            bare, port = host.rsplit(":", 1)
+            return f"http://{bare}" if port == "80" else f"https://{bare}"
+        return f"https://{host}"
 
     @property
     def site_url(self) -> str:
-        """Derive full site URL from CADDY_UI. Port 80/443 or no port = HTTPS."""
-        if not self.caddy_ui:
-            return ""
-        host = self.caddy_ui
-        if host.endswith(":80") or host.endswith(":443"):
-            # Dev or explicit port — strip port to decide scheme
-            bare, port = host.rsplit(":", 1)
-            if port == "80":
-                return f"http://{bare}"
-            return f"https://{bare}"
-        # No port = Caddy auto-TLS
-        return f"https://{host}"
+        return self._host_to_url(self.caddy_ui)
+
+    @property
+    def api_base_url(self) -> str:
+        return self._host_to_url(self.caddy_api)
 
     # Logging
     sql_echo: bool = False
