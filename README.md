@@ -215,6 +215,7 @@ The worker runs entirely self-contained with two concurrent modes:
 2. **Backfill** (HAFSQL) — two-phase approach:
    - **Catch-up**: starts from NOW, works backwards to the saved frontier (covers downtime gaps)
    - **Explore**: continues from the frontier into older history
+   - Unlimited retry with exponential backoff (10s–5min) on network failures — never dies on transient issues
 
 Per-post pipeline:
 - Check author reputation via HAFSQL (>= 20)
@@ -420,7 +421,8 @@ combflow/combflow/
 │       ├── community.py   # community → category mapping
 │       ├── stream.py      # live blockchain stream
 │       ├── backfill.py    # HAFSQL backfill thread
-│       └── bridge.py      # async DB bridge
+│       ├── bridge.py      # async DB bridge
+│       └── health.py      # heartbeat file for Docker health check
 ├── alembic/
 │   ├── versions/
 │   │   ├── 001_initial_schema.py  # all tables + indexes (fresh install)

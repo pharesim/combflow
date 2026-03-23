@@ -38,10 +38,11 @@ function broadcastComment(parentAuthor, parentPermlink, body) {
   return keychainBroadcast([op]).then(() => ({ author: auth.username, permlink }));
 }
 
-function broadcastPost(title, body, tags, communityId, description) {
+async function broadcastPost(title, body, tags, communityId, description) {
   const auth = getStoredAuth();
-  const timestamp = Date.now().toString(16).slice(-8);
-  const permlink = slugify(title) + '-' + timestamp;
+  const slug = slugify(title);
+  const existing = await hiveRpc('bridge.get_post', {author: auth.username, permlink: slug}).catch(() => null);
+  const permlink = existing ? slug + '-' + Date.now().toString(16).slice(-8) : slug;
   const parentPermlink = communityId || (tags.length > 0 ? tags[0] : 'hive');
 
   const imgMatch = body.match(/!\[[^\]]*\]\(([^)]+)\)/) || body.match(/https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)/i);
