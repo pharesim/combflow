@@ -444,20 +444,6 @@
     </div>
     <div class="settings-main-panel" id="settings-main-advanced" style="display:none">
       <div class="settings-slider-row">
-        <label for="settings-payout">Post payouts</label>
-        <select id="settings-payout" class="settings-select">
-          <option value="powerup">Power Up 100%</option>
-          <option value="default">50/50 (HBD + HP)</option>
-          <option value="decline">Decline Payout</option>
-        </select>
-      </div>
-      <fieldset class="settings-nsfw-fieldset">
-        <legend>NSFW content</legend>
-        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="hide" checked> Hide NSFW posts</label>
-        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="show"> Show NSFW posts</label>
-        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="filter"> Show with filter button</label>
-      </fieldset>
-      <div class="settings-slider-row">
         <label for="settings-vote-manual">Manual voting</label>
         <input type="checkbox" id="settings-vote-manual" data-action="toggle-manual-voting">
       </div>
@@ -474,6 +460,20 @@
         </div>
         <div class="vote-estimate" id="vote-estimate"></div>
       </div>
+      <div class="settings-slider-row">
+        <label for="settings-payout">Post payouts</label>
+        <select id="settings-payout" class="settings-select">
+          <option value="powerup">Power Up 100%</option>
+          <option value="default">50/50 (HBD + HP)</option>
+          <option value="decline">Decline Payout</option>
+        </select>
+      </div>
+      <fieldset class="settings-nsfw-fieldset">
+        <legend>NSFW content</legend>
+        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="hide" checked> Hide NSFW posts</label>
+        <label class="settings-radio-label" id="nsfw-show-label"><input type="radio" name="settings-nsfw" value="show"> Show NSFW posts</label>
+        <label class="settings-radio-label" id="nsfw-filter-label" style="display:none"><input type="radio" name="settings-nsfw" value="filter"> Show with filter button</label>
+      </fieldset>
       <div style="display:flex;gap:12px;margin-top:16px;justify-content:center">
         <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:8px 24px" data-action="save-settings">Save</button>
         <button type="button" class="btn btn-ghost" data-action="skip-settings">Cancel</button>

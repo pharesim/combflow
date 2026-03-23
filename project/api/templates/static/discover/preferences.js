@@ -133,6 +133,9 @@ function isFirstLogin(prefs) {
       && prefs.voteManual == null;
 }
 
+// NSFW filter easter egg: click "Show NSFW posts" 10 times to reveal filter option
+let _nsfwShowClicks = 0;
+
 // Wire settings modal chip handlers once
 let settingsWired = false;
 function wireSettingsOnce() {
@@ -177,6 +180,14 @@ function wireSettingsOnce() {
   document.getElementById('settings-cats').addEventListener('click', handleCatClick);
   document.getElementById('settings-sentiment').addEventListener('click', handleSimpleChipClick);
   document.getElementById('settings-langs').addEventListener('click', handleSimpleChipClick);
+
+  // Easter egg: clicking "Show NSFW posts" radio 10 times reveals filter option
+  document.getElementById('nsfw-show-label').addEventListener('click', () => {
+    _nsfwShowClicks++;
+    if (_nsfwShowClicks >= 10) {
+      document.getElementById('nsfw-filter-label').style.display = '';
+    }
+  });
 }
 
 function estimateVotes(floor, maxWeight, startMana) {
@@ -272,6 +283,14 @@ async function showSettingsModal() {
   document.querySelectorAll('input[name="settings-nsfw"]').forEach(r => {
     r.checked = r.value === nsfwMode;
   });
+  // Show filter option if it's the saved pref, otherwise hide until easter egg
+  const filterLabel = document.getElementById('nsfw-filter-label');
+  if (nsfwMode === 'filter') {
+    filterLabel.style.display = '';
+  } else {
+    filterLabel.style.display = 'none';
+    _nsfwShowClicks = 0;
+  }
 
   // Set payout preference
   const payoutSelect = document.getElementById('settings-payout');
