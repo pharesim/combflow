@@ -88,6 +88,11 @@ function applyPreferenceFilters(prefs) {
   if (prefs.default_sentiment) {
     f.setAll('sentiments', [prefs.default_sentiment]);
   }
+  // Track whether user has saved default filters
+  const hasDefaults = (prefs.default_categories?.length > 0)
+    || (prefs.default_languages?.length > 0)
+    || !!prefs.default_sentiment;
+  Alpine.store('app').hasDefaultFilters = hasDefaults;
   // DOM sync happens via Alpine.effect() in filters.js
   updateFilterCounts();
 }
@@ -118,6 +123,7 @@ async function savePreferences() {
 
     // Cache filter prefs to localStorage for instant load
     localStorage.setItem('honeycomb_filterPrefs', JSON.stringify(filterPrefs));
+    Alpine.store('app').hasDefaultFilters = cats.length > 0 || langs.length > 0 || sentiments.length === 1;
 
     // Merge with existing on-chain prefs (preserve vote settings etc.)
     const existing = postingMeta.combflow || {};

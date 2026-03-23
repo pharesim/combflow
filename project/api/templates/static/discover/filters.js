@@ -90,12 +90,45 @@ function updateResultsBar() {
   bar.textContent = `Showing ${state.posts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
 }
 
+// ── Session filter persistence ──
+function saveSessionFilters() {
+  const f = Alpine.store('filters');
+  const session = {
+    categories: Array.from(f.categories),
+    languages: Array.from(f.languages),
+    sentiments: Array.from(f.sentiments),
+    community: state.activeCommunityFilter,
+    myCommunities: state.myCommunitiesActive,
+    following: state.followingFilterActive,
+  };
+  sessionStorage.setItem('honeycomb_sessionFilters', JSON.stringify(session));
+}
+
+function loadSessionFilters() {
+  const raw = sessionStorage.getItem('honeycomb_sessionFilters');
+  if (!raw) return false;
+  try {
+    const s = JSON.parse(raw);
+    const f = Alpine.store('filters');
+    if (s.categories?.length) f.setAll('categories', s.categories);
+    if (s.languages?.length) f.setAll('languages', s.languages);
+    if (s.sentiments?.length) f.setAll('sentiments', s.sentiments);
+    if (s.community) state.activeCommunityFilter = s.community;
+    if (s.myCommunities) setMyCommunitiesActive(true);
+    if (s.following) setFollowingActive(true);
+    syncCommunityChips();
+    updateFilterCounts();
+    return true;
+  } catch(e) { return false; }
+}
+
 // ── Debounced filter trigger ──
 function scheduleFilter() {
   clearTimeout(filterTimer);
   updateFilterCounts();
   filterTimer = setTimeout(applyFilters, 150);
   scheduleSuggestions();
+  saveSessionFilters();
 }
 
 // ── Build filter URL (reads from Alpine store) ──
@@ -127,7 +160,7 @@ function buildFilterUrl(limit, offset) {
 }
 
 // ── Filters ──
-function resetFilters() {
+function clearFilters() {
   // Clear Alpine store (triggers effect -> syncAllChipsDom + scheduleFilter)
   Alpine.store('filters').clear();
   // Clear community/author/following state
@@ -139,10 +172,33 @@ function resetFilters() {
   updateSuggestionActiveState();
   updateFilterCounts();
   document.getElementById('suggestions-bar').style.display = 'none';
-  // Clear cached filter prefs and save empty prefs on-chain
-  localStorage.removeItem('honeycomb_filterPrefs');
-  if (getStoredAuth()) savePreferences();
+  // Clear session filters so cleared state persists across navigation
+  sessionStorage.removeItem('honeycomb_sessionFilters');
   // Apply immediately (don't wait for effect's debounce)
+  clearTimeout(filterTimer);
+  applyFilters();
+}
+
+function resetFilters() {
+  // Clear current filters
+  Alpine.store('filters').clear();
+  state.activeCommunityFilter = null;
+  clearAuthorFilter();
+  setMyCommunitiesActive(false);
+  setFollowingActive(false);
+  syncCommunityChips();
+  updateSuggestionActiveState();
+  document.getElementById('suggestions-bar').style.display = 'none';
+  // Re-apply saved preferences (does not save on-chain)
+  const cached = localStorage.getItem('honeycomb_filterPrefs');
+  if (cached) {
+    try {
+      applyPreferenceFilters(JSON.parse(cached));
+    } catch(e) {}
+  }
+  updateFilterCounts();
+  // Update session to match restored defaults
+  saveSessionFilters();
   clearTimeout(filterTimer);
   applyFilters();
 }

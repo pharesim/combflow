@@ -146,15 +146,32 @@ async function init() {
     fetchUnreadCount();
     startNotifPolling();
   }
-  await loadAndApplyPreferences();
+  // Session filters take priority over saved defaults
+  const hasSession = loadSessionFilters();
+  if (!hasSession) {
+    await loadAndApplyPreferences();
+  } else {
+    // Still load preferences in background to set hasDefaultFilters flag
+    const cached = localStorage.getItem('honeycomb_filterPrefs');
+    if (cached) {
+      try {
+        const fp = JSON.parse(cached);
+        const hasDefaults = (fp.default_categories?.length > 0)
+          || (fp.default_languages?.length > 0)
+          || !!fp.default_sentiment;
+        Alpine.store('app').hasDefaultFilters = hasDefaults;
+      } catch(e) {}
+    }
+  }
   applyNsfwMode(getNsfwMode());
 
   // Fetch suggestions based on active categories (from preferences or manual)
   scheduleSuggestions();
 
-  // If preferences activated filters, re-fetch with those filters
+  // If preferences or session filters activated filters, re-fetch with those filters
   const fStore = Alpine.store('filters');
-  if (fStore.categories.size > 0 || fStore.languages.size > 0 || fStore.sentiments.size > 0) {
+  if (fStore.categories.size > 0 || fStore.languages.size > 0 || fStore.sentiments.size > 0
+    || state.activeCommunityFilter || state.myCommunitiesActive || state.followingFilterActive) {
     await applyFilters();
   } else {
     const rawPosts = postsRes.posts || [];
@@ -290,6 +307,7 @@ document.addEventListener('click', e => {
     case 'toggle-section': toggleSection(el.dataset.section); break;
     case 'save-preferences': savePreferences(); break;
     case 'reset-filters': resetFilters(); break;
+    case 'clear-filters': clearFilters(); break;
     // Settings modal
     case 'skip-settings': skipSettings(); break;
     case 'save-settings': saveSettings(); break;

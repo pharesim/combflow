@@ -78,10 +78,11 @@ async function doLogout() {
   setFollowingActive(false);
   Alpine.store('app').currentUser = null;
   Alpine.store('app').authDropdownOpen = false;
+  Alpine.store('app').hasDefaultFilters = false;
   stopNotifPolling();
   Alpine.store('app').notifications = [];
   Alpine.store('app').unreadCount = 0;
   Alpine.store('app').notifOpen = false;
   Alpine.store('app').lastRead = null;
-  resetFilters();
+  clearFilters();
 }

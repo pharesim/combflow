@@ -121,7 +121,7 @@ async function fetchSingleMeta(p, retries = 2) {
       if (found) images = [found];
     }
     if (!images.length && result.body) {
-      const ytMatch = result.body.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/i);
+      const ytMatch = result.body.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]+)/i);
       if (ytMatch) {
         images = [`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`];
       }
