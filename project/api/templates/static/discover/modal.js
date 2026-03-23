@@ -10,9 +10,10 @@ async function openModal(post, skipPush) {
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;
-    commEl.href = `https://peakd.com/c/${encodeURIComponent(post.community_id)}`;
+    commEl.onclick = () => { filterByCommunity(post.community_id); closeModal(); };
     commEl.style.display = '';
   } else {
+    commEl.onclick = null;
     commEl.style.display = 'none';
   }
   const dateEl = document.getElementById('modal-date');

@@ -12,6 +12,9 @@ function scheduleSuggestions() {
 }
 
 async function fetchSuggestions() {
+  // Don't override the community indicator bar
+  if (state.activeCommunityFilter) return;
+
   const cats = getActiveCategorySlugs();
   const bar = document.getElementById('suggestions-bar');
   const list = document.getElementById('suggestions-list');
@@ -178,7 +181,74 @@ function filterByCommunity(communityId) {
   setMyCommunitiesActive(false);
   updateSuggestionActiveState();
   syncCommunityChips();
+  showCommunityIndicator();
   scheduleFilter();
+}
+
+// ── Show suggestion bar as community indicator when filtering ──
+function showCommunityIndicator() {
+  const bar = document.getElementById('suggestions-bar');
+  const list = document.getElementById('suggestions-list');
+
+  if (!state.activeCommunityFilter) {
+    // If categories are active, restore category-based suggestions; otherwise hide
+    const cats = getActiveCategorySlugs();
+    if (cats.length > 0) {
+      scheduleSuggestions();
+    } else {
+      bar.style.display = 'none';
+    }
+    return;
+  }
+
+  // Find community info from communityList or communityChipData
+  const communityId = state.activeCommunityFilter;
+  let communityInfo = null;
+  if (state.communityList) {
+    communityInfo = state.communityList.find(c => c.id === communityId);
+  }
+  const communityName = communityInfo ? communityInfo.name : communityId;
+  const postCount = communityInfo ? communityInfo.post_count : null;
+
+  // Render the bar with this single community as indicator
+  bar.style.display = '';
+  list.innerHTML = '';
+
+  const item = document.createElement('div');
+  item.className = 'suggestion-item active';
+  item.dataset.communityId = communityId;
+  item.style.cursor = 'pointer';
+  item.onclick = () => filterByCommunity(communityId);
+
+  const name = document.createElement('span');
+  name.className = 'suggestion-name';
+  name.textContent = communityName;
+  item.appendChild(name);
+
+  if (postCount != null) {
+    const count = document.createElement('span');
+    count.className = 'suggestion-count';
+    count.textContent = postCount + ' posts';
+    item.appendChild(count);
+  }
+
+  const auth = getStoredAuth();
+  const memberSet = getUserCommunitySet();
+  if (auth) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const isMember = memberSet.has(communityId);
+    btn.className = 'suggestion-action' + (isMember ? ' joined' : '');
+    btn.textContent = isMember ? 'Joined' : 'Join';
+    if (!isMember) {
+      btn.onclick = (e) => { e.stopPropagation(); handleJoinCommunity(communityId, communityName, btn); };
+    } else {
+      btn.onclick = (e) => e.stopPropagation();
+    }
+    item.appendChild(btn);
+  }
+
+  list.appendChild(item);
 }
 
 // ── Filter by author (click username) ──

@@ -238,9 +238,10 @@
                  @click.prevent.stop="window.location.href='/@' + p.author"
                  x-text="'@' + p.author"></span></div>
             <template x-if="p.community_name">
-              <div class="hex-community" x-text="p.community_name"></div>
+              <div class="hex-community clickable" @click.prevent.stop="filterByCommunity(p.community_id)" x-text="p.community_name"></div>
             </template>
             <div class="hex-cats" x-text="(p.categories || []).slice(0, 2).join(', ')"></div>
+            <div class="hex-date" x-text="fmtDateTime(p.created)"></div>
           </div>
         </div>
       </a>
@@ -286,7 +287,7 @@
                 @click.prevent.stop="window.location.href='/@' + p.author"
                 x-text="'@' + p.author"></span>
           <template x-if="p.created">
-            <span x-text="' \u00B7 ' + new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'})"></span>
+            <span x-text="' \u00B7 ' + fmtDateTime(p.created)"></span>
           </template>
         </div>
         <div class="post-card-meta" x-html="getPostTagsHtml(p)"></div>
@@ -349,7 +350,7 @@
           <span class="clickable-author"
                 @click.prevent.stop="window.location.href='/@' + p.author"
                 x-text="'@' + p.author"></span>
-          <span x-text="' \u00B7 ' + (p.created ? new Date(p.created).toLocaleDateString('en', {month:'short',day:'numeric'}) : '') + ' '"></span>
+          <span x-text="' \u00B7 ' + fmtDateTime(p.created) + ' '"></span>
           <span x-html="getListTagsHtml(p)"></span>
         </div>
       </div>
@@ -458,7 +459,7 @@
     <h2 id="modal-title"></h2>
     <div class="modal-meta">
       <div class="modal-author" id="modal-author"></div>
-      <a class="modal-community" id="modal-community" style="display:none" target="_blank" rel="noopener noreferrer"></a>
+      <span class="modal-community clickable" id="modal-community" style="display:none"></span>
       <div class="modal-date" id="modal-date"></div>
     </div>
     <div class="modal-tags" id="modal-tags"></div>

@@ -1,3 +1,10 @@
+// ── Date formatting ──
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en', {month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit'});
+}
+
 // ── Layout toggle ──
 function setLayout(mode) {
   state.layoutMode = mode;
@@ -216,7 +223,7 @@ function getListTagsHtml(p) {
   void Alpine.store('app').metaRev;
   let html = '';
   if (p.community_name) {
-    html += `<span class="community-badge">${esc(p.community_name)}</span>`;
+    html += `<span class="community-badge clickable" data-community="${esc(p.community_id)}" onclick="event.preventDefault();event.stopPropagation();filterByCommunity('${esc(p.community_id)}')">${esc(p.community_name)}</span>`;
   }
   (p.categories || []).slice(0, 2).forEach(c => { html += `<span class="tag">${esc(c)}</span>`; });
   return html;

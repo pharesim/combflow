@@ -145,6 +145,7 @@ body{overflow-x:hidden}
   max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .hex:hover .hex-overlay .hex-community{opacity:1}
+.hex-community.clickable:hover{text-decoration:underline}
 .hex-overlay .hex-cats{
   font-size:8px;text-transform:uppercase;letter-spacing:.5px;
   color:rgba(255,255,255,.5);margin-top:4px;
@@ -152,6 +153,7 @@ body{overflow-x:hidden}
   opacity:0;transition:opacity .3s;
 }
 .hex:hover .hex-overlay .hex-cats{opacity:1}
+.hex-date{font-size:0.65rem;color:var(--text-dim);margin-top:2px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
 
 .hex-inner.no-img{
   display:flex;align-items:center;justify-content:center;
@@ -425,8 +427,12 @@ body{overflow-x:hidden}
 .suggestion-action.joined:hover{background:transparent;color:var(--green)}
 .suggestion-skeleton{width:160px;height:32px;border-radius:20px}
 
+/* ── Clickable elements ─── */
+.clickable{cursor:pointer}
+.modal-community.clickable:hover,.community-badge.clickable:hover{text-decoration:underline}
+
 /* ── Modal community link ─── */
-.modal-community{font-size:13px;color:var(--gold);text-decoration:none;transition:color .2s}
+.modal-community{font-size:13px;color:var(--gold);transition:color .2s}
 .modal-community:hover{color:var(--text-bright)}
 
 /* ── Responsive ─── */
