@@ -18,6 +18,8 @@ while true; do
     -o /var/www/goaccess/report.html \
     --datetime-format=%s \
     --log-format='%h|%x|%m|%U|%H|%s|%b|%u|%v' \
+    --ignore-crawlers \
+    --ignore-status=404 \
     2>/dev/null
   sleep 60
 done
