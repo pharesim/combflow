@@ -6,6 +6,34 @@ function toggleTheme() {
   localStorage.setItem('theme', next);
 }
 
+function getValidCategorySlugs() {
+  const slugs = new Set();
+  document.querySelectorAll('#cat-chips .chip:not(.cat-parent)').forEach(c => {
+    if (c.dataset.cat) slugs.add(c.dataset.cat);
+  });
+  return slugs;
+}
+
+function cleanStaleCategorySlugs(prefs) {
+  if (!prefs.default_categories || prefs.default_categories.length === 0) return prefs;
+  const valid = getValidCategorySlugs();
+  if (valid.size === 0) return prefs; // chips not built yet, skip cleanup
+  const cleaned = prefs.default_categories.filter(s => valid.has(s));
+  if (cleaned.length !== prefs.default_categories.length) {
+    prefs.default_categories = cleaned;
+    // Update localStorage so stale slugs don't persist
+    const cached = localStorage.getItem('honeycomb_filterPrefs');
+    if (cached) {
+      try {
+        const fp = JSON.parse(cached);
+        fp.default_categories = cleaned;
+        localStorage.setItem('honeycomb_filterPrefs', JSON.stringify(fp));
+      } catch(e) {}
+    }
+  }
+  return prefs;
+}
+
 // ── Preferences ──
 async function loadAndApplyPreferences() {
   const auth = getStoredAuth();
@@ -39,6 +67,7 @@ async function loadAndApplyPreferences() {
 }
 
 function applyPreferenceFilters(prefs) {
+  cleanStaleCategorySlugs(prefs);
   // Cache vote settings locally
   if (prefs.voteFloor != null) localStorage.setItem('honeycomb_voteFloor', prefs.voteFloor);
   if (prefs.voteMaxWeight != null) localStorage.setItem('honeycomb_voteMaxWeight', prefs.voteMaxWeight);
