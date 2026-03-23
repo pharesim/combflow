@@ -39,10 +39,6 @@ def test_leaf_categories_are_unique():
 # ── Auth enforcement ──────────────────────────────────────────────────────────
 
 async def test_internal_endpoints_require_auth(client):
-    resp = await client.get("/internal/stream-cursor/live_worker")
-    assert resp.status_code == 401
-    resp = await client.put("/internal/stream-cursor/live_worker", json={"block_num": 1})
-    assert resp.status_code == 401
     resp = await client.post("/internal/centroids", json={"centroids": {}})
     assert resp.status_code == 401
 

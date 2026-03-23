@@ -292,7 +292,7 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-208 tests across 10 files:
+205 tests across 10 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -300,7 +300,7 @@ Tests use in-process fixtures with a real DB — they don't interfere with the r
 | `test_browse.py` | 42 | Browse with all filter combinations, single + multi community filter, authors filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
 | `test_hafsql.py` | 32 | Reputation conversion, community metadata parsing, connection pool, cursor lifecycle |
 | `test_auth.py` | 23 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
-| `test_internal.py` | 19 | Internal API endpoints (centroids, stream cursors) |
+| `test_internal.py` | 16 | Internal API endpoints (centroids) |
 | `test_api.py` | 18 | Health, categories, HTML page routes, GZip middleware, auth key enforcement, 404s |
 | `test_crud.py` | 10 | Retry decorator, category tree, seed idempotency |
 | `test_text.py` | 9 | Text cleaning utilities |
@@ -342,7 +342,6 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/internal/centroids` | Upload category centroids |
-| GET/PUT | `/internal/stream-cursor/{key}` | Read/update stream position |
 
 ---
 
@@ -512,7 +511,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 208 tests
+├── tests/                   # 205 tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── goaccess-run.sh          # GoAccess log processing script

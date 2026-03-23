@@ -51,46 +51,6 @@ async def test_upload_centroids_upserts(client, seeded_db):
     assert resp.json()["active"] == 2
 
 
-# ── Stream cursors (GET/PUT /internal/stream-cursor/{key}) ───────────────────
-
-async def test_cursor_not_found(client, seeded_db):
-    """GET missing key returns 404."""
-    resp = await client.get("/internal/stream-cursor/nonexistent", headers=AUTH)
-    assert resp.status_code == 404
-
-
-async def test_cursor_set_and_get(client, seeded_db):
-    """PUT then GET — verify round-trip."""
-    put_resp = await client.put(
-        "/internal/stream-cursor/live",
-        json={"block_num": 95000000},
-        headers=AUTH,
-    )
-    assert put_resp.status_code == 200
-    assert put_resp.json()["block_num"] == 95000000
-
-    get_resp = await client.get("/internal/stream-cursor/live", headers=AUTH)
-    assert get_resp.status_code == 200
-    assert get_resp.json()["block_num"] == 95000000
-
-
-async def test_cursor_upsert(client, seeded_db):
-    """PUT twice with different block_num — verify update, not insert."""
-    await client.put(
-        "/internal/stream-cursor/backfill",
-        json={"block_num": 1000},
-        headers=AUTH,
-    )
-    await client.put(
-        "/internal/stream-cursor/backfill",
-        json={"block_num": 2000},
-        headers=AUTH,
-    )
-    get_resp = await client.get("/internal/stream-cursor/backfill", headers=AUTH)
-    assert get_resp.status_code == 200
-    assert get_resp.json()["block_num"] == 2000
-
-
 # ── CRUD unit tests ──────────────────────────────────────────────────────────
 
 async def test_existing_author_permlinks_empty(seeded_db):

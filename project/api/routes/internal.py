@@ -1,9 +1,9 @@
-"""Internal API endpoints — used by the seed script and Hive worker.
+"""Internal API endpoints — used by the seed script.
 
 All routes require the X-API-Key header.
 """
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,37 +55,3 @@ async def upload_centroids(
         "active": len(request.app.state.centroids),
         "threshold": threshold,
     }
-
-
-# ── Stream cursors ─────────────────────────────────────────────────────────────
-
-class CursorPayload(BaseModel):
-    block_num: int = Field(
-        ...,
-        description="Hive block number to store as the cursor position.",
-        examples=[95000000],
-    )
-
-
-@router.get(
-    "/stream-cursor/{key}",
-    summary="Read stream cursor",
-    description="Return the last processed Hive block number for a given consumer key. Returns 404 if not set yet.",
-)
-async def get_stream_cursor(key: str, db: AsyncSession = Depends(get_db)):
-    block_num = await crud.get_cursor(db, key)
-    if block_num is None:
-        raise HTTPException(status_code=404, detail=f"No cursor found for key '{key}'")
-    return {"key": key, "block_num": block_num}
-
-
-@router.put(
-    "/stream-cursor/{key}",
-    summary="Update stream cursor",
-    description="Upsert the stream cursor position for a consumer. Used by the Hive worker to track its progress.",
-)
-async def set_stream_cursor(
-    key: str, payload: CursorPayload, db: AsyncSession = Depends(get_db)
-):
-    await crud.set_cursor(db, key, payload.block_num)
-    return {"key": key, "block_num": payload.block_num}
