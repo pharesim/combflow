@@ -25,7 +25,6 @@ from project.api.routes.auth import _challenge_limiter, _verify_limiter, _challe
 
 _PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
-AUTH = {"X-API-Key": os.environ["API_KEY"]}
 
 
 def make_jwt(username: str, expired: bool = False) -> str:

@@ -71,7 +71,6 @@ async def robots_txt():
         "User-agent: *\n"
         "Allow: /\n"
         "Disallow: /api/\n"
-        "Disallow: /internal/\n"
         "Disallow: /health\n"
         "Disallow: /docs\n"
         "\n"

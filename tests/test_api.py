@@ -2,7 +2,6 @@
 from unittest.mock import patch
 
 from project.categories import CATEGORY_TREE, LEAF_CATEGORIES
-from tests.conftest import AUTH
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -35,23 +34,6 @@ def test_category_tree_structure():
 def test_leaf_categories_are_unique():
     assert len(LEAF_CATEGORIES) == len(set(LEAF_CATEGORIES))
 
-
-# ── Auth enforcement ──────────────────────────────────────────────────────────
-
-async def test_internal_endpoints_require_auth(client):
-    resp = await client.post("/internal/centroids", json={"centroids": {}})
-    assert resp.status_code == 401
-
-
-# ── Schema validation ────────────────────────────────────────────────────────
-
-async def test_centroids_upload_rejects_bad_schema(client):
-    resp = await client.post(
-        "/internal/centroids",
-        json={"wrong_key": {}},
-        headers=AUTH,
-    )
-    assert resp.status_code == 422
 
 
 # ── Post not found ───────────────────────────────────────────────────────────

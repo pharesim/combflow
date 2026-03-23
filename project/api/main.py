@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -50,7 +49,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Could not seed category tree: %s", exc)
 
-    # Load centroids into memory (for the /internal/centroids reload path).
+    # Load centroids into memory (from DB or seeds file).
     centroids: dict = {}
     try:
         async with AsyncSessionLocal() as session:
@@ -92,9 +91,7 @@ app = FastAPI(
     title="CombFlow Discovery Engine",
     description=(
         "Semantic post discovery for the Hive blockchain.\n\n"
-        "**Public endpoints:** browse and filter posts by category, language, "
-        "and sentiment, and save filter preferences.\n\n"
-        "**Internal endpoints** require `X-API-Key` — click **Authorize** above."
+        "Browse and filter posts by category, language, and sentiment."
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -105,8 +102,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins or ["*"],
     allow_credentials=bool(settings.cors_origins),
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Authorization", "X-API-Key", "Content-Type"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(router)
@@ -140,38 +137,3 @@ async def category_tree():
             ]
         }
 
-
-# ── Custom OpenAPI ────────────────────────────────────────────────────────────
-
-def _custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-
-    schema = get_openapi(
-        title=app.title, version=app.version,
-        description=app.description, routes=app.routes,
-    )
-    schema.setdefault("components", {})
-    schema["components"]["securitySchemes"] = {
-        "ApiKeyAuth": {
-            "type": "apiKey", "in": "header", "name": "X-API-Key",
-            "description": "Required for /internal/* and POST /posts only.",
-        }
-    }
-
-    # Only /internal/* and POST /posts need auth.
-    for path, path_item in schema.get("paths", {}).items():
-        needs_auth = path.startswith("/internal") or (path == "/posts" and "post" in path_item)
-        if not needs_auth:
-            continue
-        for method, operation in path_item.items():
-            if isinstance(operation, dict):
-                if path == "/posts" and method != "post":
-                    continue
-                operation.setdefault("security", [{"ApiKeyAuth": []}])
-
-    app.openapi_schema = schema
-    return app.openapi_schema
-
-
-app.openapi = _custom_openapi

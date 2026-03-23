@@ -2,6 +2,12 @@
 import pytest
 
 from project.categories import CATEGORY_TREE
+from project.db.crud import create_post
+
+
+async def _create_post(db_session, **kwargs):
+    """Helper to create a post directly via CRUD."""
+    await create_post(db_session, kwargs)
 
 
 # ── Browse endpoint ──────────────────────────────────────────────────────────
@@ -146,19 +152,14 @@ async def test_browse_limit_bounds(client):
 
 # ── Community filter ────────────────────────────────────────────────────────
 
-async def test_browse_filter_by_community(client, seeded_db):
+async def test_browse_filter_by_community(client, seeded_db, db_session):
     """Posts with matching community_id are returned when filtering by community."""
-    from tests.conftest import AUTH
-    # Create a post with a community_id.
-    await client.post("/posts", json={
-        "author": "dave",
-        "permlink": "community-post",
-        "categories": [seeded_db["leaf_name"]],
-        "languages": ["en"],
-        "sentiment": "positive",
-        "sentiment_score": 0.5,
-        "community_id": "hive-174578",
-    }, headers=AUTH)
+    await _create_post(db_session,
+        author="dave", permlink="community-post",
+        categories=[seeded_db["leaf_name"]], languages=["en"],
+        sentiment="positive", sentiment_score=0.5,
+        community_id="hive-174578",
+    )
 
     resp = await client.get("/api/browse?community=hive-174578")
     assert resp.status_code == 200
@@ -194,26 +195,19 @@ async def test_communities_endpoint_empty(client):
     assert resp.json()["communities"] == []
 
 
-async def test_communities_endpoint_with_data(client, seeded_db):
-    from tests.conftest import AUTH
-    await client.post("/posts", json={
-        "author": "dave",
-        "permlink": "comm-post-1",
-        "categories": [seeded_db["leaf_name"]],
-        "languages": ["en"],
-        "sentiment": "positive",
-        "sentiment_score": 0.5,
-        "community_id": "hive-174578",
-    }, headers=AUTH)
-    await client.post("/posts", json={
-        "author": "eve",
-        "permlink": "comm-post-2",
-        "categories": [seeded_db["leaf_name"]],
-        "languages": ["en"],
-        "sentiment": "neutral",
-        "sentiment_score": 0.0,
-        "community_id": "hive-174578",
-    }, headers=AUTH)
+async def test_communities_endpoint_with_data(client, seeded_db, db_session):
+    await _create_post(db_session,
+        author="dave", permlink="comm-post-1",
+        categories=[seeded_db["leaf_name"]], languages=["en"],
+        sentiment="positive", sentiment_score=0.5,
+        community_id="hive-174578",
+    )
+    await _create_post(db_session,
+        author="eve", permlink="comm-post-2",
+        categories=[seeded_db["leaf_name"]], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        community_id="hive-174578",
+    )
 
     resp = await client.get("/api/communities")
     assert resp.status_code == 200
@@ -282,26 +276,24 @@ async def test_suggested_communities_multiple_categories(client, seeded_db, db_s
 
 
 async def test_suggested_communities_includes_post_count(client, seeded_db, db_session):
-    from tests.conftest import AUTH
     from project.db.crud import upsert_community_mapping
     leaf = seeded_db["leaf_name"]
 
     await upsert_community_mapping(
         db_session, "hive-174578", leaf, "Photography Lovers", 0.55,
     )
-    # Create posts with this community.
-    await client.post("/posts", json={
-        "author": "dave", "permlink": "sugg-1",
-        "categories": [leaf], "languages": ["en"],
-        "sentiment": "positive", "sentiment_score": 0.5,
-        "community_id": "hive-174578",
-    }, headers=AUTH)
-    await client.post("/posts", json={
-        "author": "eve", "permlink": "sugg-2",
-        "categories": [leaf], "languages": ["en"],
-        "sentiment": "neutral", "sentiment_score": 0.0,
-        "community_id": "hive-174578",
-    }, headers=AUTH)
+    await _create_post(db_session,
+        author="dave", permlink="sugg-1",
+        categories=[leaf], languages=["en"],
+        sentiment="positive", sentiment_score=0.5,
+        community_id="hive-174578",
+    )
+    await _create_post(db_session,
+        author="eve", permlink="sugg-2",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        community_id="hive-174578",
+    )
 
     resp = await client.get(f"/api/communities/suggested?category={leaf}")
     assert resp.status_code == 200
@@ -402,16 +394,15 @@ async def test_communities_zero_posts_not_shown(client):
     assert resp.json()["communities"] == []
 
 
-async def test_browse_community_name_coalesce(client, seeded_db):
+async def test_browse_community_name_coalesce(client, seeded_db, db_session):
     """Post with community_id but no mapping should use fallback name."""
-    from tests.conftest import AUTH
     leaf = seeded_db["leaf_name"]
-    await client.post("/posts", json={
-        "author": "test", "permlink": "no-mapping",
-        "categories": [leaf], "languages": ["en"],
-        "sentiment": "neutral", "sentiment_score": 0.0,
-        "community_id": "hive-999999",
-    }, headers=AUTH)
+    await _create_post(db_session,
+        author="test", permlink="no-mapping",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        community_id="hive-999999",
+    )
     resp = await client.get("/api/browse?community=hive-999999")
     assert resp.status_code == 200
     posts = resp.json()["posts"]
@@ -422,21 +413,20 @@ async def test_browse_community_name_coalesce(client, seeded_db):
 
 # ── Multi-community filter ─────────────────────────────────────────────────
 
-async def test_browse_filter_by_communities(client, seeded_db):
+async def test_browse_filter_by_communities(client, seeded_db, db_session):
     """The communities param filters posts to multiple community IDs."""
-    from tests.conftest import AUTH
     leaf = seeded_db["leaf_name"]
     for cid, author, perm in [
         ("hive-111111", "alice", "mc-1"),
         ("hive-222222", "bob", "mc-2"),
         ("hive-333333", "carol", "mc-3"),
     ]:
-        await client.post("/posts", json={
-            "author": author, "permlink": perm,
-            "categories": [leaf], "languages": ["en"],
-            "sentiment": "neutral", "sentiment_score": 0.0,
-            "community_id": cid,
-        }, headers=AUTH)
+        await _create_post(db_session,
+            author=author, permlink=perm,
+            categories=[leaf], languages=["en"],
+            sentiment="neutral", sentiment_score=0.0,
+            community_id=cid,
+        )
 
     resp = await client.get(
         "/api/browse?communities=hive-111111&communities=hive-222222"
@@ -448,16 +438,15 @@ async def test_browse_filter_by_communities(client, seeded_db):
     assert returned_communities <= {"hive-111111", "hive-222222"}
 
 
-async def test_browse_communities_overrides_community(client, seeded_db):
+async def test_browse_communities_overrides_community(client, seeded_db, db_session):
     """When both community and communities are provided, communities wins."""
-    from tests.conftest import AUTH
     leaf = seeded_db["leaf_name"]
-    await client.post("/posts", json={
-        "author": "dave", "permlink": "override-1",
-        "categories": [leaf], "languages": ["en"],
-        "sentiment": "neutral", "sentiment_score": 0.0,
-        "community_id": "hive-444444",
-    }, headers=AUTH)
+    await _create_post(db_session,
+        author="dave", permlink="override-1",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        community_id="hive-444444",
+    )
 
     # community=hive-444444 should be ignored when communities is set
     resp = await client.get(
@@ -539,16 +528,15 @@ async def test_browse_authors_combined_with_category(client, seeded_db):
         assert leaf in post["categories"]
 
 
-async def test_browse_communities_total_reflects_filter(client, seeded_db):
+async def test_browse_communities_total_reflects_filter(client, seeded_db, db_session):
     """Total count reflects the multi-community filter."""
-    from tests.conftest import AUTH
     leaf = seeded_db["leaf_name"]
-    await client.post("/posts", json={
-        "author": "eve", "permlink": "mc-total-1",
-        "categories": [leaf], "languages": ["en"],
-        "sentiment": "neutral", "sentiment_score": 0.0,
-        "community_id": "hive-555555",
-    }, headers=AUTH)
+    await _create_post(db_session,
+        author="eve", permlink="mc-total-1",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        community_id="hive-555555",
+    )
 
     all_resp = await client.get("/api/browse")
     all_total = all_resp.json()["total"]

@@ -363,18 +363,6 @@ TAG_HINTS: dict[str, list[str]] = {
 
 # ── API helpers ──────────────────────────────────────────────────────────────
 
-def upload_centroids(api_url: str, api_key: str, centroids: dict, metadata: dict) -> None:
-    resp = requests.post(
-        f"{api_url}/internal/centroids",
-        json={"centroids": centroids, "metadata": metadata},
-        headers={"X-API-Key": api_key},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    log.info("Centroids uploaded: saved=%d  active=%d", data["saved"], data["active"])
-
-
 # ── Fetcher thread (HAFSQL) ─────────────────────────────────────────────────
 
 def fetcher_thread(
@@ -1421,12 +1409,7 @@ def main() -> None:
 
     print(f"\nGenerated centroids for: {', '.join(centroids)}")
 
-    try:
-        upload_centroids(args.api_url, api_key, centroids, metadata)
-        log.info("Centroids are now live!")
-    except Exception as exc:
-        log.warning("Upload to API failed (%s) — centroids saved locally.", exc)
-        print("Run './deploy.sh up' to rebuild with new seeds baked in.")
+    print("Run './deploy.sh up' to rebuild with new seeds baked in.")
 
 
 if __name__ == "__main__":
