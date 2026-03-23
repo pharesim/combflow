@@ -52,11 +52,7 @@ function thumbUrl(url, size = 256) {
   // Strip existing hive image proxy prefix to avoid double-wrapping
   const proxyRe = /^https?:\/\/images\.hive\.blog\/\d+x\d+\//;
   const raw = url.replace(proxyRe, '');
-  // Only proxy domains known to work with the Hive image proxy
-  if (PROXY_DOMAINS.test(raw)) {
-    return `https://images.hive.blog/${size}x0/${raw}`;
-  }
-  return raw;
+  return `https://images.hive.blog/${size}x0/${raw}`;
 }
 
 // ── Filter count badges (reads from Alpine store) ──

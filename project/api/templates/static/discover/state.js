@@ -58,7 +58,6 @@ function _sortedNodes() {
   return [...HIVE_NODES].sort((a, b) => (_nodePenalties.get(a) || 0) - (_nodePenalties.get(b) || 0));
 }
 
-const PROXY_DOMAINS = /(?:files\.peakd\.com|images\.ecency\.com|images\.hive\.blog|cdn\.steemitimages\.com|steemitimages\.com|usermedia\.actifit\.io|imgur\.com|i\.imgur\.com|blurt\.media|img\.leopedia\.io|cdn\.publish0x\.com)/i;
 async function hiveRpc(method, params) {
   for (const node of _sortedNodes()) {
     try {
@@ -204,14 +203,23 @@ document.addEventListener('alpine:init', () => {
   });
 });
 
+const PROXY_RE = /^https?:\/\/images\.hive\.blog\/\d+x\d+\//;
 const thumbObserver = new IntersectionObserver((entries) => {
   entries.forEach(entry => {
     if (entry.isIntersecting) {
       const el = entry.target;
       const url = el.dataset.thumb;
       if (url) {
-        el.style.backgroundImage = `url('${safeCssUrl(url)}')`;
         delete el.dataset.thumb;
+        const img = new Image();
+        img.onload = () => { el.style.backgroundImage = `url('${safeCssUrl(url)}')`; };
+        img.onerror = () => {
+          const raw = url.replace(PROXY_RE, '');
+          if (raw !== url) {
+            el.style.backgroundImage = `url('${safeCssUrl(raw)}')`;
+          }
+        };
+        img.src = url;
       }
       thumbObserver.unobserve(el);
     }

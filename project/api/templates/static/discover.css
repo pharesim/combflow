@@ -152,6 +152,7 @@ body{overflow-x:hidden}
 .hex-inner.no-img{
   display:flex;align-items:center;justify-content:center;
 }
+[data-theme="light"] .hex-inner.no-img{background:#1a1a2e}
 .hex-inner.no-img .hex-placeholder{
   font-size:10px;color:var(--text-dim);text-align:center;padding:12px;
 }
