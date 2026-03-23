@@ -11,8 +11,8 @@ from project.hafsql import (
 
 
 class TestRawRepToScore:
-    def test_zero_returns_zero(self):
-        assert _raw_rep_to_score(0) == 0.0
+    def test_zero_returns_default(self):
+        assert _raw_rep_to_score(0) == 25.0
 
     def test_positive_rep(self):
         result = _raw_rep_to_score(1_000_000_000)

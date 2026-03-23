@@ -65,7 +65,7 @@ def _cursor():
 def _raw_rep_to_score(raw: int) -> float:
     """Convert Hive raw reputation integer to human-readable score."""
     if raw == 0:
-        return 0.0
+        return 25.0  # Hive default for new accounts with no votes
     neg = raw < 0
     raw_abs = abs(raw)
     leading = int(math.log10(raw_abs))

@@ -54,7 +54,7 @@ def _process_batch(
         if author in reps:
             rep = reps[author]
         elif hafsql_available:
-            rep = 0.0  # author not in reputations table
+            rep = 25.0  # Hive default for new accounts with no votes
         else:
             # HAFSQL unreachable — skip rep check, classify anyway.
             rep = MIN_AUTHOR_REPUTATION
