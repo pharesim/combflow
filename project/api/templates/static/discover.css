@@ -306,6 +306,9 @@ body{overflow-x:hidden}
 .comment-preview{margin-top:8px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);font-size:13px}
 .comment-reply-wrapper{padding:4px 12px 8px}
 .comment-reply-btn{margin-left:4px}
+.comment-vote-btn{margin-left:4px;display:inline-flex;align-items:center;gap:3px}
+.comment-vote-btn .comment-vote-count{font-size:10px}
+.comment-vote-btn.voted{color:var(--hive-red)}
 
 .comment-skeleton{display:flex;flex-direction:column;gap:12px;padding:8px 0}
 .comment-skeleton-item{display:flex;gap:10px;align-items:flex-start;padding-left:12px}

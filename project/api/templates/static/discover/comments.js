@@ -36,6 +36,13 @@ function renderComment(comment, depth) {
     }
   }
 
+  const voteKey = comment.author + '/' + comment.permlink;
+  const isVoted = comment.voted || state.votedPosts[voteKey];
+  const voteBtn = getStoredAuth()
+    ? '<button type="button" class="comment-toggle comment-vote-btn' + (isVoted ? ' voted' : '') + '" onclick="handleCommentVote(\'' + esc(comment.author) + '\',\'' + esc(comment.permlink) + '\',this)">' +
+      '&#9650; <span class="comment-vote-count">' + (comment.net_votes || 0) + '</span></button>'
+    : '';
+
   const replyBtn = getStoredAuth()
     ? '<button type="button" class="comment-toggle comment-reply-btn" onclick="openReplyForm(\'' + esc(comment.author) + '\',\'' + esc(comment.permlink) + '\',this)">Reply</button>'
     : '';
@@ -44,6 +51,7 @@ function renderComment(comment, depth) {
     '<div class="comment-head">' +
       '<a class="comment-author" href="https://peakd.com/@' + encodeURIComponent(comment.author) + '" target="_blank" rel="noopener noreferrer">@' + esc(comment.author) + '</a>' +
       (rep ? '<span class="comment-rep">' + esc(rep) + '</span>' : '') +
+      voteBtn +
       replyBtn +
       '<span class="comment-time">' + esc(relativeTime(comment.created)) + '</span>' +
     '</div>' +
@@ -183,6 +191,61 @@ async function submitComment(parentAuthor, parentPermlink, formId) {
   submitBtn.textContent = 'Post Comment';
 }
 
+async function handleCommentVote(author, permlink, btn) {
+  const auth = getStoredAuth();
+  if (!auth) { showLoginPrompt(); return; }
+  const key = `${author}/${permlink}`;
+  const countEl = btn.querySelector('.comment-vote-count');
+
+  if (state.votedPosts[key]) {
+    if (!confirm('Remove your vote from this comment?')) return;
+    btn.disabled = true;
+    try {
+      await broadcastVote(author, permlink, 0);
+      removeVotedPost(key);
+      btn.classList.remove('voted');
+      if (countEl) countEl.textContent = Math.max(0, (parseInt(countEl.textContent) || 0) - 1);
+      state.manaCache = null;
+    } catch(e) {
+      showToast(e.message || 'Unvote failed', 'error');
+    }
+    btn.disabled = false;
+    return;
+  }
+
+  const prefs = getVotePrefs();
+  if (prefs.manual) {
+    btn.disabled = true;
+    openVotePopup(author, permlink, btn);
+    // After manual vote popup completes, update comment button visuals
+    const pollId = setInterval(() => {
+      if (btn.disabled) return; // still in popup
+      clearInterval(pollId);
+      if (state.votedPosts[key]) {
+        btn.classList.add('voted');
+        if (countEl) countEl.textContent = (parseInt(countEl.textContent) || 0) + 1;
+      }
+    }, 200);
+    setTimeout(() => clearInterval(pollId), 15000);
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const manaPercent = await fetchManaPercent();
+    const weight = calculateVoteWeight(manaPercent, prefs.floor, prefs.maxWeight);
+    await broadcastVote(author, permlink, weight);
+    saveVotedPost(key);
+    btn.classList.add('voted');
+    if (countEl) countEl.textContent = (parseInt(countEl.textContent) || 0) + 1;
+    state.manaCache = null;
+    showToast('Voted!', 'success');
+  } catch(e) {
+    showToast(e.message || 'Vote failed', 'error');
+  }
+  btn.disabled = false;
+}
+
 async function fetchComments(author, permlink) {
   const s = Alpine.store('app');
   s.commentPostAuthor = author;
@@ -216,12 +279,18 @@ async function fetchComments(author, permlink) {
         hiddenCount++;
         return null;
       }
+      const auth = getStoredAuth();
+      const votedByMe = auth && Array.isArray(entry.active_votes)
+        ? entry.active_votes.some(v => v.voter === auth.username)
+        : false;
       return {
         author: entry.author,
         permlink: entry.permlink,
         body: entry.body || '',
         reputation: entry.author_reputation || 0,
         created: entry.created,
+        net_votes: entry.net_votes || 0,
+        voted: votedByMe,
         children: (entry.replies || []).map(buildTree).filter(Boolean)
       };
     }
