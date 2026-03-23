@@ -460,8 +460,9 @@ async function publishPost() {
     _updateLocationBadge();
     s.editorTags = [];
     closeEditor();
-    // Navigate to the new post
+    // Navigate to the new post after a short delay so the chain can serve it
     showToast('Your post will appear in the feed once processed', 'info', 5000);
+    await new Promise(r => setTimeout(r, 3000));
     history.pushState({ author: result.author, permlink: result.permlink },
       '', `/@${result.author}/${result.permlink}`);
     openModal({ author: result.author, permlink: result.permlink }, true);

@@ -217,19 +217,37 @@ async function updateVoteEstimate() {
 async function showSettingsModal() {
   const modal = document.getElementById('settings-modal');
 
-  // Fetch saved on-chain defaults
+  // Read from localStorage (updated immediately on save) to avoid on-chain propagation delay
   let savedPrefs = {};
   const auth = getStoredAuth();
   if (auth) {
-    try {
-      const accounts = await hiveRpc('condenser_api.get_accounts', [[auth.username]]);
-      const account = accounts?.[0];
-      if (account) {
-        let meta = {};
-        try { meta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
-        savedPrefs = meta.combflow || {};
-      }
-    } catch(e) {}
+    const cached = localStorage.getItem('honeycomb_filterPrefs');
+    if (cached) {
+      try { savedPrefs = JSON.parse(cached); } catch(e) {}
+    }
+    const vf = localStorage.getItem('honeycomb_voteFloor');
+    const vm = localStorage.getItem('honeycomb_voteMaxWeight');
+    const vman = localStorage.getItem('honeycomb_voteManual');
+    const nsfw = localStorage.getItem('honeycomb_nsfwMode');
+    const payout = localStorage.getItem('honeycomb_payoutType');
+    if (vf != null) savedPrefs.voteFloor = Number(vf);
+    if (vm != null) savedPrefs.voteMaxWeight = Number(vm);
+    if (vman != null) savedPrefs.voteManual = vman === 'true';
+    if (nsfw != null) savedPrefs.nsfwMode = nsfw;
+    if (payout != null) savedPrefs.payoutType = payout;
+
+    // Fall back to on-chain fetch if no localStorage data at all
+    if (!cached && !vf) {
+      try {
+        const accounts = await hiveRpc('condenser_api.get_accounts', [[auth.username]]);
+        const account = accounts?.[0];
+        if (account) {
+          let meta = {};
+          try { meta = JSON.parse(account.posting_json_metadata || '{}'); } catch(e) {}
+          savedPrefs = meta.combflow || {};
+        }
+      } catch(e) {}
+    }
   }
   const savedCats = savedPrefs.default_categories || [];
   const savedLangs = savedPrefs.default_languages || [];
