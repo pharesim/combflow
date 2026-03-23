@@ -330,6 +330,8 @@ document.addEventListener('click', e => {
     // Notifications
     case 'toggle-notifications': toggleNotifications(); break;
     case 'mark-all-read': markAllRead(); break;
+    // Theme
+    case 'toggle-theme': toggleTheme(); break;
     // Back to top
     case 'back-to-top': window.scrollTo({top:0,behavior:'smooth'}); break;
   }

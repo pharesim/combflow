@@ -1,3 +1,11 @@
+// ── Theme ──
+function toggleTheme() {
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const next = isLight ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('theme', next);
+}
+
 // ── Preferences ──
 async function loadAndApplyPreferences() {
   const auth = getStoredAuth();
