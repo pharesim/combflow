@@ -1,8 +1,10 @@
 # Dev default: plain HTTP on port 80 (honeycomb.lvh.me:80)
 # Production: set CADDY_UI=honeycomb.example.com and CADDY_API=api.example.com
 #   (no port = Caddy auto-provisions TLS via Let's Encrypt + redirects HTTP→HTTPS)
+# Optional: set CADDY_UI_OLD to redirect a previous UI domain to the current one
 
 {$CADDY_UI:honeycomb.lvh.me:80} {
+	redir /docs / permanent
 	handle /static/* {
 		header Cache-Control "public, max-age=86400, immutable"
 		encode zstd gzip
@@ -14,7 +16,12 @@
 	}
 }
 
+{$CADDY_UI_OLD:old.invalid} {
+	redir https://{$CADDY_UI}{uri} permanent
+}
+
 {$CADDY_API:combflow.lvh.me:80} {
+	redir / /docs permanent
 	encode zstd gzip
 	reverse_proxy combflow-app:8000
 }

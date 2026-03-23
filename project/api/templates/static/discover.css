@@ -205,6 +205,15 @@ body{overflow-x:hidden}
 .settings-modal{max-width:640px}
 .settings-section{margin-bottom:16px}
 .settings-section-title{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:8px}
+.settings-advanced { margin-bottom: 16px; }
+.settings-advanced summary { list-style: none; }
+.settings-advanced summary::before { content: '\25B6'; margin-right: 6px; font-size: 9px; display: inline-block; transition: transform 0.2s; }
+.settings-advanced[open] summary::before { transform: rotate(90deg); }
+.settings-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.settings-tab { background: none; border: none; padding: 8px 16px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.settings-tab:hover { color: var(--text); }
+.settings-tab.active { color: var(--hive-red); border-bottom-color: var(--hive-red); }
+.settings-tab-panel { min-height: 40px; }
 
 /* ── Empty ─── */
 .empty{text-align:center;padding:80px 20px;color:var(--text-dim)}

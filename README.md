@@ -84,7 +84,7 @@ This builds the image, runs migrations, verifies tables, seeds the category tree
 | `combflow-app` | FastAPI on port 8000 (1G memory limit) |
 | `db` | PostgreSQL 17 + pgvector |
 | `hive_worker` | Streams + classifies + saves posts (2G memory limit) |
-| `caddy` | Reverse proxy with auto-TLS (128M memory limit) |
+| `caddy` | Reverse proxy with auto-TLS, domain routing, API→docs redirect (128M memory limit) |
 
 ### 3. Check
 
@@ -451,6 +451,9 @@ const token = await new Promise((resolve, reject) => {
 | `POSTGRES_USER` | Postgres username | `combflow` |
 | `POSTGRES_PASSWORD` | Postgres password | `change-me` |
 | `POSTGRES_DB` | Postgres database name | `combflow` |
+| `CADDY_UI` | UI domain (Caddy auto-TLS when no port) | `honeycomb.example.com` |
+| `CADDY_API` | API domain (root redirects to `/docs`) | `api.example.com` |
+| `CADDY_UI_OLD` | Previous UI domain — 301 redirects to `CADDY_UI` | `old.example.com` |
 
 ---
 

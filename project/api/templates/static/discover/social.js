@@ -59,6 +59,11 @@ async function handleUnmuteUser(username) {
     saveMutedUsers();
     showToast(`Unmuted @${username}`, 'success');
     renderMutedUsersList();
+    // Show/hide user tabs area based on content
+    const area = document.getElementById('settings-users-area');
+    if (area) {
+      area.style.display = (state.mutedUsers.size > 0 || state.followedUsers.size > 0) ? '' : 'none';
+    }
   } catch(e) {
     showToast(e.message || 'Could not unmute user', 'error');
   }
@@ -121,6 +126,11 @@ async function handleUnfollowUser(username) {
     if (btn && btn.style.display !== 'none') { btn.textContent = `Follow @${username}`; btn.onclick = () => handleFollowUser(username); }
     // Re-render followed list in settings if open
     renderFollowedUsersList();
+    // Show/hide user tabs area based on content
+    const area = document.getElementById('settings-users-area');
+    if (area) {
+      area.style.display = (state.mutedUsers.size > 0 || state.followedUsers.size > 0) ? '' : 'none';
+    }
   } catch(e) {
     showToast(e.message || 'Could not unfollow user', 'error');
   }

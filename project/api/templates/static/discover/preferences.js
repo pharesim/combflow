@@ -271,6 +271,15 @@ async function showSettingsModal() {
   renderMutedUsersList();
   renderFollowedUsersList();
 
+  // Show user tabs area if either list has content, reset to muted tab
+  const area = document.getElementById('settings-users-area');
+  if (area) {
+    area.style.display = (state.mutedUsers.size > 0 || state.followedUsers.size > 0) ? '' : 'none';
+    document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'muted'));
+    document.getElementById('settings-tab-muted').style.display = '';
+    document.getElementById('settings-tab-followed').style.display = 'none';
+  }
+
   wireSettingsOnce();
 
   Alpine.store('app').settingsOpen = true;
