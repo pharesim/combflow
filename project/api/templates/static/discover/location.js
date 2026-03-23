@@ -65,7 +65,7 @@ let _locationAutoFilled = false;
 function _reverseGeocode(lat, lng) {
   const descEl = document.getElementById('location-description');
   fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=14&accept-language=en`, {
-    headers: { 'User-Agent': 'HoneyComb/1.0' }
+    headers: { 'User-Agent': 'HiveComb/1.0' }
   }).then(r => r.json()).then(data => {
     if (!data.address) return;
     const a = data.address;

@@ -2,7 +2,7 @@
 
 > Semantic post discovery for the Hive blockchain — streams live, backfills history, classifies with AI.
 
-CombFlow listens to the Hive blockchain, classifies posts by meaning (not just keywords), detects multiple languages and sentiment, and stores them for exploration. The **HoneyComb** discovery UI lets users browse and filter posts in a hex grid, read threaded comment discussions, post comments and top-level posts, discover and join Hive communities, and post to communities — all via Hive Keychain without leaving the app.
+CombFlow listens to the Hive blockchain, classifies posts by meaning (not just keywords), detects multiple languages and sentiment, and stores them for exploration. The **HiveComb** discovery UI lets users browse and filter posts in a hex grid, read threaded comment discussions, post comments and top-level posts, discover and join Hive communities, and post to communities — all via Hive Keychain without leaving the app.
 
 ---
 
@@ -36,7 +36,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 
 1. **Seed script** runs on your GPU. Fetches Hive posts (with stratified sampling for rare categories), classifies them with a local LLM, optionally uses multi-model ensemble voting, computes per-category centroid vectors, and uploads them.
 2. **Worker** streams blocks from Hive (live) and walks backwards through HAFSQL (backfill). For each post: embeds the body in-process (`all-MiniLM-L6-v2`), compares against centroids, detects languages (`langdetect` + `json_metadata`), analyses sentiment (embedding-based), auto-maps Hive communities to categories (embedding community title+about, +0.08 boost), and saves everything directly to PostgreSQL.
-3. **HoneyComb UI** shows posts in a honeycomb hex grid built with **Alpine.js** (~17KB, CDN-loaded, no build step) for reactive rendering. Collapsible chip-based filters (category, sentiment, language, author), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible with full keyboard navigation. Three layout modes (hex grid, card grid, list) rendered via Alpine `x-for` loops. Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Open Graph meta tags for social media previews. Cross-post detection and thumbnail support (PeakD `cross_post_key` and Ecency `original_author`/`original_permlink` formats).
+3. **HiveComb UI** shows posts in a honeycomb hex grid built with **Alpine.js** (~17KB, CDN-loaded, no build step) for reactive rendering. Collapsible chip-based filters (category, sentiment, language, author), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible with full keyboard navigation. Three layout modes (hex grid, card grid, list) rendered via Alpine `x-for` loops. Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Open Graph meta tags for social media previews. Cross-post detection and thumbnail support (PeakD `cross_post_key` and Ecency `original_author`/`original_permlink` formats).
 4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension. JWT is stored in an httpOnly cookie. Accounts with negative reputation are blocked at login. Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), follow/unfollow users, and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
 
 ### Category hierarchy (2 levels)
@@ -124,7 +124,7 @@ python scripts/seed_categories.py --min-reputation 25  # stricter reputation fil
 
 ---
 
-## HoneyComb UI
+## HiveComb UI
 
 Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 
@@ -437,7 +437,7 @@ const token = await new Promise((resolve, reject) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: 'yourhiveuser', challenge, signature: resp.result }),
     });
-    const jwt = verifyRes.headers.get('set-cookie')?.match(/honeycomb_jwt=([^;]+)/)?.[1];
+    const jwt = verifyRes.headers.get('set-cookie')?.match(/hivecomb_jwt=([^;]+)/)?.[1];
     resolve(jwt);
   });
 });
@@ -485,7 +485,7 @@ combflow/combflow/
 │   │   │   └── internal.py  # centroid upload + stream cursors
 │   │   ├── rate_limit.py  # shared sliding-window rate limiter
 │   │   └── templates/
-│   │       ├── discover.html  # HoneyComb discovery UI (Alpine.js reactive templates)
+│   │       ├── discover.html  # HiveComb discovery UI (Alpine.js reactive templates)
 │   │       └── static/
 │   │           ├── shared.js    # auth, validation, read tracking, focus trap, toasts
 │   │           ├── shared/      # shared modules

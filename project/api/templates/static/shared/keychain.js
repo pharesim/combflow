@@ -33,7 +33,7 @@ function broadcastComment(parentAuthor, parentPermlink, body) {
     permlink: permlink,
     title: '',
     body: body,
-    json_metadata: JSON.stringify({ app: 'honeycomb' }),
+    json_metadata: JSON.stringify({ app: 'hivecomb' }),
   }];
   return keychainBroadcast([op]).then(() => ({ author: auth.username, permlink }));
 }
@@ -50,7 +50,7 @@ function broadcastPost(title, body, tags, communityId, description) {
   const metadata = {
     tags: tags,
     image: images,
-    app: 'honeycomb/1.0',
+    app: 'hivecomb/1.0',
   };
   if (description) metadata.description = description;
   if (communityId) metadata.community = communityId;

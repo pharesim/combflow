@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HoneyComb — Discover</title>
+<title>HiveComb — Discover</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="stylesheet" href="/static/shared.css">
 <link rel="stylesheet" href="/static/discover.css">
@@ -21,7 +21,7 @@
 <body x-data>
 
 <div class="header">
-  <a class="logo" href="/">HoneyComb</a>
+  <a class="logo" href="/">HiveComb</a>
   <div class="nav-links">
     <a href="/" class="active">Discover</a>
     <div id="auth-area">
@@ -83,8 +83,8 @@
     </div>
     <!-- Onboarding guidance (shown when Keychain is NOT installed) -->
     <div id="login-onboarding" style="display:none">
-      <h3>Welcome to HoneyComb</h3>
-      <p class="onboarding-intro">HoneyComb runs on <strong>Hive</strong> &mdash; an open, decentralized blockchain where your posts, votes, and communities belong to you, not a company. To get started, follow these steps:</p>
+      <h3>Welcome to HiveComb</h3>
+      <p class="onboarding-intro">HiveComb runs on <strong>Hive</strong> &mdash; an open, decentralized blockchain where your posts, votes, and communities belong to you, not a company. To get started, follow these steps:</p>
       <div class="onboarding-steps">
         <div class="onboarding-step">
           <span class="onboarding-step-num">1</span>
@@ -385,7 +385,7 @@
 <div class="modal-overlay" id="settings-modal" role="dialog" aria-modal="true" aria-label="Set up your filters" x-show="$store.app.settingsOpen" x-cloak @click.self="skipSettings()">
   <div class="modal settings-modal">
     <button type="button" class="modal-close" aria-label="Close" data-action="skip-settings">&times;</button>
-    <h2>Welcome to HoneyComb!</h2>
+    <h2>Welcome to HiveComb!</h2>
     <p style="color:var(--text-dim);margin-bottom:20px">Choose your default filters to see the content you care about most.</p>
     <div class="settings-main-tabs" id="settings-main-tabs">
       <button type="button" class="settings-main-tab active" data-action="settings-main-tab" data-tab="filters">Filters</button>

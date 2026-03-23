@@ -13,7 +13,7 @@ from ..db.session import AsyncSessionLocal
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _bearer = HTTPBearer(auto_error=False)
 
-JWT_COOKIE_NAME = "honeycomb_jwt"
+JWT_COOKIE_NAME = "hivecomb_jwt"
 
 
 async def get_db():
