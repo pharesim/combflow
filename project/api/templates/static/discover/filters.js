@@ -90,6 +90,31 @@ function updateResultsBar() {
   bar.textContent = `Showing ${state.posts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
 }
 
+// ── Check if current filters match saved defaults ──
+function checkFiltersMatchDefault() {
+  const f = Alpine.store('filters');
+  const hasExtra = !!state.activeCommunityFilter || state.myCommunitiesActive
+    || state.followingFilterActive || !!state.authorFilterUser;
+  const cached = localStorage.getItem('honeycomb_filterPrefs');
+  if (!cached) {
+    Alpine.store('app').filtersMatchDefault = f.categories.size === 0
+      && f.languages.size === 0 && f.sentiments.size === 0 && !hasExtra;
+    return;
+  }
+  try {
+    const d = JSON.parse(cached);
+    const defCats = d.default_categories || [];
+    const defLangs = d.default_languages || [];
+    const defSent = d.default_sentiment ? [d.default_sentiment] : [];
+    const catsMatch = f.categories.size === defCats.length && defCats.every(c => f.categories.has(c));
+    const langsMatch = f.languages.size === defLangs.length && defLangs.every(l => f.languages.has(l));
+    const sentsMatch = f.sentiments.size === defSent.length && defSent.every(s => f.sentiments.has(s));
+    Alpine.store('app').filtersMatchDefault = catsMatch && langsMatch && sentsMatch && !hasExtra;
+  } catch(e) {
+    Alpine.store('app').filtersMatchDefault = false;
+  }
+}
+
 // ── Session filter persistence ──
 function saveSessionFilters() {
   const f = Alpine.store('filters');
@@ -129,6 +154,7 @@ function scheduleFilter() {
   filterTimer = setTimeout(applyFilters, 150);
   scheduleSuggestions();
   saveSessionFilters();
+  checkFiltersMatchDefault();
 }
 
 // ── Build filter URL (reads from Alpine store) ──

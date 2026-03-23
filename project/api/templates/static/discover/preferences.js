@@ -124,6 +124,7 @@ async function savePreferences() {
     // Cache filter prefs to localStorage for instant load
     localStorage.setItem('honeycomb_filterPrefs', JSON.stringify(filterPrefs));
     Alpine.store('app').hasDefaultFilters = cats.length > 0 || langs.length > 0 || sentiments.length === 1;
+    checkFiltersMatchDefault();
 
     // Merge with existing on-chain prefs (preserve vote settings etc.)
     const existing = postingMeta.combflow || {};

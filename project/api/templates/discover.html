@@ -222,8 +222,8 @@
     </div>
   </div>
   <div class="filter-actions" style="display:flex;gap:8px;padding:8px 12px">
-    <button type="button" class="btn btn-ghost" id="btn-save-prefs" data-action="save-preferences" x-show="$store.app.currentUser" x-cloak>Save as default</button>
-    <button type="button" class="btn btn-ghost" id="btn-load-default" data-action="reset-filters" x-show="$store.app.hasDefaultFilters" x-cloak>Load default</button>
+    <button type="button" class="btn btn-ghost" id="btn-save-prefs" data-action="save-preferences" x-show="$store.app.currentUser && !$store.app.filtersMatchDefault" x-cloak>Save as default</button>
+    <button type="button" class="btn btn-ghost" id="btn-load-default" data-action="reset-filters" x-show="$store.app.hasDefaultFilters && !$store.app.filtersMatchDefault" x-cloak>Load default</button>
     <button type="button" class="btn btn-ghost" data-action="clear-filters">Clear</button>
   </div>
 </div>
