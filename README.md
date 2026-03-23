@@ -37,7 +37,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 1. **Seed script** runs on your GPU. Fetches Hive posts (with stratified sampling for rare categories), classifies them with a local LLM, optionally uses multi-model ensemble voting, computes per-category centroid vectors, and uploads them.
 2. **Worker** streams blocks from Hive (live) and walks backwards through HAFSQL (backfill). For each post: embeds the body in-process (`all-MiniLM-L6-v2`), compares against centroids, detects languages (`langdetect` + `json_metadata`), analyses sentiment (embedding-based), auto-maps Hive communities to categories (embedding community title+about, +0.08 boost), and saves everything directly to PostgreSQL.
 3. **HiveComb UI** shows posts in a honeycomb hex grid built with **Alpine.js** (~17KB, CDN-loaded, no build step) for reactive rendering. Collapsible chip-based filters (category, sentiment, language, author), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible with full keyboard navigation. Three layout modes (hex grid, card grid, list) rendered via Alpine `x-for` loops. Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Open Graph meta tags for social media previews. Cross-post detection and thumbnail support (PeakD `cross_post_key` and Ecency `original_author`/`original_permlink` formats).
-4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension. JWT is stored in an httpOnly cookie. Accounts with negative reputation are blocked at login. Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), follow/unfollow users, and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
+4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension (pure client-side, no server auth endpoints). Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), follow/unfollow users, and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
 
 ### Category hierarchy (2 levels)
 
@@ -68,7 +68,7 @@ cp .env.example .env
 # Edit .env — at minimum set:
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
 #   DATABASE_URL  (must match the postgres vars)
-#   API_KEY       (any secret string — also used as JWT signing key)
+#   (no API_KEY needed — auth is pure client-side via Keychain)
 ```
 
 ### 2. Deploy
@@ -167,18 +167,16 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 
 ## Authentication
 
-Users log in with **Hive Keychain** (browser extension):
+Users log in with **Hive Keychain** (browser extension) — pure client-side, no server auth endpoints:
 
-1. UI requests a challenge from `POST /api/auth/challenge`
-2. Keychain signs the challenge with the user's Posting key
-3. Backend verifies the signature against the on-chain public key via `POST /api/auth/verify`
-4. Accounts with reputation < 0 are rejected (403)
-5. JWT is set as an httpOnly cookie scoped to `/api`
-6. Logout clears the cookie via `POST /api/auth/logout`
+1. User enters their Hive username
+2. Keychain signs a timestamped message with the user's Posting key (`requestSignBuffer`)
+3. If signing succeeds, the username is stored in `localStorage`
+4. Logout clears `localStorage`
+
+No JWT, no cookies, no server-side auth. All chain operations (posting, voting, following, etc.) are broadcast directly via Keychain.
 
 **Persistent preferences** — logged-in users can save default category, language, and sentiment filters on-chain in their Hive account's `posting_json_metadata` (under the `combflow` namespace). These are restored automatically on next visit and follow the user across devices.
-
-**Detailed error messages** — auth failures surface specific messages (reputation too low, rate limited, service unavailable) instead of generic errors.
 
 ---
 
@@ -292,15 +290,14 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-187 tests across 9 files:
+157 tests across 7 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `test_worker_utils.py` | 48 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
 | `test_browse.py` | 42 | Browse with all filter combinations, single + multi community filter, authors filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
-| `test_hafsql.py` | 32 | Reputation conversion, community metadata parsing, connection pool, cursor lifecycle |
-| `test_auth.py` | 23 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
-| `test_api.py` | 16 | Health, categories, HTML page routes, GZip middleware, 404s |
+| `test_hafsql.py` | 26 | Reputation conversion, community metadata parsing, post body lookup, connection pool, cursor lifecycle |
+| `test_api.py` | 14 | Health, categories, HTML page routes, GZip middleware, 404s |
 | `test_crud.py` | 10 | Retry decorator, category tree, seed idempotency |
 | `test_text.py` | 9 | Text cleaning utilities |
 | `test_cache.py` | 5 | TTL cache operations |
@@ -324,25 +321,14 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `communities`, `authors`, `limit`, `offset`) |
 | GET | `/api/languages` | Available languages with post counts |
 | GET | `/api/stats` | Overview statistics |
-| POST | `/api/auth/challenge` | Generate a Keychain login challenge |
-| POST | `/api/auth/verify` | Verify Keychain signature, block neg-rep, set JWT cookie |
-| POST | `/api/auth/logout` | Clear JWT cookie |
 | GET | `/api/communities` | Communities with post counts, names, and categories |
 | GET | `/api/communities/suggested` | Suggested communities for given category filters (cached 300s) |
-
-### Authenticated (JWT cookie or Authorization header)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/auth/me` | Current user info |
 
 ---
 
 ## Using the API from your own app
 
 The API is public and CORS-open — you can call it from any frontend, mobile app, or script.
-
-### Browsing posts (no auth needed)
 
 ```bash
 # Browse all posts
@@ -376,60 +362,6 @@ curl https://your-server:8000/categories
 curl https://your-server:8000/posts/alice/my-post-permlink
 ```
 
-### Authenticating
-
-Authentication uses Hive Keychain's challenge-response flow. Any Hive library that can sign with a posting key works — you don't need the browser extension.
-
-**Step 1 — Get a challenge:**
-
-```bash
-curl -X POST https://your-server:8000/api/auth/challenge \
-  -H 'Content-Type: application/json' \
-  -d '{"username": "yourhiveuser"}'
-# → {"challenge": "abc123...", "expires_in": 300}
-```
-
-**Step 2 — Sign the challenge** with the user's Hive posting key. The signature is a recoverable ECDSA signature (secp256k1) over SHA-256 of the challenge string — the same format Hive Keychain's `requestSignBuffer` produces. Any Hive library works (dhive, hivejs, lighthive, nectar, beem).
-
-**Step 3 — Verify and get JWT:**
-
-```bash
-curl -X POST https://your-server:8000/api/auth/verify \
-  -H 'Content-Type: application/json' \
-  -d '{"username": "yourhiveuser", "challenge": "abc123...", "signature": "2055af..."}'
-# → {"username": "yourhiveuser", "expires_at": "2026-03-27T..."}
-```
-
-The response sets an httpOnly cookie (for same-origin browser use) and returns the JWT in the response. For cross-origin or non-browser clients, extract the JWT from the `Set-Cookie` header or use the cookie value, then pass it as a Bearer token on subsequent requests.
-
-### JavaScript example (cross-origin frontend)
-
-```js
-// Browse posts — no auth needed
-const res = await fetch('https://your-server:8000/api/browse?category=crypto&limit=20');
-const { posts, total, next_cursor } = await res.json();
-
-// Authenticate via Hive Keychain (browser extension)
-const { challenge } = await fetch('https://your-server:8000/api/auth/challenge', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username: 'yourhiveuser' }),
-}).then(r => r.json());
-
-const token = await new Promise((resolve, reject) => {
-  window.hive_keychain.requestSignBuffer('yourhiveuser', challenge, 'Posting', async (resp) => {
-    if (!resp.success) return reject(new Error('Signing cancelled'));
-    const verifyRes = await fetch('https://your-server:8000/api/auth/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'yourhiveuser', challenge, signature: resp.result }),
-    });
-    const jwt = verifyRes.headers.get('set-cookie')?.match(/hivecomb_jwt=([^;]+)/)?.[1];
-    resolve(jwt);
-  });
-});
-```
-
 ---
 
 ## Environment variables
@@ -437,7 +369,6 @@ const token = await new Promise((resolve, reject) => {
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `DATABASE_URL` | asyncpg connection string | `postgresql+asyncpg://user:pass@db/combflow` |
-| `API_KEY` | Shared secret for internal endpoints + JWT signing | `change-me` |
 | `POSTGRES_USER` | Postgres username | `combflow` |
 | `POSTGRES_PASSWORD` | Postgres password | `change-me` |
 | `POSTGRES_DB` | Postgres database name | `combflow` |
@@ -460,15 +391,13 @@ combflow/combflow/
 │   ├── config.py          # pydantic-settings
 │   ├── text.py            # shared text cleaning (zero deps, used by worker + seed script)
 │   ├── cache.py           # in-process TTL cache
-│   ├── hafsql.py          # HAFSQL PostgreSQL client (reputation, backfill, posting keys)
+│   ├── hafsql.py          # HAFSQL PostgreSQL client (reputation, backfill)
 │   ├── api/
 │   │   ├── main.py        # FastAPI app, lifespan, OpenAPI config
-│   │   ├── deps.py        # JWT auth + DB session dependencies
+│   │   ├── deps.py        # DB session dependency
 │   │   ├── routes/
-│   │   │   ├── auth.py      # Keychain challenge/verify, JWT
 │   │   │   ├── posts.py     # GET /posts/{author}/{permlink}
 │   │   │   └── ui.py        # HTML pages, browse API
-│   │   ├── rate_limit.py  # shared sliding-window rate limiter
 │   │   └── templates/
 │   │       ├── discover.html  # HiveComb discovery UI (Alpine.js reactive templates)
 │   │       └── static/
@@ -503,7 +432,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 187 tests
+├── tests/                   # 157 tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── goaccess-run.sh          # GoAccess log processing script
@@ -524,6 +453,6 @@ combflow/combflow/
 
 **Port 8000 in use** — Change in `docker-compose.yml`: `"8001:8000"`.
 
-**Login fails** — Ensure Hive Keychain extension is installed and unlocked. Check the error message in the toast notification — it will say if your reputation is too low (403), you're rate-limited (429), or the auth service is down (503).
+**Login fails** — Ensure Hive Keychain extension is installed and unlocked. Login is purely client-side — Keychain must successfully sign the message.
 
 **Comment posting fails** — Ensure you're logged in and have sufficient Hive RC (Resource Credits). The Keychain popup will show the specific error.

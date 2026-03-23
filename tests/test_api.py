@@ -1,4 +1,4 @@
-"""Core API tests — health, auth, schema validation, categories, middleware."""
+"""Core API tests — health, schema validation, categories, middleware."""
 from unittest.mock import patch
 
 from project.categories import CATEGORY_TREE, LEAF_CATEGORIES
@@ -61,18 +61,6 @@ async def test_openapi_schema(client):
     schema = resp.json()
     assert "paths" in schema
     assert schema["info"]["title"] == "CombFlow Discovery Engine"
-    # Verify security scheme is present.
-    assert "ApiKeyAuth" in schema.get("components", {}).get("securitySchemes", {})
-
-
-async def test_openapi_internal_endpoints_require_auth(client):
-    resp = await client.get("/openapi.json")
-    schema = resp.json()
-    for path, item in schema["paths"].items():
-        if path.startswith("/internal"):
-            for method, op in item.items():
-                if isinstance(op, dict) and "security" in op:
-                    assert {"APIKeyHeader": []} in op["security"]
 
 
 # ── Categories caching ───────────────────────────────────────────────────────
@@ -89,9 +77,6 @@ async def test_categories_cached(client, seeded_db):
             for p in data["categories"]
         )
     assert extract_names(r1.json()) == extract_names(r2.json())
-
-
-# ── Auth enforcement edge cases ──────────────────────────────────────────────
 
 
 # ── HTML page routes ─────────────────────────────────────────────────────────

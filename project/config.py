@@ -7,10 +7,6 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 20
 
-    # Security
-    api_key: str = ""
-    jwt_secret: str = ""  # HMAC key for JWT signing; falls back to api_key if unset
-
     # CORS
     cors_origins: list[str] = []  # e.g. ["https://combflow.app"]
 

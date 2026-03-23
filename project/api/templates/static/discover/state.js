@@ -126,7 +126,7 @@ document.addEventListener('alpine:init', () => {
     votePopupOpen: false,
     authDropdownOpen: false,
     // Auth — initialize from localStorage so Alpine template renders immediately
-    currentUser: (() => { const u = localStorage.getItem('honeycomb_user'), e = localStorage.getItem('honeycomb_expires'); return (u && e && new Date(e).getTime() > Date.now()) ? u : null; })(),
+    currentUser: localStorage.getItem('honeycomb_user') || null,
     // Comments
     comments: [],
     commentCount: 0,

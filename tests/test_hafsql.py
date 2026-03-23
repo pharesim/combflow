@@ -4,8 +4,8 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from project.hafsql import (
-    _raw_rep_to_score, build_dsn, get_reputation, get_reputations,
-    get_community, get_posting_key, get_post_body,
+    _raw_rep_to_score, build_dsn, get_reputations,
+    get_community, get_post_body,
     _cursor, _get_pool,
 )
 
@@ -62,33 +62,6 @@ class TestBuildDsn:
             "password=testpass "
             "connect_timeout=5"
         )
-
-
-# ── get_reputation (mocked DB) ──────────────────────────────────────────────
-
-class TestGetReputation:
-    def test_returns_score_on_hit(self):
-        mock_cur = MagicMock()
-        mock_cur.fetchone.return_value = {"reputation": 1_000_000_000}
-        with patch("project.hafsql._cursor") as mock_ctx:
-            mock_ctx.return_value.__enter__ = lambda s: mock_cur
-            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            result = get_reputation("alice")
-        assert result > 25
-
-    def test_returns_zero_on_miss(self):
-        mock_cur = MagicMock()
-        mock_cur.fetchone.return_value = None
-        with patch("project.hafsql._cursor") as mock_ctx:
-            mock_ctx.return_value.__enter__ = lambda s: mock_cur
-            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            result = get_reputation("nonexistent")
-        assert result == 0.0
-
-    def test_returns_zero_on_exception(self):
-        with patch("project.hafsql._cursor", side_effect=Exception("connection failed")):
-            result = get_reputation("alice")
-        assert result == 0.0
 
 
 # ── get_reputations (batch, mocked DB) ──────────────────────────────────────
@@ -155,38 +128,6 @@ class TestGetCommunity:
             result = get_community("hive-123456")
         assert result["title"] == ""
         assert result["about"] == ""
-
-
-# ── get_posting_key (mocked DB, cached) ─────────────────────────────────────
-
-class TestGetPostingKey:
-    def test_returns_key(self):
-        from project import cache
-        cache.clear()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "result": [{"posting": {"key_auths": [["STM7abc123", 1]]}}]
-        }
-        with patch("httpx.post", return_value=mock_resp):
-            result = get_posting_key("alice")
-        assert result == "STM7abc123"
-        cache.clear()
-
-    def test_returns_none_on_exception(self):
-        from project import cache
-        cache.clear()
-        with patch("httpx.post", side_effect=Exception("down")):
-            result = get_posting_key("alice")
-        assert result is None
-        cache.clear()
-
-    def test_cache_hit(self):
-        from project import cache
-        cache.clear()
-        cache.put("posting_key:cached_user", "STM7cached", ttl=600)
-        result = get_posting_key("cached_user")
-        assert result == "STM7cached"
-        cache.clear()
 
 
 # ── _get_pool / _cursor context manager ─────────────────────────────────────

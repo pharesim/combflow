@@ -4,11 +4,9 @@ import subprocess
 import sys
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://combflow:change_me@db/combflow_test")
-os.environ.setdefault("API_KEY", "test-secret-key-long-enough-for-hs256")
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import jwt as pyjwt
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -18,33 +16,12 @@ from sqlalchemy.pool import NullPool
 
 from project.db.models import Base
 from project.api.main import app
-from project.api.deps import get_db, _jwt_secret, JWT_COOKIE_NAME
+from project.api.deps import get_db
 from project.categories import CATEGORY_TREE
 from project import cache
-from project.api.routes.auth import _challenge_limiter, _verify_limiter, _challenges
 
 _PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
-
-
-def make_jwt(username: str, expired: bool = False) -> str:
-    """Create a valid (or expired) JWT for testing."""
-    secret = _jwt_secret()
-    if expired:
-        exp = datetime.now(timezone.utc) - timedelta(hours=1)
-    else:
-        exp = datetime.now(timezone.utc) + timedelta(days=7)
-    return pyjwt.encode({"sub": username, "exp": exp}, secret, algorithm="HS256")
-
-
-def jwt_headers(username: str) -> dict[str, str]:
-    """Return Authorization Bearer header for the given user."""
-    return {"Authorization": f"Bearer {make_jwt(username)}"}
-
-
-def jwt_cookies(username: str) -> dict[str, str]:
-    """Return cookie dict for the given user."""
-    return {JWT_COOKIE_NAME: make_jwt(username)}
 
 _test_engine = create_async_engine(os.environ["DATABASE_URL"], echo=False, poolclass=NullPool)
 _TestSession = sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
@@ -90,9 +67,6 @@ _ALL_TABLES = [
 async def setup_db(_apply_migrations):
     """Truncate all tables before each test for isolation."""
     cache.clear()
-    _challenge_limiter._log.clear()
-    _verify_limiter._log.clear()
-    _challenges.clear()
     async with _test_engine.begin() as conn:
         await conn.execute(text("TRUNCATE " + ", ".join(_ALL_TABLES) + " CASCADE"))
     yield

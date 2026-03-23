@@ -76,24 +76,6 @@ def _raw_rep_to_score(raw: int) -> float:
     return round(score + 25, 2)
 
 
-def get_reputation(author: str) -> float:
-    """Get author reputation score (human-readable, like PeakD shows).
-
-    Returns 0.0 if HAFSQL is unreachable (graceful degradation).
-    """
-    try:
-        with _cursor() as cur:
-            cur.execute(
-                "SELECT reputation FROM hafsql.reputations WHERE account_name = %s",
-                (author,),
-            )
-            row = cur.fetchone()
-            if row:
-                return _raw_rep_to_score(int(row["reputation"]))
-    except Exception as exc:
-        logger.debug("hafsql reputation lookup failed for %s: %s", author, exc)
-    return 0.0
-
 
 def get_reputations(authors: list[str]) -> dict[str, float]:
     """Batch reputation lookup."""
@@ -113,27 +95,6 @@ def get_reputations(authors: list[str]) -> dict[str, float]:
     except Exception as exc:
         logger.debug("hafsql batch reputation failed: %s", exc)
     return {}
-
-
-# ── Posting key (cached) ─────────────────────────────────────────────────────
-
-
-def get_posting_key(username: str) -> str | None:
-    """Get the primary public posting key for a Hive account.
-
-    Cached with a 10-minute TTL via the shared cache module. Returns None on failure.
-    """
-    from . import cache
-
-    cache_key = f"posting_key:{username}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    key = _fetch_posting_key(username)
-    if key:
-        cache.put(cache_key, key, ttl=600)  # 10 min
-    return key
 
 
 
@@ -182,35 +143,3 @@ def get_community(community_id: str) -> dict | None:
         logger.debug("community lookup failed for %s: %s", community_id, exc)
     return None
 
-
-def _fetch_posting_key(username: str) -> str | None:
-    """Fetch posting key from Hive API."""
-    import httpx
-
-    nodes = [
-        "https://api.hive.blog",
-        "https://api.deathwing.me",
-        "https://rpc.ausbit.dev",
-    ]
-    for node in nodes:
-        try:
-            resp = httpx.post(
-                node,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "condenser_api.get_accounts",
-                    "params": [[username]],
-                    "id": 1,
-                },
-                timeout=5,
-            )
-            result = resp.json().get("result", [])
-            if result:
-                keys = result[0].get("posting", {}).get("key_auths", [])
-                if keys:
-                    return keys[0][0]
-            return None
-        except Exception as exc:
-            logger.debug("Hive API posting key lookup failed at %s: %s", node, exc)
-            continue
-    return None
