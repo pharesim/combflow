@@ -125,7 +125,7 @@ async function openModal(post, skipPush) {
         L.marker([lat, lng]).addTo(map).bindPopup(desc).openPopup();
       });
     }
-    // Cross-post detection: show banner and re-route votes to original
+    // Cross-post detection: show banner, fetch original content, re-route votes
     if (result.cross_post_key) {
       const cpParts = result.cross_post_key.split('/');
       if (cpParts.length === 2 && cpParts[0] && cpParts[1]) {
@@ -139,6 +139,14 @@ async function openModal(post, skipPush) {
           + (communityName ? ` in ${esc(communityName)}` : '')
           + ` · <a href="/@${esc(cpAuthor)}/${esc(cpPermlink)}" onclick="event.preventDefault();closeModal();openModal({author:'${esc(cpAuthor)}',permlink:'${esc(cpPermlink)}'})">View original</a>`;
         banner.style.display = '';
+        // Fetch and render the original post content
+        try {
+          const original = await hiveRpc('bridge.get_post', {author: cpAuthor, permlink: cpPermlink});
+          if (original) {
+            document.getElementById('modal-title').textContent = original.title || cpPermlink;
+            document.getElementById('modal-body').innerHTML = renderHiveBody(original.body || '');
+          }
+        } catch(e) {}
       }
     }
     // Check if user already voted
