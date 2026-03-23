@@ -3,26 +3,52 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HiveComb — Discover</title>
+<title>HiveComb — Discover Hive Blockchain Content</title>
+<meta name="description" content="Discover and explore Hive blockchain posts by topic, language, and sentiment. Browse communities, filter by category, and find content that matches your interests.">
+<meta name="theme-color" content="#e31337">
+<meta name="site-url" content="{{SITE_URL}}">
+<link rel="canonical" href="{{SITE_URL}}{{CANONICAL_PATH}}">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HiveComb">
+<meta property="og:title" content="HiveComb — Discover Hive Blockchain Content">
+<meta property="og:description" content="Discover and explore Hive blockchain posts by topic, language, and sentiment. Browse communities, filter by category, and find content that matches your interests.">
+<meta property="og:url" content="{{SITE_URL}}{{CANONICAL_PATH}}">
+<meta property="og:image" content="{{SITE_URL}}/static/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{SITE_URL}}/static/og-image.png">
+<meta name="twitter:title" content="HiveComb — Discover Hive Blockchain Content">
+<meta name="twitter:description" content="Discover and explore Hive blockchain posts by topic, language, and sentiment. Browse communities and find content that matches your interests.">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="stylesheet" href="/static/shared.css">
 <link rel="stylesheet" href="/static/discover.css">
 <link rel="preconnect" href="https://images.hive.blog">
 <link rel="preconnect" href="https://img.youtube.com">
 <link rel="preconnect" href="https://images.3speak.tv">
 <link rel="preconnect" href="https://files.peakd.com">
+<link rel="dns-prefetch" href="https://images.hive.blog">
+<link rel="dns-prefetch" href="https://img.youtube.com">
+<link rel="dns-prefetch" href="https://images.3speak.tv">
+<link rel="dns-prefetch" href="https://files.peakd.com">
 <script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js" integrity="sha384-pcBjnGbkyKeOXaoFkmJiuR9E08/6gkmus6/Strimnxtl3uk0Hx23v345pWyC/MMr" crossorigin="anonymous"></script>
 <script defer src="/static/shared.js"></script>
 <script defer src="/static/shared/keychain.js"></script>
 <script defer src="/static/shared/markdown.js"></script>
 <script>(function(){var t=localStorage.getItem('theme');if(!t)t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark';if(t==='light')document.documentElement.dataset.theme='light';})()</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"HiveComb","url":"{{SITE_URL}}/","description":"Semantic post discovery for the Hive blockchain. Browse posts by topic, language, sentiment, and community.","potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"{{SITE_URL}}/?q={search_term_string}"},"query-input":"required name=search_term_string"}}
+</script>
 </head>
 <body x-data>
 
-<div class="header">
-  <a class="logo" href="/">HiveComb</a>
-  <div class="nav-links">
+<header class="header">
+  <a class="logo" href="/"><h1 class="sr-only">HiveComb</h1>HiveComb</a>
+  <nav class="nav-links">
     <a href="/" class="active">Discover</a>
     <div id="auth-area">
       <!-- Logged-in state -->
@@ -64,16 +90,17 @@
       <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
-  </div>
-</div>
+  </nav>
+</header>
 
+<main>
 <!-- Login prompt -->
 <div class="login-overlay" id="login-overlay" role="dialog" aria-modal="true" aria-label="Login" x-show="$store.app.loginOpen" x-cloak @click.self="closeLogin()">
   <div class="login-box" style="position:relative">
     <button type="button" class="modal-close" aria-label="Close" data-action="close-login">&times;</button>
     <!-- Login form (shown when Keychain is installed) -->
     <div id="login-form">
-      <h3>Login with Hive Keychain</h3>
+      <h2>Login with Hive Keychain</h2>
       <p>Enter your Hive username to sign in securely.</p>
       <label for="login-username" class="sr-only">Hive username</label>
       <input id="login-username" placeholder="hive username" maxlength="16"
@@ -83,7 +110,7 @@
     </div>
     <!-- Onboarding guidance (shown when Keychain is NOT installed) -->
     <div id="login-onboarding" style="display:none">
-      <h3>Welcome to HiveComb</h3>
+      <h2>Welcome to HiveComb</h2>
       <p class="onboarding-intro">HiveComb runs on <strong>Hive</strong> &mdash; an open, decentralized blockchain where your posts, votes, and communities belong to you, not a company. To get started, follow these steps:</p>
       <div class="onboarding-steps">
         <div class="onboarding-step">
@@ -227,7 +254,7 @@
                  x-init="$nextTick(() => observeThumb($el))"></div>
           </template>
           <template x-if="!getPostMeta(p).thumb">
-            <div class="hex-placeholder"><img class="no-thumb-avatar"
+            <div class="hex-placeholder"><img class="no-thumb-avatar" loading="lazy"
                  :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
                  :alt="'@' + p.author"
                  @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))"></div>
@@ -280,7 +307,7 @@
       <div class="post-card-body">
         <div class="post-card-title" x-text="getPostMeta(p).title"></div>
         <div class="post-card-author">
-          <img class="author-avatar"
+          <img class="author-avatar" loading="lazy"
                :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
                alt="" width="24" height="24">
           <span class="clickable-author"
@@ -335,7 +362,7 @@
       </template>
       <template x-if="!getPostMeta(p).thumb">
         <div class="list-thumb">
-          <img class="no-thumb-avatar list-avatar"
+          <img class="no-thumb-avatar list-avatar" loading="lazy"
                :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
                :alt="'@' + p.author"
                @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author.slice(0,2)}))">
@@ -344,7 +371,7 @@
       <div class="list-content">
         <div class="list-title" x-text="getPostMeta(p).title"></div>
         <div class="list-meta">
-          <img class="author-avatar"
+          <img class="author-avatar" loading="lazy"
                :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
                alt="" width="20" height="20">
           <span class="clickable-author"
@@ -571,6 +598,8 @@
     </div>
   </div>
 </div>
+
+</main>
 
 <footer id="site-footer">
   <span id="footer-results"></span>

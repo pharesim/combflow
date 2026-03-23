@@ -47,11 +47,13 @@ function broadcastPost(title, body, tags, communityId, description) {
   const imgMatch = body.match(/!\[[^\]]*\]\(([^)]+)\)/) || body.match(/https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)/i);
   const images = imgMatch ? [imgMatch[1] || imgMatch[0]] : [];
 
+  const siteUrl = (document.querySelector('meta[name="site-url"]')?.content || '').replace(/\/+$/, '');
   const metadata = {
     tags: tags,
     image: images,
     app: 'hivecomb/1.0',
   };
+  if (siteUrl) metadata.canonical_url = siteUrl + '/@' + auth.username + '/' + permlink;
   if (description) metadata.description = description;
   if (communityId) metadata.community = communityId;
 
