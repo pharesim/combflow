@@ -83,6 +83,7 @@ def _backfill_thread(
                 FROM hafsql.comments c
                 LEFT JOIN hafsql.reputations r ON c.author = r.account_name
                 WHERE c.parent_author = ''
+                  AND c.deleted = false
                   AND LENGTH(c.body) >= 80
                   AND c.created < %s
                 ORDER BY c.created DESC
