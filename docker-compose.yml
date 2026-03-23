@@ -39,6 +39,7 @@ services:
     environment:
       PYTHONPATH: /combflow
       CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
+      CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
     depends_on:
       db:
         condition: service_healthy
