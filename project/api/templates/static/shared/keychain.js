@@ -57,6 +57,16 @@ function broadcastPost(title, body, tags, communityId, description) {
   if (description) metadata.description = description;
   if (communityId) metadata.community = communityId;
 
+  const payoutType = localStorage.getItem('honeycomb_payoutType') || 'powerup';
+  let payoutMaxPayout = '1000000.000 HBD';
+  let payoutPercentHbd = 0;
+  if (payoutType === 'default') {
+    payoutPercentHbd = 10000;
+  } else if (payoutType === 'decline') {
+    payoutMaxPayout = '0.000 HBD';
+    payoutPercentHbd = 10000;
+  }
+
   const ops = [
     ['comment', {
       parent_author: '',
@@ -70,8 +80,8 @@ function broadcastPost(title, body, tags, communityId, description) {
     ['comment_options', {
       author: auth.username,
       permlink: permlink,
-      max_accepted_payout: '1000000.000 HBD',
-      percent_hbd: 0,
+      max_accepted_payout: payoutMaxPayout,
+      percent_hbd: payoutPercentHbd,
       allow_votes: true,
       allow_curation_rewards: true,
       extensions: [],

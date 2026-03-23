@@ -47,6 +47,7 @@ function applyPreferenceFilters(prefs) {
     localStorage.setItem('honeycomb_nsfwMode', prefs.nsfwMode);
     applyNsfwMode(prefs.nsfwMode);
   }
+  if (prefs.payoutType != null) localStorage.setItem('honeycomb_payoutType', prefs.payoutType);
   // Set Alpine filter store from preferences
   const f = Alpine.store('filters');
   if (prefs.default_categories && prefs.default_categories.length > 0) {
@@ -272,6 +273,12 @@ async function showSettingsModal() {
     r.checked = r.value === nsfwMode;
   });
 
+  // Set payout preference
+  const payoutSelect = document.getElementById('settings-payout');
+  if (payoutSelect) {
+    payoutSelect.value = savedPrefs.payoutType || localStorage.getItem('honeycomb_payoutType') || 'powerup';
+  }
+
   // Set vote settings
   const voteFloorInput = document.getElementById('settings-vote-floor');
   const voteMaxInput = document.getElementById('settings-vote-max');
@@ -331,11 +338,13 @@ async function saveSettings() {
         const voteMax = Number(document.getElementById('settings-vote-max').value);
         const voteManual = document.getElementById('settings-vote-manual').checked;
         const nsfwMode = document.querySelector('input[name="settings-nsfw"]:checked')?.value || 'hide';
+        const payoutType = document.getElementById('settings-payout').value;
         const votePrefs = {
           voteFloor: voteFloor,
           voteMaxWeight: voteMax,
           voteManual: voteManual,
           nsfwMode: nsfwMode,
+          payoutType: payoutType,
         };
         const filterPrefs = {
           default_categories: cats,
@@ -349,6 +358,7 @@ async function saveSettings() {
         localStorage.setItem('honeycomb_voteMaxWeight', voteMax);
         localStorage.setItem('honeycomb_voteManual', voteManual);
         localStorage.setItem('honeycomb_nsfwMode', nsfwMode);
+        localStorage.setItem('honeycomb_payoutType', payoutType);
         applyNsfwMode(nsfwMode);
         // Merge with existing on-chain prefs
         const existing = postingMeta.combflow || {};

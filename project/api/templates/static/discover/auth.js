@@ -68,6 +68,7 @@ async function doLogout() {
   await logout();
   sessionStorage.removeItem('honeycomb_user_communities');
   sessionStorage.removeItem('honeycomb_voted');
+  localStorage.removeItem('honeycomb_payoutType');
   state.userCommunities = null;
   state.votedPosts = {};
   state.manaCache = null;

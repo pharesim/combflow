@@ -511,10 +511,10 @@ body{overflow-x:hidden}
 .mute-btn:hover{color:#e74c3c;border-color:#e74c3c}
 
 /* ── NSFW settings ── */
-.settings-nsfw-fieldset{border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px}
-.settings-nsfw-fieldset legend{font-size:13px;color:var(--text-dim);padding:0 4px}
-.settings-radio-label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);margin:4px 0;cursor:pointer}
-.settings-radio-label input[type="radio"]{accent-color:var(--hive-red)}
+.settings-nsfw-fieldset{border:none;padding:0;margin:0 0 12px}
+.settings-nsfw-fieldset legend{font-size:13px;color:var(--text-dim);min-width:120px;padding:0;margin-bottom:6px}
+.settings-radio-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin:0;padding:6px 0;cursor:pointer}
+.settings-radio-label input[type="radio"]{accent-color:var(--hive-red);margin:0}
 .chip-nsfw.active{background:var(--hive-red);color:#fff}
 
 /* ── Vote settings sliders ── */
@@ -523,6 +523,7 @@ body{overflow-x:hidden}
 .settings-slider-row input[type="range"]{flex:1;accent-color:var(--hive-red);height:6px}
 .settings-slider-val{font-size:13px;color:var(--text);min-width:40px;text-align:right}
 .vote-estimate{font-size:11px;color:var(--text-dim);padding:4px 0}
+.settings-select{background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:6px 10px;font-size:13px;flex:1;max-width:220px}
 
 /* ── Manual vote popup ── */
 .vote-popup-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1100;align-items:center;justify-content:center}
