@@ -46,6 +46,16 @@
 		file_server
 	}
 	redir / /docs permanent
-	encode zstd gzip
-	reverse_proxy combflow-app:8000
+	# Only allow API paths — block UI routes and static assets
+	@api_paths {
+		path /api/* /docs /docs/* /openapi.json /redoc /health /categories /posts/*
+	}
+	handle @api_paths {
+		encode zstd gzip
+		reverse_proxy combflow-app:8000
+	}
+	# Everything else returns 404
+	handle {
+		respond "Not Found" 404
+	}
 }
