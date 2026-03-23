@@ -174,9 +174,10 @@ function wireSettingsOnce() {
   document.getElementById('settings-langs').addEventListener('click', handleSimpleChipClick);
 }
 
-function estimateVotes(floor, maxWeight) {
-  let mana = 100;
+function estimateVotes(floor, maxWeight, startMana) {
+  let mana = startMana;
   const target = floor + (100 - floor) * 0.1;
+  if (mana <= target) return 0;
   let votes = 0;
   while (mana > target && votes < 10000) {
     const ratio = (mana - floor) / (100 - floor);
@@ -187,11 +188,14 @@ function estimateVotes(floor, maxWeight) {
   return votes;
 }
 
-function updateVoteEstimate() {
+async function updateVoteEstimate() {
   const floor = Number(document.getElementById('settings-vote-floor').value);
   const maxWeight = Number(document.getElementById('settings-vote-max').value);
-  document.getElementById('vote-estimate').textContent =
-    '~' + estimateVotes(floor, maxWeight) + ' votes before reaching mana floor';
+  const mana = await fetchManaPercent();
+  const el = document.getElementById('vote-estimate');
+  if (!el) return;
+  el.textContent = '~' + estimateVotes(floor, maxWeight, mana) +
+    ' votes before reaching mana floor (current mana: ' + Math.round(mana) + '%)';
 }
 
 async function showSettingsModal() {
