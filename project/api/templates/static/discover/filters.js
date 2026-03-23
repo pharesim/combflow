@@ -95,10 +95,11 @@ function checkFiltersMatchDefault() {
   const f = Alpine.store('filters');
   const hasExtra = !!state.activeCommunityFilter || state.myCommunitiesActive
     || state.followingFilterActive || !!state.authorFilterUser;
+  const hasAny = f.categories.size > 0 || f.languages.size > 0 || f.sentiments.size > 0 || hasExtra;
+  Alpine.store('app').hasActiveFilters = hasAny;
   const cached = localStorage.getItem('honeycomb_filterPrefs');
   if (!cached) {
-    Alpine.store('app').filtersMatchDefault = f.categories.size === 0
-      && f.languages.size === 0 && f.sentiments.size === 0 && !hasExtra;
+    Alpine.store('app').filtersMatchDefault = !hasAny;
     return;
   }
   try {

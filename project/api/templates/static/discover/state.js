@@ -145,6 +145,7 @@ document.addEventListener('alpine:init', () => {
     // Filter defaults
     hasDefaultFilters: false,
     filtersMatchDefault: true,
+    hasActiveFilters: false,
   });
 
   // ── Filters store ──
