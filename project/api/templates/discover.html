@@ -218,6 +218,7 @@
       <button type="button" class="chip sentiment-positive" data-sentiment="positive" aria-pressed="false">Positive</button>
       <button type="button" class="chip sentiment-neutral" data-sentiment="neutral" aria-pressed="false">Neutral</button>
       <button type="button" class="chip sentiment-negative" data-sentiment="negative" aria-pressed="false">Negative</button>
+      <button type="button" class="chip chip-nsfw" id="nsfw-filter-chip" data-sentiment="nsfw" aria-pressed="false" style="display:none">NSFW</button>
     </div>
   </div>
   <div class="filter-actions" style="display:flex;gap:8px;padding:8px 12px">
@@ -442,6 +443,12 @@
       </div>
     </div>
     <div class="settings-main-panel" id="settings-main-advanced" style="display:none">
+      <fieldset class="settings-nsfw-fieldset">
+        <legend>NSFW content</legend>
+        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="hide" checked> Hide NSFW posts</label>
+        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="show"> Show NSFW posts</label>
+        <label class="settings-radio-label"><input type="radio" name="settings-nsfw" value="filter"> Show with filter button</label>
+      </fieldset>
       <div class="settings-slider-row">
         <label for="settings-vote-manual">Manual voting</label>
         <input type="checkbox" id="settings-vote-manual" data-action="toggle-manual-voting">

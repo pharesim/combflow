@@ -120,8 +120,14 @@ function buildFilterUrl(limit, offset) {
   } else if (state.activeCommunityFilter) {
     url += `&community=${encodeURIComponent(state.activeCommunityFilter)}`;
   }
-  if (sentiments.length === 1) url += `&sentiment=${encodeURIComponent(sentiments[0])}`;
-  return { url, sentiments };
+  // Sentiment filter (exclude nsfw pseudo-sentiment from the server param)
+  const realSentiments = sentiments.filter(s => s !== 'nsfw');
+  if (realSentiments.length === 1) url += `&sentiment=${encodeURIComponent(realSentiments[0])}`;
+  // NSFW mode: hide (default) / show / filter
+  const nsfwMode = getNsfwMode();
+  if (nsfwMode === 'show' || nsfwMode === 'filter') url += '&include_nsfw=true';
+  if (nsfwMode === 'filter' && sentiments.includes('nsfw')) url += '&nsfw_only=true';
+  return { url, sentiments: realSentiments };
 }
 
 // ── Filters ──

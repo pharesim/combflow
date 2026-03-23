@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 
 from ..hafsql import get_reputations
+from .blacklist import check_authors
 from .bridge import _set_cursor
 from .classify import _classify_and_save, MIN_AUTHOR_REPUTATION
 
@@ -40,12 +41,15 @@ def _process_batch(
         return 0
 
     unique_authors = list({op["author"] for op in batch})
+    blacklisted = check_authors(unique_authors)
     reps = get_reputations(unique_authors)
     hafsql_available = len(reps) > 0 or len(unique_authors) == 0
 
     processed = 0
     for op in batch:
         author = op["author"]
+        if author in blacklisted:
+            continue
         if author in reps:
             rep = reps[author]
         elif hafsql_available:

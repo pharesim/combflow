@@ -138,6 +138,8 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
         post.sentiment_score = data.get("sentiment_score")
         if "community_id" in data:
             post.community_id = data["community_id"]
+        if "is_nsfw" in data:
+            post.is_nsfw = data["is_nsfw"]
         # Clear old categories and languages.
         await session.execute(
             text("DELETE FROM post_category WHERE post_id = :pid"),
@@ -156,6 +158,7 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
             sentiment=data.get("sentiment"),
             sentiment_score=data.get("sentiment_score"),
             community_id=data.get("community_id"),
+            is_nsfw=data.get("is_nsfw", False),
         )
         session.add(post)
         await session.flush()
@@ -198,7 +201,7 @@ async def get_post_by_permlink(
             """
             SELECT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   cm.community_name
+                   p.is_nsfw, cm.community_name
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
             WHERE p.author = :author AND p.permlink = :pl
@@ -322,13 +325,15 @@ async def _attach_categories_and_languages(
 # ── Browse & discovery ────────────────────────────────────────────────────────
 
 
-def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None, authors=None):
+def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None, authors=None, include_nsfw=False, nsfw_only=False):
     raw = _json.dumps({"c": sorted(categories or []),
                        "l": sorted(languages or []),
                        "s": sentiment,
                        "m": community,
                        "ms": sorted(communities) if communities else None,
-                       "a": sorted(authors) if authors else None}, sort_keys=True)
+                       "a": sorted(authors) if authors else None,
+                       "nsfw": include_nsfw,
+                       "nsfw_only": nsfw_only}, sort_keys=True)
     return f"browse_count:{hashlib.md5(raw.encode()).hexdigest()}"
 
 @retry_transient
@@ -343,6 +348,8 @@ async def browse_posts(
     limit: int = 50,
     offset: int = 0,
     cursor: str | None = None,
+    include_nsfw: bool = False,
+    nsfw_only: bool = False,
 ) -> dict:
     """Browse all posts with optional filters.
 
@@ -356,6 +363,10 @@ async def browse_posts(
     conditions = [
         "EXISTS (SELECT 1 FROM post_category WHERE post_id = p.id)",
     ]
+    if nsfw_only:
+        conditions.append("p.is_nsfw = true")
+    elif not include_nsfw:
+        conditions.append("p.is_nsfw = false")
     params: dict = {"lim": limit}
 
     # Cursor-based keyset pagination takes priority over offset.
@@ -419,7 +430,7 @@ async def browse_posts(
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     # Filtered total count — cached with 30s TTL, keyed by filter combination.
-    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors)
+    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors, include_nsfw, nsfw_only)
     total = _cache.get(count_key)
     if total is None:
         count_conditions = [c for c in conditions if ":cursor_created" not in c]
@@ -439,7 +450,7 @@ async def browse_posts(
             f"""
             SELECT DISTINCT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   cm.community_name
+                   p.is_nsfw, cm.community_name
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
             {cat_join}

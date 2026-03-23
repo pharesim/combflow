@@ -175,8 +175,9 @@ def _classify_and_save(
     if body.lstrip().startswith("@@"):
         return
 
-    # Parse json_metadata early — needed for cross-post detection.
+    # Parse json_metadata early — needed for cross-post detection and NSFW detection.
     tags_hint = ""
+    is_nsfw = False
     meta = json_metadata
     try:
         if isinstance(meta, str) and meta:
@@ -185,6 +186,7 @@ def _classify_and_save(
             tags = meta.get("tags", [])
             if tags:
                 tags_hint = " ".join(tags)
+                is_nsfw = "nsfw" in [t.lower() for t in tags if isinstance(t, str)]
     except Exception:
         pass
 
@@ -264,6 +266,7 @@ def _classify_and_save(
         "sentiment": sentiment,
         "sentiment_score": sentiment_score,
         "community_id": community_id,
+        "is_nsfw": is_nsfw,
     })
     logger.info("%s processed %s/%s langs=%s sentiment=%s cats=%s community=%s",
                 label, author, permlink, languages, sentiment, categories, community_id)

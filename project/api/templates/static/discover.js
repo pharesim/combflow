@@ -147,6 +147,7 @@ async function init() {
     startNotifPolling();
   }
   await loadAndApplyPreferences();
+  applyNsfwMode(getNsfwMode());
 
   // Fetch suggestions based on active categories (from preferences or manual)
   scheduleSuggestions();

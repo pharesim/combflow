@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 
 from ..hafsql import _raw_rep_to_score, build_dsn
+from .blacklist import is_blacklisted
 from .bridge import _get_cursor, _set_cursor, _existing_author_permlinks
 from .classify import _classify_and_save, MIN_AUTHOR_REPUTATION
 
@@ -139,6 +140,10 @@ def _backfill_thread(
 
             if (row["author"], row["permlink"]) in existing:
                 skipped += 1
+                continue
+
+            # Blacklist filter.
+            if is_blacklisted(row["author"]):
                 continue
 
             # Reputation filter.

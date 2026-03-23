@@ -43,6 +43,10 @@ function applyPreferenceFilters(prefs) {
   if (prefs.voteFloor != null) localStorage.setItem('honeycomb_voteFloor', prefs.voteFloor);
   if (prefs.voteMaxWeight != null) localStorage.setItem('honeycomb_voteMaxWeight', prefs.voteMaxWeight);
   if (prefs.voteManual != null) localStorage.setItem('honeycomb_voteManual', prefs.voteManual);
+  if (prefs.nsfwMode != null) {
+    localStorage.setItem('honeycomb_nsfwMode', prefs.nsfwMode);
+    applyNsfwMode(prefs.nsfwMode);
+  }
   // Set Alpine filter store from preferences
   const f = Alpine.store('filters');
   if (prefs.default_categories && prefs.default_categories.length > 0) {
@@ -262,6 +266,12 @@ async function showSettingsModal() {
     c.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
 
+  // Set NSFW mode radio
+  const nsfwMode = savedPrefs.nsfwMode || localStorage.getItem('honeycomb_nsfwMode') || 'hide';
+  document.querySelectorAll('input[name="settings-nsfw"]').forEach(r => {
+    r.checked = r.value === nsfwMode;
+  });
+
   // Set vote settings
   const voteFloorInput = document.getElementById('settings-vote-floor');
   const voteMaxInput = document.getElementById('settings-vote-max');
@@ -320,10 +330,12 @@ async function saveSettings() {
         const voteFloor = Number(document.getElementById('settings-vote-floor').value);
         const voteMax = Number(document.getElementById('settings-vote-max').value);
         const voteManual = document.getElementById('settings-vote-manual').checked;
+        const nsfwMode = document.querySelector('input[name="settings-nsfw"]:checked')?.value || 'hide';
         const votePrefs = {
           voteFloor: voteFloor,
           voteMaxWeight: voteMax,
           voteManual: voteManual,
+          nsfwMode: nsfwMode,
         };
         const filterPrefs = {
           default_categories: cats,
@@ -336,6 +348,8 @@ async function saveSettings() {
         localStorage.setItem('honeycomb_voteFloor', voteFloor);
         localStorage.setItem('honeycomb_voteMaxWeight', voteMax);
         localStorage.setItem('honeycomb_voteManual', voteManual);
+        localStorage.setItem('honeycomb_nsfwMode', nsfwMode);
+        applyNsfwMode(nsfwMode);
         // Merge with existing on-chain prefs
         const existing = postingMeta.combflow || {};
         postingMeta.combflow = { ...existing, ...filterPrefs, ...votePrefs };
@@ -375,6 +389,21 @@ function closeSettingsModal() {
   const modal = document.getElementById('settings-modal');
   releaseFocus(modal.querySelector('.modal'));
   Alpine.store('app').settingsOpen = false;
+}
+
+// ── NSFW mode ──
+function getNsfwMode() {
+  return localStorage.getItem('honeycomb_nsfwMode') || 'hide';
+}
+
+function applyNsfwMode(mode) {
+  const chip = document.getElementById('nsfw-filter-chip');
+  if (chip) chip.style.display = mode === 'filter' ? '' : 'none';
+  // If switching away from filter mode, clear any active NSFW filter
+  if (mode !== 'filter') {
+    const f = Alpine.store('filters');
+    f.remove('sentiments', 'nsfw');
+  }
 }
 
 // ── Muted users list (in settings modal) ──

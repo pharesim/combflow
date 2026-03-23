@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, DateTime, Float, ForeignKey, Integer, String,
+    Boolean, Column, DateTime, Float, ForeignKey, Integer, String,
     Table, UniqueConstraint, func,
 )
 from sqlalchemy.orm import declarative_base, relationship
@@ -32,6 +32,7 @@ class Post(Base):
     sentiment = Column(String(10))          # positive, negative, neutral
     sentiment_score = Column(Float)          # -1.0 to 1.0
     community_id = Column(String(20), nullable=True, index=True)  # hive-NNNNNN or NULL
+    is_nsfw = Column(Boolean, nullable=False, server_default="false")
     classified_at = Column(DateTime(timezone=True), server_default=func.now())
     categories = relationship("Category", secondary=post_category, back_populates="posts")
 
