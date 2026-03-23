@@ -292,6 +292,13 @@ document.addEventListener('click', e => {
     // Settings modal
     case 'skip-settings': skipSettings(); break;
     case 'save-settings': saveSettings(); break;
+    case 'settings-main-tab': {
+      const tab = el.dataset.tab;
+      document.querySelectorAll('.settings-main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      document.querySelectorAll('.settings-main-panel').forEach(p => p.style.display = 'none');
+      document.getElementById('settings-main-' + tab).style.display = '';
+      break;
+    }
     case 'settings-tab': {
       const tab = el.dataset.tab;
       document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));

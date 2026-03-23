@@ -381,49 +381,57 @@
     <button type="button" class="modal-close" aria-label="Close" data-action="skip-settings">&times;</button>
     <h2>Welcome to HoneyComb!</h2>
     <p style="color:var(--text-dim);margin-bottom:20px">Choose your default filters to see the content you care about most.</p>
-    <div class="settings-section">
-      <h3 class="settings-section-title">Languages</h3>
-      <div class="filter-body chip-wrap" id="settings-langs"></div>
+    <div class="settings-main-tabs" id="settings-main-tabs">
+      <button type="button" class="settings-main-tab active" data-action="settings-main-tab" data-tab="filters">Filters</button>
+      <button type="button" class="settings-main-tab" data-action="settings-main-tab" data-tab="advanced">Advanced</button>
+      <button type="button" class="settings-main-tab" data-action="settings-main-tab" data-tab="users" id="settings-main-tab-users" style="display:none">Users</button>
     </div>
-    <div class="settings-section">
-      <h3 class="settings-section-title">Categories</h3>
-      <div class="filter-body chip-wrap" id="settings-cats"></div>
-    </div>
-    <div class="settings-section">
-      <h3 class="settings-section-title">Sentiment</h3>
-      <div class="filter-body chip-wrap" id="settings-sentiment">
-        <button type="button" class="chip sentiment-positive" data-sentiment="positive" aria-pressed="false">Positive</button>
-        <button type="button" class="chip sentiment-neutral" data-sentiment="neutral" aria-pressed="false">Neutral</button>
-        <button type="button" class="chip sentiment-negative" data-sentiment="negative" aria-pressed="false">Negative</button>
+    <div class="settings-main-panel" id="settings-main-filters">
+      <div class="settings-section">
+        <h3 class="settings-section-title">Languages</h3>
+        <div class="filter-body chip-wrap" id="settings-langs"></div>
+      </div>
+      <div class="settings-section">
+        <h3 class="settings-section-title">Categories</h3>
+        <div class="filter-body chip-wrap" id="settings-cats"></div>
+      </div>
+      <div class="settings-section">
+        <h3 class="settings-section-title">Sentiment</h3>
+        <div class="filter-body chip-wrap" id="settings-sentiment">
+          <button type="button" class="chip sentiment-positive" data-sentiment="positive" aria-pressed="false">Positive</button>
+          <button type="button" class="chip sentiment-neutral" data-sentiment="neutral" aria-pressed="false">Neutral</button>
+          <button type="button" class="chip sentiment-negative" data-sentiment="negative" aria-pressed="false">Negative</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:16px;justify-content:center">
+        <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:8px 24px" data-action="save-settings">Save</button>
+        <button type="button" class="btn btn-ghost" data-action="skip-settings">Cancel</button>
       </div>
     </div>
-    <details class="settings-advanced">
-      <summary class="settings-section-title" style="cursor:pointer">Advanced</summary>
-      <div style="margin-top:8px">
+    <div class="settings-main-panel" id="settings-main-advanced" style="display:none">
+      <div class="settings-slider-row">
+        <label for="settings-vote-manual">Manual voting</label>
+        <input type="checkbox" id="settings-vote-manual" data-action="toggle-manual-voting">
+      </div>
+      <div id="auto-vote-settings">
         <div class="settings-slider-row">
-          <label for="settings-vote-manual">Manual voting</label>
-          <input type="checkbox" id="settings-vote-manual" data-action="toggle-manual-voting">
+          <label for="settings-vote-floor">Mana floor</label>
+          <input type="range" id="settings-vote-floor" min="20" max="95" value="50" data-action="vote-floor-slider">
+          <span class="settings-slider-val" id="settings-vote-floor-val">50%</span>
         </div>
-        <div id="auto-vote-settings">
-          <div class="settings-slider-row">
-            <label for="settings-vote-floor">Mana floor</label>
-            <input type="range" id="settings-vote-floor" min="20" max="95" value="50" data-action="vote-floor-slider">
-            <span class="settings-slider-val" id="settings-vote-floor-val">50%</span>
-          </div>
-          <div class="settings-slider-row">
-            <label for="settings-vote-max">Max vote weight</label>
-            <input type="range" id="settings-vote-max" min="1" max="100" value="100" data-action="vote-max-slider">
-            <span class="settings-slider-val" id="settings-vote-max-val">100%</span>
-          </div>
-          <div class="vote-estimate" id="vote-estimate"></div>
+        <div class="settings-slider-row">
+          <label for="settings-vote-max">Max vote weight</label>
+          <input type="range" id="settings-vote-max" min="1" max="100" value="100" data-action="vote-max-slider">
+          <span class="settings-slider-val" id="settings-vote-max-val">100%</span>
         </div>
+        <div class="vote-estimate" id="vote-estimate"></div>
       </div>
-    </details>
-    <div style="display:flex;gap:12px;margin-top:16px;justify-content:center">
-      <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:8px 24px" data-action="save-settings">Save</button>
-      <button type="button" class="btn btn-ghost" data-action="skip-settings">Cancel</button>
+      <div style="display:flex;gap:12px;margin-top:16px;justify-content:center">
+        <button type="button" class="btn" style="background:var(--hive-red);color:#fff;padding:8px 24px" data-action="save-settings">Save</button>
+        <button type="button" class="btn btn-ghost" data-action="skip-settings">Cancel</button>
+      </div>
     </div>
-    <div class="settings-users-area" id="settings-users-area" style="display:none">
+    <div class="settings-main-panel" id="settings-main-users" style="display:none">
       <div class="settings-tabs">
         <button type="button" class="settings-tab active" data-action="settings-tab" data-tab="muted">Muted Users</button>
         <button type="button" class="settings-tab" data-action="settings-tab" data-tab="followed">Followed Users</button>

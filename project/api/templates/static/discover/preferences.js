@@ -271,14 +271,16 @@ async function showSettingsModal() {
   renderMutedUsersList();
   renderFollowedUsersList();
 
-  // Show user tabs area if either list has content, reset to muted tab
-  const area = document.getElementById('settings-users-area');
-  if (area) {
-    area.style.display = (state.mutedUsers.size > 0 || state.followedUsers.size > 0) ? '' : 'none';
-    document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'muted'));
-    document.getElementById('settings-tab-muted').style.display = '';
-    document.getElementById('settings-tab-followed').style.display = 'none';
-  }
+  // Show/hide Users top-level tab; reset to Filters tab
+  const hasUsers = state.mutedUsers.size > 0 || state.followedUsers.size > 0;
+  document.getElementById('settings-main-tab-users').style.display = hasUsers ? '' : 'none';
+  document.querySelectorAll('.settings-main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'filters'));
+  document.querySelectorAll('.settings-main-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('settings-main-filters').style.display = '';
+  // Reset user sub-tabs to muted
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'muted'));
+  document.getElementById('settings-tab-muted').style.display = '';
+  document.getElementById('settings-tab-followed').style.display = 'none';
 
   wireSettingsOnce();
 
