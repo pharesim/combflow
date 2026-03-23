@@ -84,7 +84,8 @@ This builds the image, runs migrations, verifies tables, seeds the category tree
 | `combflow-app` | FastAPI on port 8000 (1G memory limit) |
 | `db` | PostgreSQL 17 + pgvector |
 | `hive_worker` | Streams + classifies + saves posts (2G memory limit) |
-| `caddy` | Reverse proxy with auto-TLS, domain routing, API→docs redirect (128M memory limit) |
+| `caddy` | Reverse proxy with auto-TLS, domain routing, access logging, API→docs redirect (128M memory limit) |
+| `goaccess` | Usage stats dashboard at `CADDY_API/stats` — regenerates from Caddy access logs every 60s (128M memory limit) |
 
 ### 3. Check
 
@@ -457,6 +458,10 @@ const token = await new Promise((resolve, reject) => {
 | `CADDY_API` | API domain (root redirects to `/docs`) | `api.example.com` |
 | `CADDY_UI_OLD` | Previous UI domain — 301 redirects to `CADDY_UI` | `old.example.com` |
 
+### Usage statistics
+
+A GoAccess dashboard is served at your API domain's `/stats` path (e.g. `https://api.example.com/stats`). It shows visitors, requests, paths, status codes, browsers, and more — updated every 60 seconds from Caddy's JSON access logs. No configuration needed beyond the standard `CADDY_API` setting.
+
 ---
 
 ## Project layout
@@ -516,6 +521,7 @@ combflow/combflow/
 ├── tests/                   # 250 tests
 ├── Dockerfile
 ├── docker-compose.yml
+├── goaccess-run.sh          # GoAccess log processing script
 └── deploy.sh
 ```
 
