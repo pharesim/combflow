@@ -1,8 +1,21 @@
+// ── Restore metaCache from sessionStorage (survives F5 reload) ──
+function _restoreMetaCache() {
+  try {
+    const raw = sessionStorage.getItem('combflow_meta');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { cache: parsed, keys: Object.keys(parsed) };
+    }
+  } catch(e) {}
+  return { cache: {}, keys: [] };
+}
+const _restored = _restoreMetaCache();
+
 // ── Centralized application state ──
 const state = {
   posts: [],
-  metaCache: {},
-  metaCacheKeys: [],
+  metaCache: _restored.cache,
+  metaCacheKeys: _restored.keys,
   totalPostCount: 0,
   filteredTotalCount: 0,
   communityList: [],
@@ -204,3 +217,10 @@ const thumbObserver = new IntersectionObserver((entries) => {
     }
   });
 }, { rootMargin: '200px' });
+
+// ── Persist metaCache to sessionStorage on page unload ──
+window.addEventListener('beforeunload', () => {
+  try {
+    sessionStorage.setItem('combflow_meta', JSON.stringify(state.metaCache));
+  } catch(e) {}
+});
