@@ -12,7 +12,7 @@ while true; do
     if(match($0,/"size":[0-9]+/))b=substr($0,RSTART+7,RLENGTH-7)
     if(match($0,/"User-Agent":\["[^"]+"/))ua=substr($0,RSTART+15,RLENGTH-16)
     if(match($0,/"host":"[^"]+"/))v=substr($0,RSTART+8,RLENGTH-9)
-    if(ip!=""&&ts!=""&&u!="/stats")printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n",ip,ts,m,u,H,s,b,ua,v
+    if(ip!=""&&ts!=""&&u!="/stats"&&$0!~/Accept-Charset/)printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n",ip,ts,m,u,H,s,b,ua,v
   }' /var/log/caddy/access.log | \
   goaccess - \
     -o /var/www/goaccess/report.html \
