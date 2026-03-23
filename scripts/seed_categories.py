@@ -20,7 +20,6 @@ Prerequisites:
   ollama pull llama3.1:8b
 
 Usage:
-  export API_KEY=your-secret-key
   python scripts/seed_categories.py --posts 3000
 """
 
@@ -110,130 +109,152 @@ Categories JSON:"""
 # One-line scope + exclusions for categories prone to semantic overlap.
 
 CATEGORY_HINTS: dict[str, str] = {
-    # -- Semantic overlap fixes --
+    # ── technology ──
     "crypto":        "Cryptocurrency, blockchain technology, DeFi, tokens, mining, NFTs, "
                      "NFT trading, token swaps, crypto trading, blockchain gaming assets. "
                      "The post must be primarily ABOUT crypto technology or crypto markets. "
                      "Any trading of digital tokens, NFTs, or blockchain-based assets is crypto, NOT finance. "
                      "NOT stock market investing or personal finance (-> finance). "
-                     "NOT macroeconomic analysis of monetary policy (-> economics). "
                      "NOT posts that merely mention Hive/HBD rewards or crypto earnings in passing. "
                      "NOT automated bot/token tracker posts unless analyzing crypto markets.",
-    "writing":       "The craft of writing: fiction, poetry, storytelling technique, "
-                     "NaNoWriMo, creative writing prompts, literary analysis. "
-                     "The post must be ABOUT writing as a skill or art form. "
-                     "NOT personal blogs, diary entries, or opinion essays — those are prose, not 'writing'. "
-                     "NOT parenting stories, travel narratives, or philosophical reflections written in long form.",
-    "politics":      "Government policy, elections, legislation, political parties. "
-                     "NOT social commentary or philosophical debate.",
-    "social-issues": "Civil rights, inequality, activism, justice reform. "
-                     "NOT party politics or government policy.",
-    "philosophy":    "Formal philosophy, ethics, epistemology, thought experiments. "
-                     "NOT casual opinion or self-reflection.",
-    "finance":       "Personal finance, investing, stock markets, banking, real estate, retirement. "
-                     "Traditional financial instruments and money management. "
-                     "NOT cryptocurrency, DeFi, or blockchain tokens (-> crypto). "
-                     "NOT NFT trading, token swaps, or blockchain asset trading (-> crypto). "
-                     "NOT macroeconomic theory or government monetary policy (-> economics).",
     "programming":   "Software development, writing code, DevOps, APIs, databases. "
                      "NOT using software tools, math, chess, or general tech.",
     "ai":            "Artificial intelligence, machine learning, LLMs, neural networks. "
                      "NOT general programming or sci-fi about AI.",
-    # -- Generic centroid fixes --
-    "hive":          "Hive blockchain platform meta: witnesses, governance, DHF proposals, "
-                     "platform updates, HBD savings. NOT posts merely published on Hive. "
-                     "Ignore greetings like 'hello hivers/hivians', Hive footers, community tags, "
-                     "and reward mentions — these appear on ALL Hive posts regardless of topic.",
-    "psychology":    "Psychology as a discipline: mental health, therapy, cognitive science, "
-                     "behavioral research. NOT self-help advice or relationship tips.",
-    "diy-crafts":    "Hands-on making: woodworking, sewing, knitting, 3D printing, "
-                     "home repair projects. NOT cooking, gardening, or digital art.",
-    "parenting":     "Raising children: child development, parenting strategies, "
-                     "family life with kids, pregnancy, motherhood.",
-    "science":       "Scientific research, experiments, discoveries, STEM topics. "
-                     "NOT health/medicine advice or nature photography.",
-    "education":     "Teaching, learning, curricula, academic institutions, study methods, "
-                     "tutorials, educational content. "
-                     "NOT crypto/Hive how-to guides (-> crypto or hive). "
-                     "NOT cooking tutorials (-> food). NOT fitness tutorials (-> fitness).",
-    # -- p025 new categories --
-    "team-sports":   "Team ball sports: football, soccer, basketball, cricket, baseball, rugby. "
-                     "NOT individual fitness, combat sports, or motorsports.",
-    "combat-sports": "Boxing, MMA, wrestling, martial arts, judo, karate. "
-                     "NOT team ball sports or general fitness.",
-    "motorsports":   "Formula 1, NASCAR, rally, karting, motorcycle racing. "
-                     "NOT cycling, running, or other human-powered sports.",
-    "outdoor-sports":"Hiking, climbing, cycling, running, trail running, surfing, skiing, kayaking. "
-                     "Activities done OUTDOORS in nature or on roads/trails. "
-                     "NOT indoor gym workouts, yoga, or bodybuilding (-> fitness). "
-                     "NOT team sports, combat sports, or motorsports.",
-    "fitness":       "Gym workouts, yoga, bodybuilding, weight training, exercise routines, "
-                     "home workouts, personal fitness goals and progress. "
-                     "NOT hiking, cycling, running races, climbing, or outdoor recreation (-> outdoor-sports). "
-                     "NOT competitive team or individual sports.",
-    "economics":     "Macroeconomics, monetary policy, trade, GDP, inflation. "
-                     "NOT personal finance, investing, or business strategy.",
-    "entrepreneurship": "Startups, business building, marketing, small business, founders. "
-                     "NOT personal finance or macroeconomics.",
-    "introductions": "New user introduction posts (#introduceyourself). "
-                     "A person introducing THEMSELVES to the Hive community for the first time. "
-                     "NOT community curation reports or daily digest posts (-> hive). "
-                     "NOT posts that say 'welcome' or 'hello' as a greeting. "
-                     "NOT any post where someone mentions being new to a topic.",
-    "contests":      "Challenges, giveaways, competitions, contest posts. "
-                     "NOT competitive sports or general gaming.",
-    "charity":       "Fundraising, donations, volunteer work, nonprofit causes. "
-                     "NOT general community discussion or social issues.",
-    "local-communities": "Posts about a specific geographic region, city, or neighborhood: "
-                     "local meetups, regional events, city guides, neighborhood news. "
-                     "Must reference an actual PLACE or LOCALE. "
-                     "NOT posts that just feel 'community-like' or use words like 'community'. "
-                     "NOT parenting blogs, food diaries, craft journals, or travel posts — "
-                     "those belong in their own categories even if the author writes from a specific place.",
-    "video":         "Video creation, vlogging, YouTube, 3Speak, video editing, streaming, "
-                     "video production, content creation tips for video. "
-                     "The post must be ABOUT making or sharing original video content. "
-                     "NOT movie reviews or TV show discussion (-> movies-tv). "
-                     "NOT posts that casually mention a film or show in passing.",
-    "art":           "Visual art: drawing, painting, illustration, digital art, sculpture, "
-                     "webcomics, comics, pixel art, NFT art, sketch journals. "
-                     "The post showcases or discusses original visual artwork. "
-                     "NOT photography (-> photography). NOT crafts/woodworking (-> diy-crafts). "
-                     "NOT video production or film (-> video, movies-tv).",
-    "home-garden":   "Home gardening, houseplants, landscaping, lawn care, flower beds, "
-                     "composting, urban farming, balcony gardens, growing vegetables. "
-                     "NOT woodworking or home repair (-> diy-crafts). "
-                     "NOT wild nature or hiking through forests (-> nature, outdoor-sports). "
-                     "NOT cooking with homegrown ingredients (-> food).",
-    "anime-manga":   "Anime series, manga titles, otaku culture, cosplay, anime reviews, "
-                     "light novels, Japanese animation discussion. "
-                     "NOT general illustration or digital art (-> art). "
-                     "NOT video games with anime style (-> gaming).",
-    "movies-tv":     "Movie reviews, TV show discussion, film analysis, series recommendations, "
-                     "cinema, streaming shows, documentaries. "
-                     "Watching and discussing film/TV as a viewer. "
-                     "NOT video creation or vlogging (-> video). "
-                     "NOT anime series (-> anime-manga).",
-    "health":        "Physical health, medicine, nutrition, disease, wellness, hospital visits, "
-                     "chronic illness, medical advice, public health. "
-                     "NOT mental health or therapy (-> psychology). "
-                     "NOT exercise routines or gym workouts (-> fitness). "
-                     "NOT scientific research papers about biology (-> science).",
-    "history":       "Historical events, eras, historical figures, archaeology, military history, "
-                     "cultural history, historical analysis. "
-                     "The post must be ABOUT the past, not just mention historical context. "
-                     "NOT current politics informed by history (-> politics). "
-                     "NOT religious history unless primarily historical (-> religion).",
+    "cybersecurity": "Hacking, infosec, privacy, encryption, penetration testing, data breaches. "
+                     "NOT general programming or using a VPN.",
+    # ── creative ──
     "photography":   "Photography as craft: composition, gear, photo walks, editing techniques, "
                      "photo challenges, landscape/portrait/street photography showcases. "
                      "NOT travel posts that happen to include photos (-> travel). "
                      "NOT nature posts with wildlife photos (-> nature unless photography is the focus). "
                      "NOT digital art or illustration (-> art).",
+    "art":           "Visual art: drawing, painting, illustration, digital art, sculpture, "
+                     "webcomics, comics, pixel art, NFT art, sketch journals. "
+                     "The post showcases or discusses original visual artwork. "
+                     "NOT photography (-> photography). NOT crafts/woodworking (-> diy-crafts). "
+                     "NOT video production or film (-> video, movies-tv).",
+    "music":         "Music creation, production, covers, instruments, music reviews, "
+                     "music theory, concerts, playlists, open mic performances. "
+                     "NOT a post that merely mentions a song in passing.",
+    "writing":       "Creative writing, fiction, poetry, short stories, writing craft, "
+                     "comedy, satire, humor pieces. "
+                     "The post IS the creative work or discusses the writing process. "
+                     "NOT long-form opinion on politics (-> politics). "
+                     "NOT a personal blog about travel (-> travel).",
+    "video":         "Video creation, vlogging, YouTube, 3Speak, video editing, streaming, "
+                     "video production, content creation tips for video. "
+                     "The post must be ABOUT making or sharing original video content. "
+                     "NOT movie reviews or TV show discussion (-> movies-tv).",
+    "diy-crafts":    "Hands-on making: woodworking, sewing, knitting, 3D printing, "
+                     "home repair projects. NOT cooking (-> food). "
+                     "NOT gardening (-> gardening). NOT digital art (-> art).",
+    # ── lifestyle ──
+    "travel":        "Travel experiences, destination guides, trip reports, backpacking, "
+                     "tourism, cultural exploration. "
+                     "NOT photography technique posts shot while traveling (-> photography).",
+    "food":          "Cooking, recipes, restaurant reviews, food photography, cuisine, "
+                     "food culture, meal prep, food diaries. "
+                     "NOT growing food in a garden (-> gardening). "
+                     "NOT food preservation as part of self-sufficient living (-> homesteading).",
+    "fashion":       "Fashion, style, clothing, outfits, streetwear, accessories, beauty. "
+                     "NOT diy-crafts unless the post is about sewing/making clothes as craft.",
+    "homesteading":  "Off-grid living, self-sufficiency, small-scale farming, raising livestock, "
+                     "food preservation (canning, fermenting), rural life, permaculture. "
+                     "NOT backyard gardening as a hobby (-> gardening). "
+                     "NOT cooking with homegrown ingredients (-> food). "
+                     "NOT woodworking or home repair (-> diy-crafts).",
+    "gardening":     "Home gardening, houseplants, landscaping, flower beds, growing vegetables, "
+                     "composting, urban farming, balcony gardens, harvest posts. "
+                     "NOT large-scale farming or livestock (-> homesteading). "
+                     "NOT wild nature or hiking through forests (-> nature). "
+                     "NOT cooking with homegrown ingredients (-> food).",
+    "pets":          "Pet care, dogs, cats, aquariums, pet stories, animal companionship. "
+                     "NOT wildlife or nature photography (-> nature).",
+    # ── science-education ──
+    "nature":        "Wildlife, environment, ecology, conservation, climate, "
+                     "nature photography focused on the natural world. "
+                     "NOT gardening or farming (-> gardening, homesteading). "
+                     "NOT outdoor recreation as sport (-> outdoor-sports).",
+    "science":       "Scientific research, experiments, discoveries, STEM topics, space, astronomy. "
+                     "NOT health/medicine advice (-> health-fitness). NOT nature photography (-> nature).",
+    "education":     "Teaching, learning, curricula, academic institutions, study methods, "
+                     "tutorials, educational content. "
+                     "NOT crypto/Hive how-to guides (-> crypto or hive). "
+                     "NOT cooking tutorials (-> food).",
+    "health-fitness":"Physical health, medicine, nutrition, wellness, chronic illness, "
+                     "gym workouts, yoga, bodybuilding, exercise routines, fitness goals. "
+                     "Both medical/wellness topics AND exercise/training belong here. "
+                     "NOT hiking, cycling, running races (-> outdoor-sports). "
+                     "NOT meditation or spiritual healing (-> spirituality). "
+                     "NOT scientific research papers (-> science).",
+    # ── society ──
+    "politics":      "Government, policy, elections, legislation, law, political commentary. "
+                     "NOT abstract ethics or thought experiments (-> philosophy).",
+    "philosophy":    "Philosophy, ethics, epistemology, thought experiments, "
+                     "psychology, mental health, therapy, cognitive science, self-reflection. "
+                     "Formal or informal inquiry into mind, meaning, and human experience. "
+                     "NOT casual self-help advice (-> education). "
+                     "NOT spiritual practices or energy healing (-> spirituality).",
+    "history":       "Historical events, eras, historical figures, archaeology, military history, "
+                     "cultural history, historical analysis. "
+                     "The post must be ABOUT the past, not just mention historical context. "
+                     "NOT current politics informed by history (-> politics).",
+    "social-issues": "Social justice, inequality, human rights, cultural commentary, "
+                     "religious discussion, faith, theology, interfaith dialogue. "
+                     "Societal topics including organized religion and belief systems. "
+                     "NOT spiritual practices or personal mindfulness (-> spirituality). "
+                     "NOT abstract philosophy or ethics (-> philosophy).",
+    # ── finance-business ──
+    "finance":       "Personal finance, investing, stock markets, banking, real estate, "
+                     "macroeconomics, monetary policy, inflation, GDP, trade. "
+                     "All traditional finance and economic analysis. "
+                     "NOT cryptocurrency or DeFi (-> crypto). "
+                     "NOT startups or business building (-> entrepreneurship). "
+                     "NOT precious metal stacking or coin collecting (-> precious-metals).",
+    "entrepreneurship": "Startups, business building, marketing, small business, founders. "
+                     "NOT personal investing or macroeconomics (-> finance).",
+    "precious-metals":"Gold, silver, bullion, coin collecting, precious metal stacking, "
+                     "numismatics, minting, unboxing bullion, #silvergoldstackers. "
+                     "Physical metals as collectibles or stores of value. "
+                     "NOT gold/silver ETFs or commodity futures trading (-> finance). "
+                     "NOT crypto tokens pegged to gold (-> crypto). "
+                     "NOT jewelry making (-> diy-crafts).",
+    # ── entertainment ──
+    "gaming":        "Video games, tabletop games, esports, Splinterlands, game reviews, gameplay. "
+                     "NOT watching movies or TV (-> movies-tv).",
+    "movies-tv":     "Movie reviews, TV shows, film analysis, series recommendations, "
+                     "cinema, documentaries, anime, manga, animation discussion. "
+                     "Watching and discussing screen media as a viewer. "
+                     "NOT video creation or vlogging (-> video). "
+                     "NOT reading books (-> books).",
     "books":         "Book reviews, reading lists, literary discussion, book clubs, "
                      "author spotlights, reading challenges. "
-                     "Discussing published works as a reader. "
                      "NOT the craft of writing fiction or poetry (-> writing). "
-                     "NOT manga or light novels (-> anime-manga).",
+                     "NOT watching adaptations (-> movies-tv).",
+    # ── sports ──
+    "sports":        "Competitive sports: football, soccer, basketball, cricket, tennis, "
+                     "boxing, MMA, martial arts, Formula 1, NASCAR, motorsports, wrestling. "
+                     "Organized competitive events, leagues, matches, fight cards. "
+                     "NOT recreational outdoor activities (-> outdoor-sports). "
+                     "NOT gym workouts or personal fitness (-> health-fitness).",
+    "outdoor-sports":"Hiking, climbing, cycling, running, trail running, surfing, skiing, kayaking. "
+                     "Recreational activities done outdoors in nature or on roads/trails. "
+                     "NOT competitive league sports (-> sports). "
+                     "NOT gym workouts or yoga (-> health-fitness).",
+    # ── community ──
+    "hive":          "Hive blockchain platform meta: witnesses, governance, DHF proposals, "
+                     "platform updates, HBD savings. NOT posts merely published on Hive. "
+                     "Ignore greetings like 'hello hivers/hivians', Hive footers, community tags, "
+                     "and reward mentions — these appear on ALL Hive posts regardless of topic.",
+    "contests":      "Challenges, giveaways, competitions, contest posts, raffles. "
+                     "NOT competitive sports (-> sports) or general gaming (-> gaming).",
+    "spirituality":  "Meditation, mindfulness, astrology, tarot, energy healing, chakras, "
+                     "spiritual awakening, yoga philosophy, reiki, crystal healing. "
+                     "Personal spiritual practice and exploration. "
+                     "NOT organized religion or theology (-> social-issues). "
+                     "NOT abstract philosophy of mind (-> philosophy). "
+                     "NOT physical yoga as exercise (-> health-fitness).",
 }
 
 # ── Negative examples for common misclassifications (p026) ───────────────────
@@ -250,7 +271,6 @@ NEGATIVE_EXAMPLES: dict[str, list[str]] = {
     "writing": [
         "A long-form opinion about politics (-> politics, NOT writing)",
         "A personal blog about travel experiences (-> travel, NOT writing)",
-        "A parenting story written in narrative style (-> parenting, NOT writing)",
         "A philosophical reflection essay (-> philosophy, NOT writing)",
         "A personal diary entry about daily life (-> classify by actual topic, NOT writing)",
     ],
@@ -269,20 +289,13 @@ NEGATIVE_EXAMPLES: dict[str, list[str]] = {
         "A post about HP, powering up, staking, or delegating Hive (-> crypto or hive, NOT finance)",
         "A post about HBD savings interest or converting HBD (-> crypto or hive, NOT finance)",
         "A post about Hive-Engine token prices or market cap (-> crypto, NOT finance)",
+        "A post about stacking silver bars (-> precious-metals, NOT finance)",
+        "A post about gold coin unboxing (-> precious-metals, NOT finance)",
     ],
-    "psychology": [
-        "Self-help advice about motivation (-> education or health, NOT psychology)",
-        "A post about relationship problems (-> social-issues, NOT psychology)",
-    ],
-    "local-communities": [
-        "A parenting blog written by someone in Venezuela (-> parenting, NOT local-communities)",
-        "A food diary from a mom in the Philippines (-> food, NOT local-communities)",
-        "A DIY craft post shared in a Hive community (-> diy-crafts, NOT local-communities)",
-        "A personal blog about daily life (-> classify by actual topic, NOT local-communities)",
-    ],
-    "introductions": [
-        "A community daily curation report that says 'Welcome' (-> hive, NOT introductions)",
-        "A contest post greeting participants (-> contests, NOT introductions)",
+    "precious-metals": [
+        "A post about gold ETFs or commodity futures (-> finance, NOT precious-metals)",
+        "A post about gold-backed crypto tokens (-> crypto, NOT precious-metals)",
+        "A jewelry-making tutorial using silver wire (-> diy-crafts, NOT precious-metals)",
     ],
     "programming": [
         "An automated daily token tracker/stats post (-> crypto or hive, NOT programming)",
@@ -294,6 +307,38 @@ NEGATIVE_EXAMPLES: dict[str, list[str]] = {
         "A webcomic that casually references a movie (-> art, NOT video)",
         "A post about watching a TV series (-> movies-tv, NOT video)",
         "A photography post that includes a short clip (-> photography, NOT video)",
+    ],
+    "gardening": [
+        "A post about canning vegetables from the farm (-> homesteading, NOT gardening)",
+        "A post about cooking with homegrown herbs (-> food, NOT gardening)",
+        "A nature walk through a forest (-> nature, NOT gardening)",
+        "A post about raising chickens alongside a garden (-> homesteading, NOT gardening)",
+    ],
+    "homesteading": [
+        "A post about growing tomatoes on a balcony (-> gardening, NOT homesteading)",
+        "A woodworking project for a shed (-> diy-crafts, NOT homesteading)",
+        "A recipe using fresh farm eggs (-> food, NOT homesteading)",
+    ],
+    "spirituality": [
+        "A post about the history of Buddhism (-> history or social-issues, NOT spirituality)",
+        "A gym yoga class workout (-> health-fitness, NOT spirituality)",
+        "A philosophical essay on consciousness (-> philosophy, NOT spirituality)",
+        "A post about church community events (-> social-issues, NOT spirituality)",
+    ],
+    "health-fitness": [
+        "A hiking trip report (-> outdoor-sports, NOT health-fitness)",
+        "A meditation practice guide (-> spirituality, NOT health-fitness)",
+        "A competitive marathon race recap (-> outdoor-sports, NOT health-fitness)",
+    ],
+    "sports": [
+        "A personal gym workout log (-> health-fitness, NOT sports)",
+        "A weekend hiking trip (-> outdoor-sports, NOT sports)",
+        "A post about watching a sports documentary (-> movies-tv, NOT sports)",
+    ],
+    "philosophy": [
+        "Self-help advice about productivity (-> education, NOT philosophy)",
+        "A tarot reading or crystal healing post (-> spirituality, NOT philosophy)",
+        "A post about relationship drama (-> social-issues, NOT philosophy)",
     ],
 }
 
@@ -323,42 +368,42 @@ TAG_HINTS: dict[str, list[str]] = {
     # creative
     "diy-crafts": ["diy", "crafts", "handmade", "woodworking", "knitting", "crochet", "maker"],
     "fashion": ["fashion", "style", "clothing", "outfit", "streetwear", "mensfashion"],
+    # lifestyle
+    "homesteading": ["homesteading", "offgrid", "selfsufficiency", "permaculture",
+                     "foodpreservation", "canning", "livestock", "smallfarm"],
+    "gardening": ["garden", "gardening", "hivegarden", "plants", "growing", "harvest",
+                  "houseplants", "composting", "urbangarden"],
     # science-education
-    "health": ["health", "medicine", "medical", "healthcare", "wellness", "doctor", "nursing"],
+    "health-fitness": ["health", "medicine", "wellness", "fitness", "gym", "workout",
+                       "yoga", "bodybuilding", "weightloss", "exercise"],
     "science": ["science", "space", "astronomy", "physics", "biology", "chemistry", "nasa"],
-    # entertainment
-    "anime-manga": ["anime", "manga", "otaku", "japan", "animeart", "cosplay"],
-    "books": ["books", "reading", "bookreview", "literature", "fiction", "nonfiction"],
-    # sports (p025: split into specific types)
-    "team-sports": ["football", "soccer", "basketball", "baseball", "cricket", "tennis",
-                    "volleyball", "rugby", "sports"],
-    "combat-sports": ["mma", "boxing", "wrestling", "martialarts", "ufc", "karate", "judo"],
-    "motorsports": ["motorsports", "formula1", "f1", "nascar", "rally", "karting", "racing"],
-    "outdoor-sports": ["hiking", "climbing", "cycling", "running", "trail", "marathon",
-                       "triathlon", "surfing", "skiing"],
-    # nature (now covers environment, outdoors)
-    "nature": ["nature", "wildlife", "environment", "climate", "outdoors", "hiking",
-               "camping", "conservation", "sustainability", "ecology"],
-    # psychology (now covers relationships)
-    "psychology": ["psychology", "mentalhealth", "relationships", "mindfulness", "therapy",
-                   "self-improvement", "dating"],
-    # politics (now covers law)
+    # society
+    "social-issues": ["socialissues", "humanrights", "equality", "religion", "faith",
+                      "christianity", "islam", "church", "theology"],
     "politics": ["politics", "government", "law", "legal", "policy", "legislation", "democracy"],
-    # finance-business (p025: split into specific types)
-    "finance": ["finance", "investing", "realestate", "stocks", "trading", "defi",
-                "personalfinance", "banking"],
-    "economics": ["economics", "economy", "macroeconomics", "inflation", "gdp", "trade",
-                  "monetary-policy"],
+    # finance-business
+    "finance": ["finance", "investing", "realestate", "stocks", "trading",
+                "personalfinance", "banking", "economics", "economy", "inflation"],
     "entrepreneurship": ["entrepreneur", "startup", "business", "marketing", "smallbusiness",
                          "founder", "saas", "hustle"],
-    # community (p025: expanded)
-    "introductions": ["introduceyourself", "introduction", "newbie", "newhive", "firstpost"],
-    "contests": ["contest", "challenge", "giveaway", "competition", "raffle", "prizes"],
-    "charity": ["charity", "donation", "fundraising", "volunteer", "nonprofit", "giveback"],
-    "local-communities": ["local", "community", "neighborhood", "regional", "meetup"],
-    # hive platform meta
+    "precious-metals": ["silvergoldstackers", "silver", "gold", "bullion", "stacking",
+                        "preciousmetals", "numismatics", "coins", "minting"],
+    # entertainment
+    "books": ["books", "reading", "bookreview", "literature", "fiction", "nonfiction"],
+    # sports
+    "sports": ["football", "soccer", "basketball", "baseball", "cricket", "tennis",
+               "mma", "boxing", "wrestling", "formula1", "f1", "nascar", "motorsports"],
+    "outdoor-sports": ["hiking", "climbing", "cycling", "running", "trail", "marathon",
+                       "triathlon", "surfing", "skiing"],
+    # community
     "hive": ["witness", "witnesses", "dhf", "hive-governance", "hivefest", "hivepower",
              "hive-dev", "hiveengine", "proposal", "hardfork", "hbd-stabilizer"],
+    "contests": ["contest", "challenge", "giveaway", "competition", "raffle", "prizes"],
+    "spirituality": ["spirituality", "meditation", "mindfulness", "astrology", "tarot",
+                     "chakra", "reiki", "crystalhealing", "spiritual"],
+    # nature
+    "nature": ["nature", "wildlife", "environment", "climate", "conservation",
+               "sustainability", "ecology", "birdwatching"],
 }
 
 # ── API helpers ──────────────────────────────────────────────────────────────
@@ -1035,8 +1080,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--min-per-category", type=int, default=5, metavar="N")
     p.add_argument("--threshold", type=float, default=SIMILARITY_THRESHOLD)
     p.add_argument("--embedding-model", default=EMBEDDING_MODEL)
-    p.add_argument("--api-url", default="http://localhost:8000")
-    p.add_argument("--api-key", default="", metavar="KEY")
     p.add_argument("--resume", action="store_true", help="Resume from checkpoint")
     p.add_argument("--incremental", action="store_true",
                    help="Fetch only new posts (skip checkpointed), merge into existing labels")
@@ -1155,11 +1198,6 @@ def main() -> None:
     if args.report:
         _print_report(categories, args.min_per_category)
         return
-
-    api_key = args.api_key or os.environ.get("API_KEY", "")
-    if not api_key:
-        print("ERROR: --api-key or API_KEY env var required.", file=sys.stderr)
-        sys.exit(1)
 
     # ── Resolve ensemble models ──────────────────────────────────────────────
     ensemble_models: list[str] | None = None

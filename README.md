@@ -41,19 +41,19 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 
 ### Category hierarchy (2 levels)
 
-**9 parents, 43 leaf categories:**
+**9 parents, 35 leaf categories:**
 
 | Parent | Leaves |
 |--------|--------|
-| technology | crypto, programming, ai, cybersecurity, gaming |
+| technology | crypto, programming, ai, cybersecurity |
 | creative | photography, art, music, writing, video, diy-crafts |
-| lifestyle | travel, food, fashion, home-garden, parenting, pets |
-| science-education | nature, science, education, health, psychology |
-| society | politics, philosophy, history, religion, social-issues |
-| finance-business | finance, economics, entrepreneurship |
-| entertainment | movies-tv, anime-manga, books |
-| sports | team-sports, combat-sports, motorsports, outdoor-sports, fitness |
-| community | hive, introductions, contests, charity, local-communities |
+| lifestyle | travel, food, fashion, homesteading, gardening, pets |
+| science-education | nature, science, education, health-fitness |
+| society | politics, philosophy, history, social-issues |
+| finance-business | finance, entrepreneurship, precious-metals |
+| entertainment | gaming, movies-tv, books |
+| sports | sports, outdoor-sports |
+| community | hive, contests, spirituality |
 
 Classification happens at the leaf level. Filtering by a parent covers all its children.
 

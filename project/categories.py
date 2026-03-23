@@ -10,7 +10,7 @@ No external dependencies — safe to import from the host seed script.
 # {parent_slug: [child_slugs]}
 CATEGORY_TREE: dict[str, list[str]] = {
     "technology": [
-        "crypto",           # absorbs web3
+        "crypto",           # blockchain, web3, DeFi
         "programming",      # absorbs devops, data-science
         "ai",
         "cybersecurity",
@@ -21,54 +21,46 @@ CATEGORY_TREE: dict[str, list[str]] = {
         "music",
         "writing",          # absorbs comedy
         "video",            # absorbs podcasts
-        "diy-crafts",       # merged diy + crafts
+        "diy-crafts",
     ],
     "lifestyle": [
         "travel",
         "food",
         "fashion",
-        "home-garden",
-        "parenting",
+        "homesteading",     # off-grid, farming, self-sufficiency
+        "gardening",        # replaces home-garden, better Hive fit
         "pets",
     ],
     "science-education": [
         "nature",           # absorbs environment, outdoors
         "science",          # absorbs space
         "education",
-        "health",           # renamed from medicine
-        "psychology",       # absorbs relationships
+        "health-fitness",   # merged health + fitness
     ],
     "society": [
         "politics",         # absorbs law
-        "philosophy",
+        "philosophy",       # absorbs psychology
         "history",
-        "religion",
-        "social-issues",
+        "social-issues",    # absorbs religion
     ],
     "finance-business": [
-        "finance",
-        "economics",        # restored from p016 merge
-        "entrepreneurship", # restored from p016 merge
+        "finance",          # absorbs economics
+        "entrepreneurship",
+        "precious-metals",  # #silvergoldstackers, bullion, stacking
     ],
     "entertainment": [
         "gaming",           # absorbs esports, tabletop-games
-        "movies-tv",
-        "anime-manga",
+        "movies-tv",        # absorbs anime-manga
         "books",
     ],
-    "sports": [             # renamed from sports-outdoors (p025)
-        "team-sports",      # football, basketball, soccer, cricket
-        "combat-sports",    # boxing, MMA, wrestling, martial arts
-        "motorsports",      # F1, rally, NASCAR, karting
+    "sports": [
+        "sports",           # merged team-sports + combat-sports + motorsports
         "outdoor-sports",   # hiking, climbing, cycling, running, trail
-        "fitness",          # moved from lifestyle
     ],
     "community": [
         "hive",
-        "introductions",    # #introduceyourself posts
         "contests",         # challenges, giveaways, contest posts
-        "charity",          # restored from p016 merge
-        "local-communities",# restored from p016 merge
+        "spirituality",     # meditation, mindfulness, astrology
     ],
 }
 
