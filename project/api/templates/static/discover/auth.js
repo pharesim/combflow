@@ -69,6 +69,8 @@ async function doLogout() {
   sessionStorage.removeItem('honeycomb_user_communities');
   sessionStorage.removeItem('honeycomb_voted');
   localStorage.removeItem('honeycomb_payoutType');
+  localStorage.removeItem('honeycomb_nsfwMode');
+  applyNsfwMode('hide');
   state.userCommunities = null;
   state.votedPosts = {};
   state.manaCache = null;
