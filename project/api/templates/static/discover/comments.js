@@ -289,7 +289,7 @@ async function fetchComments(author, permlink) {
         body: entry.body || '',
         reputation: entry.author_reputation || 0,
         created: entry.created,
-        net_votes: entry.net_votes || 0,
+        net_votes: (entry.stats && entry.stats.total_votes) || 0,
         voted: votedByMe,
         children: (entry.replies || []).map(buildTree).filter(Boolean)
       };
