@@ -87,7 +87,7 @@ async function fetchSingleMeta(p, retries = 2) {
   let result;
   for (let attempt = 0; attempt <= retries; attempt++) {
     result = await hiveRpc('bridge.get_post', {author:p.author, permlink:p.permlink});
-    if (result) break;
+    if (result) { normalizeCrossPostKey(result); break; }
     if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
   }
   if (result) {

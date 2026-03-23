@@ -192,6 +192,11 @@ def _classify_and_save(
     cross_post_key = None
     if isinstance(meta, dict):
         cross_post_key = meta.get("cross_post_key")
+        if not cross_post_key:
+            oa = meta.get("original_author")
+            op = meta.get("original_permlink")
+            if oa and op:
+                cross_post_key = f"{oa}/{op}"
     if cross_post_key and "/" in cross_post_key:
         cp_author, cp_permlink = cross_post_key.split("/", 1)
         original_body = get_post_body(cp_author, cp_permlink)

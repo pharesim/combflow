@@ -69,6 +69,17 @@ async function hiveRpc(method, params) {
   return null;
 }
 
+// Normalize Ecency-style cross-posts (original_author/original_permlink) into cross_post_key
+function normalizeCrossPostKey(result) {
+  if (!result || result.cross_post_key) return;
+  const meta = typeof result.json_metadata === 'string'
+    ? (() => { try { return JSON.parse(result.json_metadata); } catch(e) { return {}; } })()
+    : result.json_metadata || {};
+  if (meta.original_author && meta.original_permlink) {
+    result.cross_post_key = meta.original_author + '/' + meta.original_permlink;
+  }
+}
+
 // Vote button SVG constants
 const VOTE_SVG_18 = '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
 const VOTE_SVG_16 = '<svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';

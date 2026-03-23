@@ -80,6 +80,7 @@ async function openModal(post, skipPush) {
   fetchComments(post.author, post.permlink);
 
   const result = await hiveRpc('bridge.get_post', {author: post.author, permlink: post.permlink});
+  normalizeCrossPostKey(result);
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');

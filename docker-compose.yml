@@ -12,6 +12,7 @@ services:
     environment:
       CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
       CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
+      CADDY_UI_OLD: ${CADDY_UI_OLD:-old.invalid}
     depends_on:
       combflow-app:
         condition: service_healthy
@@ -81,6 +82,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(stat -c %Y /tmp/worker_heartbeat 2>/dev/null || echo 0) )) -lt 300 || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
