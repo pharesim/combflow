@@ -1,6 +1,8 @@
 // ── Notifications ──
 
 let _notifTimer = null;
+let _notifLoading = false;
+let _notifNoMore = false;
 
 function relativeTime(dateStr) {
   const now = Date.now();
@@ -41,9 +43,11 @@ async function fetchUnreadCount() {
 async function fetchNotifications() {
   const s = Alpine.store('app');
   if (!s.currentUser) return;
+  _notifNoMore = false;
   const result = await hiveRpc('bridge.account_notifications', { account: s.currentUser, limit: 50 });
   if (!result) return;
   s.notifications = result;
+  if (result.length < 50) _notifNoMore = true;
   // Also refresh unread count
   const unread = await hiveRpc('bridge.unread_notifications', { account: s.currentUser });
   if (unread) {
@@ -53,6 +57,55 @@ async function fetchNotifications() {
   renderNotifications(result, s.lastRead);
 }
 
+async function fetchMoreNotifications() {
+  const s = Alpine.store('app');
+  if (!s.currentUser || _notifLoading || _notifNoMore) return;
+  const items = s.notifications;
+  if (!items.length) return;
+  const lastId = items[items.length - 1].id;
+  if (!lastId) return;
+  _notifLoading = true;
+  try {
+    const result = await hiveRpc('bridge.account_notifications', { account: s.currentUser, limit: 50, last_id: lastId });
+    if (!result || result.length === 0) { _notifNoMore = true; return; }
+    if (result.length < 50) _notifNoMore = true;
+    s.notifications = [...items, ...result];
+    appendNotifications(result, s.lastRead);
+  } finally {
+    _notifLoading = false;
+  }
+}
+
+function buildNotifRow(n, lastReadTime) {
+  const itemTime = new Date(n.date + 'Z').getTime();
+  const isUnread = itemTime > lastReadTime;
+  const msgMatch = n.msg && n.msg.match(/^@([^\s]+)/);
+  const urlMatch = n.url && n.url.match(/^@?([^/]+)/);
+  const notifAuthor = (msgMatch && msgMatch[1]) || (urlMatch && urlMatch[1]) || '';
+  const postUrl = n.url ? '/' + (n.url.startsWith('@') ? n.url : '@' + n.url) : '#';
+  const row = document.createElement('a');
+  row.className = 'notif-item' + (isUnread ? ' unread' : '');
+  row.href = postUrl;
+  let msgHtml = esc(n.msg);
+  if (notifAuthor) {
+    const avatarImg = avatarHtml(notifAuthor, 16);
+    msgHtml = msgHtml.replace('@' + esc(notifAuthor), '<span class="notif-author" data-author="' + esc(notifAuthor) + '">' + avatarImg + '@' + esc(notifAuthor) + '</span>');
+  }
+  row.innerHTML =
+    '<span class="notif-icon">' + notifTypeIcon(n.type) + '</span>' +
+    '<span class="notif-msg">' + msgHtml + '</span>' +
+    '<span class="notif-time">' + relativeTime(n.date) + '</span>';
+  const authorEl = row.querySelector('.notif-author');
+  if (authorEl) {
+    authorEl.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.location.href = '/@' + authorEl.dataset.author;
+    });
+  }
+  return row;
+}
+
 function renderNotifications(items, lastRead) {
   const list = document.getElementById('notif-list');
   if (!list) return;
@@ -60,40 +113,24 @@ function renderNotifications(items, lastRead) {
   if (!items || items.length === 0) return;
   const lastReadTime = lastRead ? new Date(lastRead + 'Z').getTime() : 0;
   const frag = document.createDocumentFragment();
-  items.forEach(n => {
-    const itemTime = new Date(n.date + 'Z').getTime();
-    const isUnread = itemTime > lastReadTime;
-    // Extract author from msg (starts with @username) or url (@author/permlink)
-    const msgMatch = n.msg && n.msg.match(/^@([^\s]+)/);
-    const urlMatch = n.url && n.url.match(/^@?([^/]+)/);
-    const notifAuthor = (msgMatch && msgMatch[1]) || (urlMatch && urlMatch[1]) || '';
-    // url from API is already "@author/permlink"
-    const postUrl = n.url ? '/' + (n.url.startsWith('@') ? n.url : '@' + n.url) : '#';
-    const row = document.createElement('a');
-    row.className = 'notif-item' + (isUnread ? ' unread' : '');
-    row.href = postUrl;
-    // Replace @username in msg with avatar + clickable link
-    let msgHtml = esc(n.msg);
-    if (notifAuthor) {
-      const avatarImg = avatarHtml(notifAuthor, 16);
-      msgHtml = msgHtml.replace('@' + esc(notifAuthor), '<span class="notif-author" data-author="' + esc(notifAuthor) + '">' + avatarImg + '@' + esc(notifAuthor) + '</span>');
-    }
-    row.innerHTML =
-      '<span class="notif-icon">' + notifTypeIcon(n.type) + '</span>' +
-      '<span class="notif-msg">' + msgHtml + '</span>' +
-      '<span class="notif-time">' + relativeTime(n.date) + '</span>';
-    // Username click goes to profile, not the post
-    const authorEl = row.querySelector('.notif-author');
-    if (authorEl) {
-      authorEl.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        window.location.href = '/@' + authorEl.dataset.author;
-      });
-    }
-    frag.appendChild(row);
-  });
+  items.forEach(n => frag.appendChild(buildNotifRow(n, lastReadTime)));
   list.appendChild(frag);
+}
+
+function appendNotifications(items, lastRead) {
+  const list = document.getElementById('notif-list');
+  if (!list || !items || items.length === 0) return;
+  const lastReadTime = lastRead ? new Date(lastRead + 'Z').getTime() : 0;
+  const frag = document.createDocumentFragment();
+  items.forEach(n => frag.appendChild(buildNotifRow(n, lastReadTime)));
+  list.appendChild(frag);
+}
+
+function onNotifScroll(e) {
+  const el = e.target;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
+    fetchMoreNotifications();
+  }
 }
 
 function notifTypeLabel(type) {

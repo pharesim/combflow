@@ -65,7 +65,7 @@
                 <span>Notifications</span>
                 <button type="button" class="btn btn-ghost btn-sm" data-action="mark-all-read" x-show="$store.app.unreadCount > 0">Mark all read</button>
               </div>
-              <div class="notif-list" id="notif-list"></div>
+              <div class="notif-list" id="notif-list" @scroll="onNotifScroll($event)"></div>
               <div class="notif-empty" x-show="$store.app.notifications.length === 0">No notifications yet.</div>
             </div>
           </div>
