@@ -9,6 +9,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+      - goaccess_html:/var/www/goaccess:ro
     environment:
       CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
       CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
@@ -132,7 +134,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  goaccess:
+    image: allinurl/goaccess:latest
+    restart: unless-stopped
+    entrypoint: ""
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /var/www/goaccess
+        while true; do
+          goaccess /var/log/caddy/access.log \
+            -o /var/www/goaccess/report.html \
+            --datetime-format=%s \
+            --log-format='{"level":"%^","ts":%x.%^,"logger":"%^","msg":"%^","request":{"remote_ip":"%h","remote_port":"%^","client_ip":"%^","proto":"%H","method":"%m","host":"%v","uri":"%U","headers":{%^}},"bytes_read":%^,"user_id":"%^","duration":%T,"size":%b,"status":%s,"resp_headers":{%^}}' \
+            2>/dev/null
+          sleep 60
+        done
+    volumes:
+      - caddy_logs:/var/log/caddy:ro
+      - goaccess_html:/var/www/goaccess
+    depends_on:
+      - caddy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+  caddy_logs:
+  goaccess_html:

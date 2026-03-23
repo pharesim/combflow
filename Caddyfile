@@ -4,6 +4,12 @@
 # Optional: set CADDY_UI_OLD to redirect a previous UI domain to the current one
 
 {$CADDY_UI:honeycomb.lvh.me:80} {
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100MiB
+			roll_keep 3
+		}
+	}
 	redir /docs / permanent
 	handle /static/* {
 		header Cache-Control "public, max-age=86400, immutable"
@@ -21,6 +27,17 @@
 }
 
 {$CADDY_API:combflow.lvh.me:80} {
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 100MiB
+			roll_keep 3
+		}
+	}
+	handle /stats {
+		root * /var/www/goaccess
+		rewrite * /report.html
+		file_server
+	}
 	redir / /docs permanent
 	encode zstd gzip
 	reverse_proxy combflow-app:8000
