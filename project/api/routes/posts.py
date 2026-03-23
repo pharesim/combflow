@@ -1,35 +1,15 @@
-"""Post endpoints — ingestion, detail, and comments."""
+"""Post endpoints — detail."""
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ... import cache
 from ...db import crud
-from ...hafsql import get_comments as hafsql_get_comments
-from ..deps import get_db, require_api_key, require_jwt
-from ..rate_limit import RateLimiter
-from ..schemas import PostCreate
+from ..deps import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Per-user rate limiting for comment cache invalidation (proposal 003).
-_cache_invalidation_limiter = RateLimiter(window_seconds=60, max_requests=5)
-
-
-# ── Post ingestion (authenticated — used by worker fallback / external tools) ─
-
-@router.post(
-    "/posts",
-    dependencies=[Depends(require_api_key)],
-    summary="Ingest a classified post",
-    tags=["posts"],
-)
-async def create_post_endpoint(post: PostCreate, db: AsyncSession = Depends(get_db)):
-    await crud.create_post(db, post.model_dump())
-    return {"status": "success"}
 
 
 # ── Post detail (public) ─────────────────────────────────────────────────────
@@ -49,104 +29,3 @@ async def get_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
-
-
-# ── Comment tree (proposal 002) ─────────────────────────────────────────────
-
-_COMMENTS_CACHE_TTL = 120  # seconds
-
-
-def _build_comment_tree(
-    flat: list[dict], root_author: str, root_permlink: str, max_depth: int
-) -> tuple[list[dict], int]:
-    """Build hierarchical comment tree from flat list.
-
-    Filters out comments with reputation <= 0.
-    Returns (tree, hidden_count).
-    """
-    hidden_count = 0
-    visible = []
-    for c in flat:
-        if c["reputation"] <= 0:
-            hidden_count += 1
-        else:
-            visible.append(c)
-
-    # Index by (author, permlink) for parent lookup.
-    by_key: dict[tuple[str, str], dict] = {}
-    for c in visible:
-        node = {
-            "author": c["author"],
-            "permlink": c["permlink"],
-            "body": c["body"],
-            "created": c["created"],
-            "reputation": c["reputation"],
-            "children": [],
-            "_depth": 0,
-        }
-        by_key[(c["author"], c["permlink"])] = node
-
-    # Build tree.
-    roots: list[dict] = []
-    for c in visible:
-        node = by_key[(c["author"], c["permlink"])]
-        parent_key = (c["parent_author"], c["parent_permlink"])
-        parent = by_key.get(parent_key)
-        if parent:
-            node["_depth"] = parent["_depth"] + 1
-            if node["_depth"] <= max_depth:
-                parent["children"].append(node)
-            else:
-                hidden_count += 1
-        else:
-            # Top-level comment (parent is the root post).
-            node["_depth"] = 1
-            roots.append(node)
-
-    # Strip internal _depth field.
-    def _strip(nodes: list[dict]) -> list[dict]:
-        for n in nodes:
-            n.pop("_depth", None)
-            _strip(n["children"])
-        return nodes
-
-    return _strip(roots), hidden_count
-
-
-@router.get(
-    "/posts/{author}/{permlink}/comments",
-    summary="Hierarchical comment tree for a post",
-    tags=["comments"],
-)
-async def get_comments(
-    author: str = Path(..., max_length=16, pattern=r"^[a-z0-9][a-z0-9.\-]{0,15}$"),
-    permlink: str = Path(..., max_length=256),
-    depth: int = Query(6, ge=1, le=10, description="Maximum nesting depth"),
-):
-    cache_key = f"comments:{author}/{permlink}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    flat = hafsql_get_comments(author, permlink)
-    tree, hidden_count = _build_comment_tree(flat, author, permlink, depth)
-    result = {"comments": tree, "hidden_count": hidden_count}
-    cache.put(cache_key, result, _COMMENTS_CACHE_TTL)
-    return result
-
-
-# ── Comment cache invalidation (proposal 003) ───────────────────────────────
-
-@router.delete(
-    "/posts/{author}/{permlink}/comments/cache",
-    summary="Invalidate cached comment tree",
-    tags=["comments"],
-    status_code=204,
-)
-async def invalidate_comment_cache(
-    author: str = Path(..., max_length=16, pattern=r"^[a-z0-9][a-z0-9.\-]{0,15}$"),
-    permlink: str = Path(..., max_length=256),
-    username: str = Depends(require_jwt),
-):
-    _cache_invalidation_limiter.check(username, "Too many requests, try again later")
-    cache.invalidate(f"comments:{author}/{permlink}")

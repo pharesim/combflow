@@ -136,46 +136,6 @@ def get_posting_key(username: str) -> str | None:
     return key
 
 
-def get_comments(root_author: str, root_permlink: str) -> list[dict]:
-    """Fetch all comments for a root post from HAFSQL with reputation.
-
-    Returns a flat list of comment dicts with converted reputation scores.
-    Returns [] if HAFSQL is unreachable (graceful degradation).
-    """
-    try:
-        with _cursor() as cur:
-            cur.execute(
-                """
-                SELECT c.author, c.permlink, c.body, c.created,
-                       c.parent_author, c.parent_permlink,
-                       r.reputation
-                FROM hafsql.comments c
-                LEFT JOIN hafsql.reputations r ON r.account_name = c.author
-                WHERE c.root_author = %s AND c.root_permlink = %s
-                  AND c.author != %s
-                ORDER BY c.created ASC
-                """,
-                (root_author, root_permlink, root_author),
-            )
-            rows = cur.fetchall()
-            return [
-                {
-                    "author": row["author"],
-                    "permlink": row["permlink"],
-                    "body": row["body"],
-                    "created": row["created"].isoformat() if row["created"] else None,
-                    "parent_author": row["parent_author"],
-                    "parent_permlink": row["parent_permlink"],
-                    "reputation": _raw_rep_to_score(int(row["reputation"]))
-                    if row["reputation"]
-                    else 0.0,
-                }
-                for row in rows
-            ]
-    except Exception as exc:
-        logger.debug("hafsql comments lookup failed for %s/%s: %s", root_author, root_permlink, exc)
-    return []
-
 
 def get_post_body(author: str, permlink: str) -> str | None:
     """Fetch a single post's body from HAFSQL.

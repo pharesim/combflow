@@ -22,7 +22,6 @@ from project.api.deps import get_db, _jwt_secret, JWT_COOKIE_NAME
 from project.categories import CATEGORY_TREE
 from project import cache
 from project.api.routes.auth import _challenge_limiter, _verify_limiter, _challenges
-from project.api.routes.posts import _cache_invalidation_limiter
 
 _PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -94,7 +93,6 @@ async def setup_db(_apply_migrations):
     cache.clear()
     _challenge_limiter._log.clear()
     _verify_limiter._log.clear()
-    _cache_invalidation_limiter._log.clear()
     _challenges.clear()
     async with _test_engine.begin() as conn:
         await conn.execute(text("TRUNCATE " + ", ".join(_ALL_TABLES) + " CASCADE"))

@@ -5,7 +5,7 @@ import pytest
 
 from project.hafsql import (
     _raw_rep_to_score, build_dsn, get_reputation, get_reputations,
-    get_community, get_comments, get_posting_key, get_post_body,
+    get_community, get_posting_key, get_post_body,
     _cursor, _get_pool,
 )
 
@@ -155,67 +155,6 @@ class TestGetCommunity:
             result = get_community("hive-123456")
         assert result["title"] == ""
         assert result["about"] == ""
-
-
-# ── get_comments (mocked DB) ────────────────────────────────────────────────
-
-class TestGetComments:
-    def test_returns_comments(self):
-        from datetime import datetime
-        mock_cur = MagicMock()
-        mock_cur.fetchall.return_value = [
-            {
-                "author": "alice", "permlink": "re-1", "body": "Great!",
-                "created": datetime(2026, 3, 20, 12, 0),
-                "parent_author": "bob", "parent_permlink": "my-post",
-                "reputation": 1_000_000_000,
-            },
-        ]
-        with patch("project.hafsql._cursor") as mock_ctx:
-            mock_ctx.return_value.__enter__ = lambda s: mock_cur
-            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            result = get_comments("bob", "my-post")
-        assert len(result) == 1
-        assert result[0]["author"] == "alice"
-        assert result[0]["reputation"] > 25
-
-    def test_returns_empty_on_exception(self):
-        with patch("project.hafsql._cursor", side_effect=Exception("down")):
-            result = get_comments("bob", "my-post")
-        assert result == []
-
-    def test_handles_null_reputation(self):
-        from datetime import datetime
-        mock_cur = MagicMock()
-        mock_cur.fetchall.return_value = [
-            {
-                "author": "newuser", "permlink": "re-1", "body": "Hi",
-                "created": datetime(2026, 3, 20, 12, 0),
-                "parent_author": "bob", "parent_permlink": "my-post",
-                "reputation": None,
-            },
-        ]
-        with patch("project.hafsql._cursor") as mock_ctx:
-            mock_ctx.return_value.__enter__ = lambda s: mock_cur
-            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            result = get_comments("bob", "my-post")
-        assert result[0]["reputation"] == 0.0
-
-    def test_handles_null_created(self):
-        mock_cur = MagicMock()
-        mock_cur.fetchall.return_value = [
-            {
-                "author": "alice", "permlink": "re-1", "body": "Hi",
-                "created": None,
-                "parent_author": "bob", "parent_permlink": "my-post",
-                "reputation": 1_000_000_000,
-            },
-        ]
-        with patch("project.hafsql._cursor") as mock_ctx:
-            mock_ctx.return_value.__enter__ = lambda s: mock_cur
-            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            result = get_comments("bob", "my-post")
-        assert result[0]["created"] is None
 
 
 # ── get_posting_key (mocked DB, cached) ─────────────────────────────────────

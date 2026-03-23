@@ -135,7 +135,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Sort toggle** — sort by newest or by most recent classification
 - **Read tracking** — opened posts are dimmed so you can see what's new
 - **Post modal** — click a hex to see full content, categories, languages, and sentiment (body scroll locked while open)
-- **Comment threads** — hierarchical comments loaded from HAFSQL, reputation-filtered (rep <= 0 hidden), collapsible nested replies, includes author's own replies
+- **Comment threads** — hierarchical comments loaded directly from the Hive chain (via `bridge.get_discussion`), reputation-filtered (rep <= 0 hidden), collapsible nested replies
 - **Comment posting** — logged-in users can post comments and replies via Hive Keychain, with 3-second cooldown and cache invalidation
 - **Post authoring** — pen icon opens a full editor with title, preview description (120 chars, stored in `json_metadata.description`), markdown body with formatting toolbar (bold, italic, headings, links, images, lists, quotes, code blocks, tables, center, @mentions — plus Ctrl+B/I/K shortcuts), image upload via clipboard paste, drag-and-drop, or file picker (uploaded to Hive image hosting via Keychain-signed requests), markdown help modal, tag autocomplete from categories, community selector (blog vs joined communities), cross-post toggle, 100% Power Up default, and localStorage draft auto-save
 - **Location picker** — map button in the editor opens a Leaflet/OpenStreetMap modal; click to place a pin or use "My Location" (browser geolocation). Reverse geocoding via Nominatim auto-fills the location name. Inserts a worldmappin-compatible hidden tag in the post body
@@ -292,22 +292,20 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-250 tests across 12 files:
+208 tests across 10 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `test_worker_utils.py` | 59 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
+| `test_worker_utils.py` | 48 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
 | `test_browse.py` | 42 | Browse with all filter combinations, single + multi community filter, authors filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
-| `test_hafsql.py` | 33 | Reputation conversion, comment fetching, community metadata parsing, connection pool, cursor lifecycle |
-| `test_auth.py` | 24 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
-| `test_api.py` | 21 | Health, categories, HTML page routes, GZip middleware, auth key enforcement, schema validation, 404s |
+| `test_hafsql.py` | 32 | Reputation conversion, community metadata parsing, connection pool, cursor lifecycle |
+| `test_auth.py` | 23 | Challenge flow, JWT verify, neg-rep block, error messages, rate limit boundaries, deps edge cases |
 | `test_internal.py` | 19 | Internal API endpoints (centroids, stream cursors) |
-| `test_comments.py` | 19 | Hierarchical comment tree, multi-level nesting, orphaned comments, reputation filtering, cache invalidation, rate limit cleanup |
-| `test_schemas.py` | 15 | Pydantic model validation |
+| `test_api.py` | 18 | Health, categories, HTML page routes, GZip middleware, auth key enforcement, 404s |
 | `test_crud.py` | 10 | Retry decorator, category tree, seed idempotency |
 | `test_text.py` | 9 | Text cleaning utilities |
-| `test_posts.py` | 5 | Create, upsert, detail |
 | `test_cache.py` | 5 | TTL cache operations |
+| `test_posts.py` | 2 | Post detail, community_id handling |
 
 ---
 
@@ -330,7 +328,6 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | POST | `/api/auth/challenge` | Generate a Keychain login challenge |
 | POST | `/api/auth/verify` | Verify Keychain signature, block neg-rep, set JWT cookie |
 | POST | `/api/auth/logout` | Clear JWT cookie |
-| GET | `/api/posts/{author}/{permlink}/comments` | Hierarchical comment tree (rep-filtered, depth limit, cached 120s) |
 | GET | `/api/communities` | Communities with post counts, names, and categories |
 | GET | `/api/communities/suggested` | Suggested communities for given category filters (cached 300s) |
 
@@ -339,13 +336,11 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/auth/me` | Current user info |
-| DELETE | `/api/posts/{author}/{permlink}/comments/cache` | Invalidate comment cache (rate-limited) |
 
 ### Internal (X-API-Key header)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/posts` | Ingest a classified post |
 | POST | `/internal/centroids` | Upload category centroids |
 | GET/PUT | `/internal/stream-cursor/{key}` | Read/update stream position |
 
@@ -473,14 +468,13 @@ combflow/combflow/
 │   ├── config.py          # pydantic-settings
 │   ├── text.py            # shared text cleaning (zero deps, used by worker + seed script)
 │   ├── cache.py           # in-process TTL cache
-│   ├── hafsql.py          # HAFSQL PostgreSQL client (reputation, backfill, posting keys, comments)
+│   ├── hafsql.py          # HAFSQL PostgreSQL client (reputation, backfill, posting keys)
 │   ├── api/
 │   │   ├── main.py        # FastAPI app, lifespan, OpenAPI config
 │   │   ├── deps.py        # JWT auth + DB session dependencies
-│   │   ├── schemas.py     # shared Pydantic models
 │   │   ├── routes/
 │   │   │   ├── auth.py      # Keychain challenge/verify, JWT
-│   │   │   ├── posts.py     # POST /posts, GET /posts/{author}/{permlink}, comments tree + cache
+│   │   │   ├── posts.py     # GET /posts/{author}/{permlink}
 │   │   │   ├── ui.py        # HTML pages, browse API
 │   │   │   └── internal.py  # centroid upload + stream cursors
 │   │   ├── rate_limit.py  # shared sliding-window rate limiter
@@ -518,7 +512,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 250 tests
+├── tests/                   # 208 tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── goaccess-run.sh          # GoAccess log processing script

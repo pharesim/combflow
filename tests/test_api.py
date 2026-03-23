@@ -38,11 +38,6 @@ def test_leaf_categories_are_unique():
 
 # ── Auth enforcement ──────────────────────────────────────────────────────────
 
-async def test_create_post_rejects_missing_key(client):
-    resp = await client.post("/posts", json={})
-    assert resp.status_code == 401
-
-
 async def test_internal_endpoints_require_auth(client):
     resp = await client.get("/internal/stream-cursor/live_worker")
     assert resp.status_code == 401
@@ -119,15 +114,6 @@ async def test_categories_cached(client, seeded_db):
 
 
 # ── Auth enforcement edge cases ──────────────────────────────────────────────
-
-async def test_create_post_wrong_key(client):
-    resp = await client.post("/posts", json={}, headers={"X-API-Key": "wrong-key"})
-    assert resp.status_code == 401
-
-
-async def test_create_post_empty_key(client):
-    resp = await client.post("/posts", json={}, headers={"X-API-Key": ""})
-    assert resp.status_code == 401
 
 
 # ── HTML page routes ─────────────────────────────────────────────────────────
