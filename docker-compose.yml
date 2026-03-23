@@ -137,23 +137,12 @@ services:
   goaccess:
     image: allinurl/goaccess:latest
     restart: unless-stopped
-    entrypoint: ""
-    command:
-      - sh
-      - -c
-      - |
-        mkdir -p /var/www/goaccess
-        while true; do
-          goaccess /var/log/caddy/access.log \
-            -o /var/www/goaccess/report.html \
-            --datetime-format=%s \
-            --log-format='{"level":"%^","ts":%x.%^,"logger":"%^","msg":"%^","request":{"remote_ip":"%h","remote_port":"%^","client_ip":"%^","proto":"%H","method":"%m","host":"%v","uri":"%U","headers":{%^}},"bytes_read":%^,"user_id":"%^","duration":%T,"size":%b,"status":%s,"resp_headers":{%^}}' \
-            2>/dev/null
-          sleep 60
-        done
+    entrypoint: /bin/sh
+    command: ["/scripts/goaccess-run.sh"]
     volumes:
       - caddy_logs:/var/log/caddy:ro
       - goaccess_html:/var/www/goaccess
+      - ./goaccess-run.sh:/scripts/goaccess-run.sh:ro
     depends_on:
       - caddy
     deploy:
