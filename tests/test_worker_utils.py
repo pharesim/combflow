@@ -515,6 +515,26 @@ class TestClassifyAndSave:
         mock_fetch.assert_not_called()
         mock_save.assert_called_once()
 
+    def test_ecency_cross_post_uses_original_body(self):
+        """Ecency-style cross-posts (original_author/original_permlink) should
+        classify using the original post's body."""
+        mock_db = MagicMock()
+        short_body = "Cross-posted via Ecency."
+        original_body = "This is the full original post body with enough content for classification. " * 3
+        import json
+        meta = json.dumps({"original_author": "bob", "original_permlink": "original-permlink"})
+
+        with patch("project.worker.classify._save_post") as mock_save, \
+             patch("project.worker.classify.get_post_body", return_value=original_body) as mock_fetch:
+            _classify_and_save(
+                mock_db, None, {}, 0.30, np.zeros(384), np.zeros(384),
+                author="alice", permlink="ecency-cross-post",
+                title="Cross Post", body=short_body,
+                json_metadata=meta,
+            )
+        mock_fetch.assert_called_once_with("bob", "original-permlink")
+        mock_save.assert_called_once()
+
 
 # ── _persist_community_mapping ──────────────────────────────────────────────
 

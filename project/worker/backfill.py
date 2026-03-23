@@ -11,6 +11,7 @@ from .classify import _classify_and_save, MIN_AUTHOR_REPUTATION
 logger = logging.getLogger(__name__)
 
 _BACKFILL_BATCH = 100
+_CATCHUP_BATCH = 1000
 _BACKFILL_PAUSE = 2  # seconds between batches
 _BACKFILL_CURSOR_KEY = "backfill_worker"
 
@@ -87,7 +88,7 @@ def _backfill_thread(
                 ORDER BY c.created DESC
                 LIMIT %s
                 """,
-                (cursor_dt, _BACKFILL_BATCH),
+                (cursor_dt, _CATCHUP_BATCH if catching_up else _BACKFILL_BATCH),
             )
             rows = cur.fetchall()
             cur.close()

@@ -16,7 +16,7 @@
 	}
 }
 
-{$CADDY_UI_OLD:old.invalid} {
+{$CADDY_UI_OLD:http://old.invalid} {
 	redir https://{$CADDY_UI}{uri} permanent
 }
 

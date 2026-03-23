@@ -12,7 +12,6 @@ services:
     environment:
       CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
       CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
-      CADDY_UI_OLD: ${CADDY_UI_OLD:-old.invalid}
     depends_on:
       combflow-app:
         condition: service_healthy
