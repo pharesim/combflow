@@ -56,6 +56,20 @@ def _set_cursor(db, key: str, block_num: int) -> None:
     db.run(_do())
 
 
+def _get_distinct_authors(db) -> list[str]:
+    async def _do():
+        async with AsyncSessionLocal() as session:
+            return await crud.get_distinct_authors(session)
+    return db.run(_do())
+
+
+def _delete_posts_by_author(db, author: str) -> int:
+    async def _do():
+        async with AsyncSessionLocal() as session:
+            return await crud.delete_posts_by_author(session, author)
+    return db.run(_do())
+
+
 def _existing_author_permlinks(db, pairs: list[tuple[str, str]]) -> set[tuple[str, str]]:
     async def _do():
         async with AsyncSessionLocal() as session:

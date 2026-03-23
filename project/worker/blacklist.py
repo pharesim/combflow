@@ -1,5 +1,6 @@
 """Check authors against the Global Blacklist API (blacklist.usehive.com)."""
 import logging
+import threading
 import time
 from urllib.request import urlopen, Request
 from urllib.error import URLError
@@ -10,6 +11,8 @@ logger = logging.getLogger(__name__)
 _cache: dict[str, tuple[bool, float]] = {}
 _CACHE_TTL = 3600 * 6  # 6 hours
 _TIMEOUT = 5  # seconds
+_SWEEP_INTERVAL = 86400  # 24 hours between sweeps
+_SWEEP_RATE_LIMIT = 0.5  # seconds between API calls during sweep
 
 
 def is_blacklisted(author: str) -> bool:
@@ -40,3 +43,35 @@ def is_blacklisted(author: str) -> bool:
 def check_authors(authors: list[str]) -> set[str]:
     """Return the set of blacklisted authors from the given list."""
     return {a for a in authors if is_blacklisted(a)}
+
+
+def sweep_thread(db, stop_event: threading.Event) -> None:
+    """Daily re-check of all authors in the DB against the blacklist.
+
+    Newly blacklisted authors have their posts deleted.
+    """
+    from .bridge import _get_distinct_authors, _delete_posts_by_author
+
+    # Wait before first sweep to let the worker start up.
+    if stop_event.wait(60):
+        return
+
+    while not stop_event.is_set():
+        try:
+            authors = _get_distinct_authors(db)
+            logger.info("BLACKLIST sweep: checking %d authors", len(authors))
+            removed = 0
+            for author in authors:
+                if stop_event.is_set():
+                    break
+                if is_blacklisted(author):
+                    count = _delete_posts_by_author(db, author)
+                    if count > 0:
+                        logger.info("BLACKLIST sweep: deleted %d posts by %s", count, author)
+                        removed += count
+                time.sleep(_SWEEP_RATE_LIMIT)
+            logger.info("BLACKLIST sweep complete: removed %d posts", removed)
+        except Exception:
+            logger.exception("BLACKLIST sweep error")
+
+        stop_event.wait(_SWEEP_INTERVAL)

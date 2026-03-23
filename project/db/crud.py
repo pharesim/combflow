@@ -504,6 +504,44 @@ async def get_overview_stats(session: AsyncSession) -> dict:
     return dict(row.mappings().first())
 
 
+# ── Blacklist sweep ──────────────────────────────────────────────────────────
+
+@retry_transient
+async def get_distinct_authors(session: AsyncSession) -> list[str]:
+    """Return all distinct authors that have posts in the DB."""
+    rows = await session.execute(
+        text("SELECT DISTINCT author FROM posts")
+    )
+    return [r[0] for r in rows.fetchall()]
+
+
+@retry_transient
+async def delete_posts_by_author(session: AsyncSession, author: str) -> int:
+    """Delete all posts (and associations) for a blacklisted author. Returns count deleted."""
+    rows = await session.execute(
+        text("SELECT id FROM posts WHERE author = :author"),
+        {"author": author},
+    )
+    post_ids = [r[0] for r in rows.fetchall()]
+    if not post_ids:
+        return 0
+
+    await session.execute(
+        text("DELETE FROM post_category WHERE post_id = ANY(:ids)"),
+        {"ids": post_ids},
+    )
+    await session.execute(
+        text("DELETE FROM post_language WHERE post_id = ANY(:ids)"),
+        {"ids": post_ids},
+    )
+    result = await session.execute(
+        text("DELETE FROM posts WHERE author = :author"),
+        {"author": author},
+    )
+    await session.commit()
+    return result.rowcount
+
+
 # ── Communities ──────────────────────────────────────────────────────────────
 
 

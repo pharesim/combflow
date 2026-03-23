@@ -9,6 +9,7 @@ from nectar import Hive
 from nectar.blockchain import Blockchain
 
 from .backfill import _backfill_thread
+from .blacklist import sweep_thread as _blacklist_sweep_thread
 from .bridge import _DB, _get_cursor, _seed_categories
 from .classify import _load_embedder, _load_centroids, _build_sentiment_anchors, _EMBEDDING_DIM
 from .stream import _stream_range
@@ -55,6 +56,14 @@ def _stream() -> None:
     )
     backfill.start()
 
+    # Start daily blacklist sweep thread.
+    blacklist_sweep = threading.Thread(
+        target=_blacklist_sweep_thread,
+        args=(db, stop_event),
+        daemon=True,
+    )
+    blacklist_sweep.start()
+
     # Run the live stream in the main thread.
     # Skip block-by-block CATCHUP — the backfill thread's catch-up phase
     # (starting from NOW, working backwards) already covers missed posts.
@@ -81,6 +90,7 @@ def _stream() -> None:
     finally:
         stop_event.set()
         backfill.join(timeout=10)
+        blacklist_sweep.join(timeout=5)
         db.close()
 
 
