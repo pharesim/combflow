@@ -19,7 +19,7 @@ from project.worker.community import (
 
 class TestDetectLanguages:
     def test_english_detection(self):
-        assert "en" in _detect_languages("Hello, how are you doing today?")
+        assert "en" in _detect_languages("Hello, how are you doing today? This is a fairly long English sentence for testing.")
 
     def test_meta_validated_against_detection(self):
         # High-confidence English text — "de" meta should NOT be added
@@ -47,11 +47,11 @@ class TestDetectLanguages:
         assert isinstance(result, list)
 
     def test_non_latin_script(self):
-        langs = _detect_languages("今日はとても良い天気です。東京は暑いですね。")
+        langs = _detect_languages("今日はとても良い天気です。東京は暑いですね。日本語のテストのために長い文章が必要です。")
         assert len(langs) > 0
 
     def test_detect_languages_ft_returns_tuples(self):
-        results = _detect_languages_ft("This is a test sentence in English.")
+        results = _detect_languages_ft("This is a test sentence in English that needs to be long enough for paragraph detection.")
         assert len(results) > 0
         code, conf = results[0]
         assert isinstance(code, str)
@@ -59,9 +59,57 @@ class TestDetectLanguages:
         assert code == "en"
 
     def test_primary_language_is_first(self):
-        langs = _detect_languages("Hello, how are you doing today?")
+        langs = _detect_languages("Hello, how are you doing today? This is a fairly long English sentence for testing.")
         assert len(langs) > 0
         assert langs[0] == "en"
+
+
+# ── _detect_languages_ft paragraph-level detection ──────────────────────────
+
+class TestDetectLanguagesFtParagraph:
+    def test_monolingual_english(self):
+        """A monolingual English text should detect as English only."""
+        text = (
+            "The weather today is absolutely beautiful and sunny.\n\n"
+            "I went for a long walk through the park and enjoyed the fresh air.\n\n"
+            "Later in the afternoon I plan to read a good book and relax at home."
+        )
+        results = _detect_languages_ft(text)
+        assert len(results) >= 1
+        codes = [code for code, _ in results]
+        assert "en" in codes
+
+    def test_bilingual_spanish_english(self):
+        """Alternating Spanish and English paragraphs should detect both languages."""
+        text = (
+            "Hoy fue un dia maravilloso en la ciudad. Salimos a caminar por el parque "
+            "y disfrutamos del sol y del aire fresco durante toda la manana.\n\n"
+            "Today was a wonderful day in the city. We went for a walk in the park "
+            "and enjoyed the sun and fresh air all morning long.\n\n"
+            "Por la tarde decidimos visitar el museo de arte moderno. Las exposiciones "
+            "estaban increibles y aprendimos mucho sobre la historia del arte.\n\n"
+            "In the afternoon we decided to visit the modern art museum. The exhibitions "
+            "were incredible and we learned a lot about the history of art."
+        )
+        results = _detect_languages_ft(text)
+        codes = [code for code, _ in results]
+        assert "es" in codes, f"Expected 'es' in {codes}"
+        assert "en" in codes, f"Expected 'en' in {codes}"
+
+    def test_short_paragraphs_filtered(self):
+        """Paragraphs shorter than 40 chars should be ignored."""
+        text = (
+            "Hello\n\n"
+            "Hi\n\n"
+            "Short line here.\n\n"
+            "This is a much longer paragraph that should actually be detected by the "
+            "language detection system because it has enough content to be reliable."
+        )
+        results = _detect_languages_ft(text)
+        # Should still detect something from the one long paragraph.
+        assert len(results) >= 1
+        codes = [code for code, _ in results]
+        assert "en" in codes
 
 
 # ── _extract_community_id ───────────────────────────────────────────────────

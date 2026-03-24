@@ -1,6 +1,7 @@
 """Classification, sentiment analysis, and language detection for the Hive worker."""
 import json
 import logging
+import re
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -40,7 +41,7 @@ _NEGATIVE_ANCHORS = [
 ]
 
 _LANG_HIGH_CONFIDENCE = 0.60
-_LANG_MIN_CONFIDENCE = 0.25
+_LANG_MIN_CONFIDENCE = 0.15
 
 _LID_MODEL_PATH = Path("/tmp/lid.176.ftz")
 _LID_MODEL = None
@@ -108,25 +109,57 @@ def _load_centroids(db) -> dict[str, np.ndarray]:
 def _detect_languages_ft(text: str) -> list[tuple[str, float]]:
     """Detect languages with confidence scores via fasttext.
 
+    Splits text into paragraphs and detects each separately to handle
+    bilingual posts where languages alternate by paragraph.
     Returns [(lang_code, confidence), ...] sorted by confidence descending.
     """
     try:
         model = _load_lid_model()
     except Exception:
         return []
-    clean = text[:2000].replace("\n", " ").strip()
+    clean = text[:4000].strip()
     if not clean:
         return []
-    try:
-        # Use pybind C function directly — the Python wrapper's np.array(copy=False)
-        # is broken with numpy 2.x.
-        results = model.f.predict(clean, 3, 0.10, "probabilities")
-        return [
-            (label.replace("__label__", ""), float(score))
-            for score, label in results
-        ]
-    except Exception:
+
+    # Split into paragraphs (double newline, or single newline with enough length).
+    paragraphs = [p.strip().replace("\n", " ") for p in re.split(r'\n\s*\n|\n(?=.{80,})', clean) if p.strip()]
+    if not paragraphs:
         return []
+
+    # Detect each paragraph, accumulate weighted scores by character count.
+    lang_scores: dict[str, float] = {}
+    lang_chars: dict[str, int] = {}
+    MIN_PARA_LEN = 40  # Skip very short paragraphs (headers, separators).
+
+    for para in paragraphs:
+        if len(para) < MIN_PARA_LEN:
+            continue
+        try:
+            results = model.f.predict(para, 1, 0.25, "probabilities")
+            for score, label in results:
+                code = label.replace("__label__", "")
+                char_count = len(para)
+                lang_chars[code] = lang_chars.get(code, 0) + char_count
+                # Weight by paragraph length (longer = more reliable).
+                lang_scores[code] = lang_scores.get(code, 0.0) + float(score) * char_count
+        except Exception:
+            continue
+
+    if not lang_scores:
+        return []
+
+    # Compute weighted average confidence per language.
+    total_chars = sum(lang_chars.values())
+    result = []
+    for code in lang_scores:
+        avg_conf = lang_scores[code] / lang_chars[code]  # Average confidence for this lang.
+        proportion = lang_chars[code] / total_chars        # What fraction of text is this lang.
+        # Include if: decent confidence AND meaningful proportion of the text.
+        if avg_conf >= 0.50 and proportion >= 0.10:
+            result.append((code, round(avg_conf * proportion, 4)))
+
+    result.sort(key=lambda x: x[1], reverse=True)
+    return result
 
 
 def _detect_languages(text: str, meta_langs: list[str] | None = None) -> list[str]:
