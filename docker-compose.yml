@@ -38,6 +38,8 @@ services:
     env_file: .env
     environment:
       PYTHONPATH: /combflow
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_VERBOSITY: critical
       CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
       CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
     depends_on:
@@ -73,6 +75,8 @@ services:
     env_file: .env
     environment:
       PYTHONPATH: /combflow
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_VERBOSITY: critical
       HOME: /tmp
     depends_on:
       db:
