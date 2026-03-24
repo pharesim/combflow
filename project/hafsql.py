@@ -117,6 +117,58 @@ def get_post_body(author: str, permlink: str) -> str | None:
     return None
 
 
+def get_post_metadata(author: str, permlink: str) -> dict | None:
+    """Fetch post title, description, and image via Hive API bridge.get_post.
+
+    Returns {"title": ..., "description": ..., "image": ...} or None.
+    """
+    try:
+        resp = requests.post(
+            "https://api.hive.blog",
+            json={
+                "jsonrpc": "2.0",
+                "method": "bridge.get_post",
+                "params": {"author": author, "permlink": permlink},
+                "id": 1,
+            },
+            timeout=4,
+        )
+        data = resp.json().get("result")
+        if data is None:
+            return None
+
+        title = data.get("title") or ""
+
+        # Description: json_metadata.description or first 160 chars of cleaned body.
+        meta = data.get("json_metadata") or {}
+        if isinstance(meta, str):
+            import json
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+
+        description = ""
+        if isinstance(meta, dict):
+            description = meta.get("description") or ""
+        if not description:
+            from .text import clean_post_body
+            body = data.get("body") or ""
+            description = clean_post_body(body)[:160]
+
+        # First image from json_metadata.
+        image = ""
+        if isinstance(meta, dict):
+            images = meta.get("image") or []
+            if isinstance(images, list) and images:
+                image = str(images[0])
+
+        return {"title": title, "description": description, "image": image}
+    except Exception as exc:
+        logger.debug("post metadata lookup failed for %s/%s: %s", author, permlink, exc)
+    return None
+
+
 def get_community(community_id: str) -> dict | None:
     """Fetch community title and about via Hive API bridge.get_community.
 

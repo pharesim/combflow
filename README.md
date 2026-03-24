@@ -85,6 +85,7 @@ This builds the image, runs migrations, verifies tables, seeds the category tree
 | `db` | PostgreSQL 17 + pgvector |
 | `hive_worker` | Streams + classifies + saves posts (2G memory limit) |
 | `caddy` | Reverse proxy with auto-TLS, domain routing, access logging, API→docs redirect (128M memory limit) |
+| `prerender` | Headless Chromium prerender for bot/crawler SSR — Caddy routes bot user-agents here for fully-rendered HTML (1G memory limit) |
 | `goaccess` | Usage stats dashboard at `CADDY_API/stats` — regenerates from Caddy access logs every 60s (128M memory limit) |
 
 ### 3. Check
@@ -153,13 +154,13 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Lazy thumbnails** — loaded on-demand as hexes enter the viewport
 - **Sentiment borders** — each hex has a coloured border from red (negative) to green (positive)
 - **Layout toggle** — switch between hex grid and card view (auto-selects cards on mobile)
-- **Live polling** — visibility-aware, only polls when the tab is active
+- **Live polling** — visibility-aware, only polls when the tab is active; scales fetch limit based on time away (up to 200 posts on return)
 - **Toast notifications** — non-blocking feedback for saves, errors, etc.
 - **Author profile URLs** — `/@username` shows posts filtered by that author; also triggered by clicking any username
 
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
-- **Social previews** — Open Graph meta tags on post deep links for rich previews on Discord, Twitter, etc.
+- **Social previews** — post-specific Open Graph meta tags on deep links (title, description, thumbnail fetched from Hive API) for rich previews on Discord, Twitter, Slack, etc. Author profile pages show `@username — HiveComb`.
 - **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed iframe handling)
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
 
@@ -237,7 +238,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 | Table | Purpose |
 |-------|---------|
-| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, primary_language) |
+| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, is_nsfw, primary_language) |
 | `categories` | 2-level hierarchy (parent_id for nesting) |
 | `post_category` | Many-to-many: posts <-> categories |
 | `post_language` | Many-to-many: posts <-> languages |
@@ -252,12 +253,13 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 - `ix_post_language_post_id` — post language lookups
 - `ix_post_language_language` — language filter queries
 - `ix_posts_community_id` — community filter queries
+- `ix_posts_primary_language` — language filter queries
 - `ix_community_mappings_category_slug` — community suggestion queries
 - `ix_posts_created_desc` — descending date sort
 
 ### Migration
 
-Migrations: `001_initial_schema.py` (all tables, indexes, pgvector), `002_add_title.py` (title column), `003_drop_thumbnail_url.py` (thumbnails fetched client-side), `004_drop_title.py` (title fetched client-side), `005_add_is_nsfw.py` (NSFW flag), `006_add_primary_language.py` (fasttext primary language). Verified by `alembic/verify_migration.py` on startup.
+Single migration `001_initial_schema.py` creates all tables, indexes, and pgvector extension. Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
@@ -291,15 +293,15 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-157 tests across 7 files:
+196 tests across 8 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `test_worker_utils.py` | 48 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
-| `test_browse.py` | 42 | Browse with all filter combinations, single + multi community filter, authors filter, pagination edge cases, communities endpoint, suggested communities, cache TTL |
+| `test_worker_utils.py` | 63 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
+| `test_browse.py` | 43 | Browse with all filter combinations, single + multi community filter, authors filter, filter list truncation, pagination edge cases, communities endpoint, suggested communities, cache TTL |
 | `test_hafsql.py` | 26 | Reputation conversion, community metadata parsing, post body lookup, connection pool, cursor lifecycle |
-| `test_api.py` | 14 | Health, categories, HTML page routes, GZip middleware, 404s |
-| `test_crud.py` | 10 | Retry decorator, category tree, seed idempotency |
+| `test_api.py` | 25 | Health, categories, HTML page routes, GZip middleware, 404s |
+| `test_crud.py` | 23 | Retry decorator, category tree, seed idempotency |
 | `test_text.py` | 9 | Text cleaning utilities |
 | `test_cache.py` | 5 | TTL cache operations |
 | `test_posts.py` | 2 | Post detail, community_id handling |
@@ -403,6 +405,7 @@ combflow/combflow/
 │   │       ├── discover.html  # HiveComb discovery UI (Alpine.js reactive templates)
 │   │       └── static/
 │   │           ├── shared.js    # auth, validation, read tracking, focus trap, toasts
+│   │           ├── theme.js       # FOUC-free theme init (runs before first paint)
 │   │           ├── shared/      # shared modules
 │   │           │   ├── keychain.js  # Keychain broadcasting (vote, comment, post, follow, mute, subscribe)
 │   │           │   └── markdown.js  # Hive markdown rendering, sanitization, video embeds
@@ -425,18 +428,14 @@ combflow/combflow/
 │       └── health.py      # heartbeat file for Docker health check
 ├── alembic/
 │   ├── versions/
-│   │   ├── 001_initial_schema.py  # all tables + indexes (fresh install)
-│   │   ├── 002_add_title.py       # title column on posts
-│   │   ├── 003_drop_thumbnail_url.py  # thumbnails now client-side only
-│   │   ├── 004_drop_title.py          # title now client-side only
-│   │   ├── 005_add_is_nsfw.py         # NSFW flag on posts
-│   │   └── 006_add_primary_language.py # fasttext primary language
+│   │   └── 001_initial_schema.py  # complete schema (all tables + indexes + pgvector)
 │   └── verify_migration.py        # post-migration table verification
 ├── scripts/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 157 tests
+├── tests/                   # 172 tests
+├── prerender/               # Headless Chromium prerender for bot SSR
 ├── Dockerfile
 ├── docker-compose.yml
 ├── goaccess-run.sh          # GoAccess log processing script

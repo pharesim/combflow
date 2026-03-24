@@ -1,0 +1,8 @@
+{
+  "name": "combflow-prerender",
+  "private": true,
+  "dependencies": {
+    "prerender": "^5.0.0",
+    "prerender-filesystem-cache": "^1.0.0"
+  }
+}

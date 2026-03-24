@@ -373,6 +373,7 @@ function observeThumb(el) {
 
 // ── Live update: poll for new posts (visibility-aware) ──
 let liveTimer = null;
+let hiddenSince = 0;
 const LIVE_INTERVAL = 30000;
 
 function hasActiveFilters() {
@@ -385,8 +386,15 @@ function hasActiveFilters() {
 async function pollNewPosts() {
   if (state.deepLinked || hasActiveFilters() || !state.newestCreated) return;
   try {
+    // Scale limit by how long the page was hidden (10 per 30s interval, max 200)
+    let limit = 10;
+    if (hiddenSince > 0) {
+      const elapsed = Date.now() - hiddenSince;
+      limit = Math.min(200, Math.max(10, Math.ceil(elapsed / LIVE_INTERVAL) * 10));
+      hiddenSince = 0;
+    }
     const [browseData, statsData] = await Promise.all([
-      fetch('/api/browse?limit=10').then(r => r.json()),
+      fetch(`/api/browse?limit=${limit}`).then(r => r.json()),
       fetch('/api/stats').then(r => r.json()),
     ]);
     state.totalPostCount = statsData.total_posts || state.totalPostCount;

@@ -12,7 +12,7 @@ _HTML_TAG = re.compile(r"<[^>]+>")
 _URL = re.compile(r"https?://\S+")
 _MD_HEADER = re.compile(r"^#{1,6}\s*", re.MULTILINE)
 _MD_DIVIDER = re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE)
-_MULTI_SPACE = re.compile(r"\s{2,}")
+_MULTI_SPACE = re.compile(r"[^\S\n]+")
 
 
 def clean_post_body(text: str) -> str:

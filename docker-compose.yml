@@ -141,6 +141,24 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  prerender:
+    build: ./prerender
+    restart: unless-stopped
+    shm_size: '256m'
+    environment:
+      CACHE_ROOT_DIR: /cache
+    volumes:
+      - prerender_cache:/cache
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   goaccess:
     image: allinurl/goaccess:latest
     restart: unless-stopped
@@ -168,3 +186,4 @@ volumes:
   caddy_config:
   caddy_logs:
   goaccess_html:
+  prerender_cache:

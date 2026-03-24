@@ -546,3 +546,23 @@ async def test_browse_communities_total_reflects_filter(client, seeded_db, db_se
 
     assert filtered_total >= 1
     assert filtered_total < all_total
+
+
+# ── Filter list truncation (proposal 033) ─────────────────────────────────
+
+async def test_browse_truncates_long_filter_lists(client, seeded_db):
+    """Lists exceeding the max length are silently truncated, not rejected."""
+    # Build query strings exceeding each limit.
+    cats = "&".join(f"category=cat{i}" for i in range(60))       # limit 50
+    langs = "&".join(f"language=lang{i}" for i in range(110))    # limit 100
+    comms = "&".join(f"communities=hive-{i}" for i in range(210))  # limit 200
+    authors = "&".join(f"authors=user{i}" for i in range(3100))  # limit 3000
+
+    # All four combined — should succeed (200), not 422 or 500.
+    qs = f"{cats}&{langs}&{comms}&{authors}"
+    resp = await client.get(f"/api/browse?{qs}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "posts" in data
+    # No matching data expected, but the request must not error.
+    assert isinstance(data["posts"], list)

@@ -5,7 +5,7 @@ import pytest
 
 from project.hafsql import (
     _raw_rep_to_score, build_dsn, get_reputations,
-    get_community, get_post_body,
+    get_community, get_post_body, get_post_metadata,
     _cursor, _get_pool,
 )
 
@@ -227,3 +227,87 @@ class TestGetPostBody:
         with patch("project.hafsql._cursor", side_effect=Exception("down")):
             result = get_post_body("alice", "my-post")
         assert result is None
+
+
+# ── get_post_metadata (mocked HTTP) ──────────────────────────────────────
+
+class TestGetPostMetadata:
+    def test_returns_metadata_on_success(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": {
+                "title": "My Post Title",
+                "body": "Some body text here that is long enough to be useful.",
+                "json_metadata": {
+                    "description": "A custom description",
+                    "image": ["https://example.com/img.jpg"],
+                },
+            }
+        }
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_post_metadata("alice", "my-post")
+        assert result is not None
+        assert result["title"] == "My Post Title"
+        assert result["description"] == "A custom description"
+        assert result["image"] == "https://example.com/img.jpg"
+
+    def test_falls_back_to_body_when_no_description(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": {
+                "title": "Title",
+                "body": "This is the body content of the post.",
+                "json_metadata": {"image": []},
+            }
+        }
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_post_metadata("alice", "my-post")
+        assert result is not None
+        assert result["description"] == "This is the body content of the post."
+        assert result["image"] == ""
+
+    def test_returns_none_when_result_is_null(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": None}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_post_metadata("alice", "nonexistent")
+        assert result is None
+
+    def test_returns_none_on_network_error(self):
+        with patch("project.hafsql.requests.post", side_effect=Exception("timeout")):
+            result = get_post_metadata("alice", "my-post")
+        assert result is None
+
+    def test_handles_string_json_metadata(self):
+        import json
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": {
+                "title": "Title",
+                "body": "Body",
+                "json_metadata": json.dumps({
+                    "description": "From string meta",
+                    "image": ["https://example.com/pic.png"],
+                }),
+            }
+        }
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_post_metadata("alice", "my-post")
+        assert result["description"] == "From string meta"
+        assert result["image"] == "https://example.com/pic.png"
+
+    def test_handles_empty_json_metadata(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": {
+                "title": "",
+                "body": "",
+                "json_metadata": {},
+            }
+        }
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_post_metadata("alice", "my-post")
+        assert result is not None
+        assert result["title"] == ""
+        assert result["description"] == ""
+        assert result["image"] == ""

@@ -1,6 +1,9 @@
 """UI routes — serves the discovery page and supporting API endpoints."""
+import asyncio
+import logging
 import pathlib
 from datetime import datetime, timezone
+from html import escape as html_escape
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -11,7 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ... import cache
 from ...config import settings
 from ...db import crud
+from ...hafsql import get_post_metadata
 from ..deps import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -21,17 +27,58 @@ _TEMPLATES = {
     for name in ["discover.html"]
 }
 
+# Default OG values — must match what's in discover.html.
+_OG_DEFAULT_TITLE = "HiveComb \u2014 Discover Hive Blockchain Content"
+_OG_DEFAULT_DESC = (
+    "Discover and explore Hive blockchain posts by topic, language, and sentiment. "
+    "Browse communities, filter by category, and find content that matches your interests."
+)
 
-def _render(name: str, request: Request) -> HTMLResponse:
-    """Return an HTML template with {{SITE_URL}} and {{CANONICAL_PATH}} replaced."""
+
+def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse:
+    """Return an HTML template with placeholders replaced.
+
+    Replaces {{SITE_URL}}, {{CANONICAL_PATH}}, and {{OG_*}} placeholders.
+    OG placeholders fall back to defaults when no overrides are provided.
+    """
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
     canonical_path = request.url.path
+    default_image = f"{site_url}/static/og-image.png"
+
+    og_type = html_escape(og["type"]) if og and "type" in og else "website"
+    og_title = html_escape(og["title"]) if og and "title" in og else _OG_DEFAULT_TITLE
+    og_desc = html_escape(og["description"]) if og and "description" in og else _OG_DEFAULT_DESC
+    og_image = html_escape(og["image"]) if og and "image" in og else default_image
+
     html = (
         _TEMPLATES[name]
         .replace("{{SITE_URL}}", site_url)
         .replace("{{CANONICAL_PATH}}", canonical_path)
+        .replace("{{OG_TYPE}}", og_type)
+        .replace("{{OG_TITLE}}", og_title)
+        .replace("{{OG_DESCRIPTION}}", og_desc)
+        .replace("{{OG_IMAGE}}", og_image)
     )
     return HTMLResponse(html)
+
+
+async def _fetch_post_og(author: str, permlink: str) -> dict:
+    """Fetch OG overrides for a post from Hive API. Returns {} on failure."""
+    try:
+        meta = await asyncio.to_thread(get_post_metadata, author, permlink)
+        if not meta:
+            return {}
+        og: dict = {"type": "article"}
+        if meta["title"]:
+            og["title"] = meta["title"]
+        if meta["description"]:
+            og["description"] = meta["description"]
+        if meta["image"]:
+            og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
+        return og
+    except Exception:
+        logger.debug("OG fetch failed for %s/%s", author, permlink, exc_info=True)
+        return {}
 
 
 # ── HTML pages ────────────────────────────────────────────────────────────────
@@ -48,17 +95,23 @@ async def discover_page_redirect():
 
 @router.get("/{prefix}/@{author}/{permlink}", include_in_schema=False)
 async def discover_prefixed_post(request: Request, prefix: str, author: str, permlink: str):
-    return _render("discover.html", request)
+    og = await _fetch_post_og(author, permlink)
+    return _render("discover.html", request, og=og)
 
 
 @router.get("/@{author}", include_in_schema=False)
 async def discover_author(request: Request, author: str):
-    return _render("discover.html", request)
+    og = {
+        "title": f"@{author} \u2014 HiveComb",
+        "description": f"Posts by @{author} on HiveComb",
+    }
+    return _render("discover.html", request, og=og)
 
 
 @router.get("/@{author}/{permlink}", include_in_schema=False)
 async def discover_post(request: Request, author: str, permlink: str):
-    return _render("discover.html", request)
+    og = await _fetch_post_og(author, permlink)
+    return _render("discover.html", request, og=og)
 
 
 # ── SEO ──────────────────────────────────────────────────────────────────────
@@ -189,6 +242,16 @@ async def browse_posts(
     offset: int = Query(default=0, ge=0, le=10000),
     cursor: str | None = Query(default=None, description="Opaque cursor from previous response for keyset pagination"),
 ):
+    # Bound filter list lengths (proposal 033).
+    if category:
+        category = category[:50]
+    if language:
+        language = language[:100]
+    if communities:
+        communities = communities[:200]
+    if authors:
+        authors = authors[:3000]
+
     result = await crud.browse_posts(
         db, categories=category, languages=language,
         sentiment=sentiment,

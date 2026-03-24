@@ -54,8 +54,11 @@ CATEGORY_TREE: dict[str, list[str]] = {
         "books",
     ],
     "sports": [
-        "sports",           # merged team-sports + combat-sports + motorsports
-        "outdoor-sports",   # hiking, climbing, cycling, running, trail
+        "team-sports",      # football, soccer, basketball, baseball, cricket, tennis
+        "combat-sports",    # MMA, boxing, wrestling, martial arts, judo, karate
+        "motorsports",      # Formula 1, NASCAR, rally, motocross, karting, drag racing
+        "outdoor-sports",   # hiking, climbing, cycling, running, trail, surfing, skiing
+        "chess",            # chess strategy, tournaments, puzzles, openings, endgames
     ],
     "community": [
         "hive",

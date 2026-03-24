@@ -117,7 +117,7 @@ def _detect_languages_ft(text: str) -> list[tuple[str, float]]:
         model = _load_lid_model()
     except Exception:
         return []
-    clean = text[:4000].strip()
+    clean = _clean_post_body(text)[:8000].strip()
     if not clean:
         return []
 
@@ -335,7 +335,7 @@ def _classify_and_save(
 
         sentiment, sentiment_score = _sentiment_from_embedding(emb, pos_anchor, neg_anchor)
 
-    languages = _detect_languages(clean_body, meta_langs)
+    languages = _detect_languages(body, meta_langs)
     primary_language = languages[0] if languages else None
 
     _save_post(db, {

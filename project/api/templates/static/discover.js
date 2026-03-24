@@ -270,6 +270,7 @@ window.addEventListener('resize', () => {
 // ── Visibility change (live updates) ──
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    hiddenSince = Date.now();
     clearInterval(liveTimer);
     liveTimer = null;
   } else {

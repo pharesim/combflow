@@ -291,6 +291,13 @@ body{overflow-x:hidden}
 
 .comment-toggle{background:none;border:none;color:var(--text-dim);font-size:11px;cursor:pointer;padding:2px 8px;border-radius:8px;transition:all .2s}
 .comment-toggle:hover{color:var(--text-bright);background:var(--card)}
+.comment-permalink{text-decoration:none;opacity:.5;font-size:.85em}
+.comment-permalink:hover{opacity:1}
+
+/* ── Comment navigation ─── */
+.comment-nav{display:flex;gap:12px;padding:8px 12px;margin-bottom:12px;background:var(--card);border-radius:8px;font-size:13px}
+.comment-nav a{color:var(--hive-red);text-decoration:none}
+.comment-nav a:hover{text-decoration:underline}
 
 /* ── Comment form ─── */
 .comment-form{margin-bottom:16px;padding:12px;background:var(--card);border-radius:10px;border:1px solid var(--border)}

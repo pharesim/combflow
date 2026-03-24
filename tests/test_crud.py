@@ -186,3 +186,209 @@ async def test_get_category_tree_empty_db(setup_db):
     async with _TestSession() as session:
         tree = await get_category_tree(session)
     assert tree == []
+
+
+# ── existing_author_permlinks ─────────────────────────────────────────────
+
+async def test_existing_author_permlinks_empty_pairs(seeded_db):
+    from project.db.crud import existing_author_permlinks
+
+    async with _TestSession() as session:
+        result = await existing_author_permlinks(session, [])
+    assert result == set()
+
+
+async def test_existing_author_permlinks_finds_existing(seeded_db):
+    from project.db.crud import existing_author_permlinks
+
+    async with _TestSession() as session:
+        result = await existing_author_permlinks(session, [
+            ("alice", "test-post-one"),
+            ("bob", "test-post-two"),
+            ("nobody", "nonexistent"),
+        ])
+    assert ("alice", "test-post-one") in result
+    assert ("bob", "test-post-two") in result
+    assert ("nobody", "nonexistent") not in result
+
+
+async def test_existing_author_permlinks_all_missing(seeded_db):
+    from project.db.crud import existing_author_permlinks
+
+    async with _TestSession() as session:
+        result = await existing_author_permlinks(session, [
+            ("x", "y"), ("a", "b"),
+        ])
+    assert result == set()
+
+
+# ── create_post update path ───────────────────────────────────────────────
+
+async def test_create_post_upsert_updates_existing(seeded_db):
+    """Re-inserting same author/permlink updates sentiment and categories."""
+    from project.db.crud import create_post, get_post_by_permlink
+
+    second_leaf = CATEGORY_TREE[list(CATEGORY_TREE.keys())[1]][0]
+
+    async with _TestSession() as session:
+        await create_post(session, {
+            "author": "alice",
+            "permlink": "test-post-one",
+            "sentiment": "negative",
+            "sentiment_score": -0.9,
+            "categories": [second_leaf],
+            "languages": ["fr"],
+            "community_id": "hive-123456",
+            "primary_language": "fr",
+            "is_nsfw": True,
+        })
+
+    async with _TestSession() as session:
+        post = await get_post_by_permlink(session, "alice", "test-post-one")
+    assert post is not None
+    assert post["sentiment"] == "negative"
+    assert post["sentiment_score"] == -0.9
+    assert post["categories"] == [second_leaf]
+    assert post["languages"] == ["fr"]
+    assert post["community_id"] == "hive-123456"
+    assert post["primary_language"] == "fr"
+    assert post["is_nsfw"] is True
+
+
+# ── Centroids roundtrip ──────────────────────────────────────────────────
+
+async def test_save_and_get_centroids(setup_db):
+    from project.db.crud import save_centroids, get_centroids
+
+    centroids = {
+        "photography": [0.1] * 384,
+        "food": [0.2] * 384,
+    }
+    metadata = {
+        "posts_labeled": 100,
+        "llm_model": "test-model",
+        "embedding_model": "all-MiniLM-L6-v2",
+    }
+
+    async with _TestSession() as session:
+        await save_centroids(session, centroids, metadata)
+
+    async with _TestSession() as session:
+        loaded = await get_centroids(session)
+
+    assert set(loaded.keys()) == {"photography", "food"}
+    assert len(loaded["photography"]) == 384
+    assert abs(loaded["photography"][0] - 0.1) < 1e-5
+
+
+async def test_save_centroids_upsert(setup_db):
+    """Saving centroids twice overwrites the first set."""
+    from project.db.crud import save_centroids, get_centroids
+
+    async with _TestSession() as session:
+        await save_centroids(session, {"photography": [0.1] * 384}, {"posts_labeled": 10})
+    async with _TestSession() as session:
+        await save_centroids(session, {"photography": [0.9] * 384}, {"posts_labeled": 20})
+
+    async with _TestSession() as session:
+        loaded = await get_centroids(session)
+    assert abs(loaded["photography"][0] - 0.9) < 1e-5
+
+
+# ── Stream cursors ────────────────────────────────────────────────────────
+
+async def test_cursor_set_and_get(setup_db):
+    from project.db.crud import get_cursor, set_cursor
+
+    async with _TestSession() as session:
+        result = await get_cursor(session, "test_key")
+    assert result is None
+
+    async with _TestSession() as session:
+        await set_cursor(session, "test_key", 12345)
+
+    async with _TestSession() as session:
+        result = await get_cursor(session, "test_key")
+    assert result == 12345
+
+
+async def test_cursor_upsert(setup_db):
+    from project.db.crud import get_cursor, set_cursor
+
+    async with _TestSession() as session:
+        await set_cursor(session, "test_key", 100)
+    async with _TestSession() as session:
+        await set_cursor(session, "test_key", 200)
+
+    async with _TestSession() as session:
+        result = await get_cursor(session, "test_key")
+    assert result == 200
+
+
+# ── get_distinct_authors ──────────────────────────────────────────────────
+
+async def test_get_distinct_authors(seeded_db):
+    from project.db.crud import get_distinct_authors
+
+    async with _TestSession() as session:
+        authors = await get_distinct_authors(session)
+    assert set(authors) == {"alice", "bob", "carol"}
+
+
+async def test_get_distinct_authors_empty(setup_db):
+    from project.db.crud import get_distinct_authors
+
+    async with _TestSession() as session:
+        authors = await get_distinct_authors(session)
+    assert authors == []
+
+
+# ── delete_posts_by_author ────────────────────────────────────────────────
+
+async def test_delete_posts_by_author(seeded_db):
+    from project.db.crud import delete_posts_by_author, get_post_by_permlink
+
+    async with _TestSession() as session:
+        count = await delete_posts_by_author(session, "alice")
+    assert count == 1
+
+    async with _TestSession() as session:
+        post = await get_post_by_permlink(session, "alice", "test-post-one")
+    assert post is None
+
+
+async def test_delete_posts_by_author_nonexistent(setup_db):
+    from project.db.crud import delete_posts_by_author
+
+    async with _TestSession() as session:
+        count = await delete_posts_by_author(session, "nobody")
+    assert count == 0
+
+
+async def test_delete_posts_by_author_cascades_associations(seeded_db):
+    """Deleting an author's posts also removes post_category and post_language rows."""
+    from sqlalchemy import text as sql_text
+    from project.db.crud import delete_posts_by_author
+
+    # Get alice's post ID before deletion.
+    async with _TestSession() as session:
+        row = await session.execute(
+            sql_text("SELECT id FROM posts WHERE author = 'alice'")
+        )
+        alice_id = row.scalar()
+        assert alice_id is not None
+
+    async with _TestSession() as session:
+        await delete_posts_by_author(session, "alice")
+
+    async with _TestSession() as session:
+        cats = await session.execute(
+            sql_text("SELECT COUNT(*) FROM post_category WHERE post_id = :pid"),
+            {"pid": alice_id},
+        )
+        assert cats.scalar() == 0
+        langs = await session.execute(
+            sql_text("SELECT COUNT(*) FROM post_language WHERE post_id = :pid"),
+            {"pid": alice_id},
+        )
+        assert langs.scalar() == 0

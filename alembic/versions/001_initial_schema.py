@@ -31,11 +31,14 @@ def upgrade() -> None:
         sa.Column("sentiment_score", sa.Float(), nullable=True),
         sa.Column("classified_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
         sa.Column("community_id", sa.String(length=20), nullable=True),
+        sa.Column("is_nsfw", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("primary_language", sa.String(length=10), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("author", "permlink", name="uq_author_permlink"),
     )
     op.create_index("ix_posts_created_desc", "posts", ["created"], postgresql_using="btree", postgresql_ops={"created": "DESC"})
     op.create_index("ix_posts_community_id", "posts", ["community_id"])
+    op.create_index("ix_posts_primary_language", "posts", ["primary_language"])
 
     op.create_table(
         "categories",

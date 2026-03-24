@@ -85,6 +85,25 @@ async function openModal(post, skipPush) {
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');
+    // Fill date from Hive result if not already set (e.g. comment deep links)
+    if (result.created) {
+      const dateEl = document.getElementById('modal-date');
+      if (!dateEl.textContent) {
+        dateEl.textContent = new Date(result.created + 'Z').toLocaleDateString('en', {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      }
+    }
+    // Comment navigation — show parent/root links when viewing a comment
+    if (result.parent_author) {
+      const isDirectReply = result.parent_author === result.root_author
+        && result.parent_permlink === result.root_permlink;
+      let navHtml = '<div class="comment-nav">';
+      if (!isDirectReply) {
+        navHtml += '<a href="/@' + encodeURIComponent(result.parent_author) + '/' + encodeURIComponent(result.parent_permlink) + '" onclick="event.preventDefault();closeModal();openModal({author:\'' + esc(result.parent_author) + '\',permlink:\'' + esc(result.parent_permlink) + '\'})">Parent comment</a>';
+      }
+      navHtml += '<a href="/@' + encodeURIComponent(result.root_author) + '/' + encodeURIComponent(result.root_permlink) + '" onclick="event.preventDefault();closeModal();openModal({author:\'' + esc(result.root_author) + '\',permlink:\'' + esc(result.root_permlink) + '\'})">Original post</a>';
+      navHtml += '</div>';
+      document.getElementById('modal-body').insertAdjacentHTML('afterbegin', navHtml);
+    }
     // Vote count in modal
     const voteCount = (result.stats && result.stats.total_votes) || (result.active_votes || []).length;
     document.getElementById('modal-vote-count').textContent = voteCount;

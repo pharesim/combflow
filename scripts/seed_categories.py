@@ -363,16 +363,22 @@ log = logging.getLogger(__name__)
 
 TAG_HINTS: dict[str, list[str]] = {
     # technology
-    "cybersecurity": ["cybersecurity", "infosec", "hacking", "security", "privacy", "encryption"],
-    "ai": ["ai", "artificial-intelligence", "machine-learning", "deeplearning", "chatgpt", "llm"],
+    "cybersecurity": ["cybersecurity", "infosec", "hacking", "security", "privacy",
+                      "encryption", "pl-technologie"],
+    "ai": ["ai", "artificial-intelligence", "machine-learning", "deeplearning", "chatgpt",
+            "llm", "aitools", "developer"],
     # creative
-    "diy-crafts": ["diy", "crafts", "handmade", "woodworking", "knitting", "crochet", "maker"],
-    "fashion": ["fashion", "style", "clothing", "outfit", "streetwear", "mensfashion"],
+    "diy-crafts": ["diy", "crafts", "handmade", "woodworking", "knitting", "crochet",
+                    "maker", "diyhub", "needlework", "needleworkmonday"],
+    "fashion": ["fashion", "style", "clothing", "outfit", "sewing", "needlework",
+                "needleworkmonday", "handmade"],
     # lifestyle
     "homesteading": ["homesteading", "offgrid", "selfsufficiency", "permaculture",
                      "foodpreservation", "canning", "livestock", "smallfarm"],
     "gardening": ["garden", "gardening", "hivegarden", "plants", "growing", "harvest",
-                  "houseplants", "composting", "urbangarden"],
+                  "houseplants", "gardenjournal", "hive-140635"],
+    "pets": ["hivepets", "pets", "pet", "domesticpet", "cats", "cat", "dogs", "dog",
+             "animals"],
     # science-education
     "health-fitness": ["health", "medicine", "wellness", "fitness", "gym", "workout",
                        "yoga", "bodybuilding", "weightloss", "exercise"],
@@ -385,16 +391,25 @@ TAG_HINTS: dict[str, list[str]] = {
     "finance": ["finance", "investing", "realestate", "stocks", "trading",
                 "personalfinance", "banking", "economics", "economy", "inflation"],
     "entrepreneurship": ["entrepreneur", "startup", "business", "marketing", "smallbusiness",
-                         "founder", "saas", "hustle"],
+                         "founder", "saas", "hive-167922", "hive-153850"],
     "precious-metals": ["silvergoldstackers", "silver", "gold", "bullion", "stacking",
-                        "preciousmetals", "numismatics", "coins", "minting"],
+                        "preciousmetals", "numismatics", "coins", "minting", "investing"],
     # entertainment
-    "books": ["books", "reading", "bookreview", "literature", "fiction", "nonfiction"],
+    "books": ["books", "reading", "bookreview", "literature", "fiction", "nonfiction",
+              "book", "bookclub", "hive-180164", "library"],
     # sports
-    "sports": ["football", "soccer", "basketball", "baseball", "cricket", "tennis",
-               "mma", "boxing", "wrestling", "formula1", "f1", "nascar", "motorsports"],
+    "team-sports": ["football", "soccer", "basketball", "baseball", "cricket", "tennis",
+                    "volleyball", "rugby", "hockey", "golf", "nfl", "nba", "worldcup",
+                    "sportsblock", "sportstalk", "hive-115814", "sportsbites"],
+    "combat-sports": ["mma", "boxing", "wrestling", "ufc", "martialarts", "bjj", "judo",
+                      "karate", "muaythai", "kickboxing"],
+    "motorsports": ["formula1", "f1", "nascar", "motogp", "rally", "motocross",
+                    "indycar", "dragracing", "karting", "motorsport", "wrc",
+                    "hive-109272"],
     "outdoor-sports": ["hiking", "climbing", "cycling", "running", "trail", "marathon",
-                       "triathlon", "surfing", "skiing"],
+                       "triathlon", "surfing", "skiing", "swimming", "ultramarathon"],
+    "chess": ["chess", "chessbrothers", "ajedrez", "chessgame", "chesspuzzle",
+              "chessstrategy", "fide", "grandmaster", "hive-147818"],
     # community
     "hive": ["witness", "witnesses", "dhf", "hive-governance", "hivefest", "hivepower",
              "hive-dev", "hiveengine", "proposal", "hardfork", "hbd-stabilizer"],
@@ -536,6 +551,35 @@ def fetcher_thread(
 
 # ── Targeted fetcher for stratified sampling ─────────────────────────────────
 
+HIVE_API_NODES = [
+    "https://api.hive.blog",
+    "https://api.deathwing.me",
+    "https://rpc.ecency.com",
+]
+
+
+def _hive_get_discussions_by_created(
+    tag: str, limit: int,
+    start_author: str = "", start_permlink: str = "",
+) -> list[dict]:
+    """Fetch posts by tag via condenser_api.get_discussions_by_created with node failover."""
+    query: dict = {"tag": tag, "limit": min(limit, 100)}
+    if start_author and start_permlink:
+        query["start_author"] = start_author
+        query["start_permlink"] = start_permlink
+    payload = {"jsonrpc": "2.0", "method": "condenser_api.get_discussions_by_created",
+               "params": [query], "id": 1}
+    for node in HIVE_API_NODES:
+        try:
+            resp = requests.post(node, json=payload, timeout=15)
+            result = resp.json().get("result")
+            if result is not None:
+                return result
+        except Exception as exc:
+            log.debug("[STRATIFY] %s failed: %s", node, exc)
+    return []
+
+
 def fetch_targeted(
     weak_categories: list[str],
     min_per_category: int,
@@ -546,107 +590,95 @@ def fetch_targeted(
     status: dict,
     seen_keys: set[str],
 ):
-    """Fetch posts for under-represented categories using tag-based HAFSQL queries."""
-    import psycopg2
-    import psycopg2.extras
+    """Fetch posts for under-represented categories using Hive API tag queries.
 
-    conn = None
-    try:
-        conn = psycopg2.connect(HAFSQL_DSN)
-        conn.autocommit = True
-    except Exception as exc:
-        log.error("[STRATIFY] Cannot connect to HAFSQL: %s", exc)
-        return
-
+    Paginates from newest to oldest, skipping posts already in seen_keys.
+    Uses condenser_api.get_discussions_by_created (100 per batch).
+    """
     total_added = 0
     for cat in weak_categories:
         if stop_event.is_set():
             break
 
-        tags = TAG_HINTS.get(cat)
-        if not tags:
+        cat_tags = TAG_HINTS.get(cat)
+        if not cat_tags:
             log.warning("[STRATIFY] No tag hints for '%s' — skipping", cat)
             continue
 
         need = max(0, min_per_category - current_counts.get(cat, 0))
-        # Fetch more than needed since not all will classify into the target category
         fetch_limit = need * 10
 
         log.info("[STRATIFY] '%s': have %d, need %d — fetching up to %d posts via tags %s",
-                 cat, current_counts.get(cat, 0), min_per_category, fetch_limit, tags[:3])
-
-        try:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute(
-                """
-                SELECT c.author, c.permlink, c.title, c.body, c.created,
-                       c.json_metadata,
-                       r.reputation
-                FROM hafsql.comments c
-                LEFT JOIN hafsql.reputations r ON c.author = r.account_name
-                WHERE c.parent_author = ''
-                  AND LENGTH(c.body) >= 80
-                  AND c.json_metadata::jsonb->'tags' ?| %s
-                ORDER BY c.created DESC
-                LIMIT %s
-                """,
-                (tags, fetch_limit),
-            )
-            rows = cur.fetchall()
-            cur.close()
-        except Exception as exc:
-            log.warning("[STRATIFY] Query failed for '%s': %s", cat, exc)
-            continue
+                 cat, current_counts.get(cat, 0), min_per_category, fetch_limit, cat_tags[:3])
 
         added = 0
-        for row in rows:
-            if stop_event.is_set():
+        for tag in cat_tags:
+            if stop_event.is_set() or added >= fetch_limit:
                 break
 
-            key = f"{row['author']}/{row['permlink']}"
-            if key in seen_keys:
-                continue
+            start_author, start_permlink = "", ""
+            tag_fetched = 0
+            per_tag_limit = max(fetch_limit // len(cat_tags), 20)
 
-            raw_rep = int(row.get("reputation") or 0)
-            rep_score = _raw_rep_to_score(raw_rep)
-            if rep_score < min_reputation:
-                continue
+            while tag_fetched < per_tag_limit and not stop_event.is_set():
+                batch = _hive_get_discussions_by_created(
+                    tag, 100, start_author, start_permlink)
+                if not batch:
+                    break
 
-            body = (row.get("body") or "").strip()
-            if body.lstrip().startswith("@@"):
-                continue
+                for post in batch:
+                    if stop_event.is_set() or added >= fetch_limit:
+                        break
 
-            tags = []
-            try:
-                jm = row.get("json_metadata") or ""
-                if jm:
-                    md = json.loads(jm) if isinstance(jm, str) else jm
+                    author = post.get("author", "")
+                    permlink = post.get("permlink", "")
+                    key = f"{author}/{permlink}"
+                    if key in seen_keys:
+                        continue
+
+                    rep_score = _raw_rep_to_score(
+                        int(post.get("author_reputation") or 0))
+                    if rep_score < min_reputation:
+                        continue
+
+                    body = (post.get("body") or "").strip()
+                    if len(body) < 80 or body.lstrip().startswith("@@"):
+                        continue
+
+                    post_tags = []
+                    md = post.get("json_metadata")
+                    if isinstance(md, str):
+                        try:
+                            md = json.loads(md)
+                        except Exception:
+                            md = {}
                     if isinstance(md, dict):
-                        tags = md.get("tags", [])
-                        if not isinstance(tags, list):
-                            tags = []
-            except Exception:
-                tags = []
+                        post_tags = md.get("tags", [])
+                        if not isinstance(post_tags, list):
+                            post_tags = []
 
-            seen_keys.add(key)
-            post_queue.put({
-                "author": row["author"],
-                "permlink": row["permlink"],
-                "title": (row.get("title") or "").strip(),
-                "body": body[:1500],
-                "tags": [str(t) for t in tags if isinstance(t, str)],
-                "timestamp": str(row.get("created", "")),
-            })
-            added += 1
+                    seen_keys.add(key)
+                    post_queue.put({
+                        "author": author,
+                        "permlink": permlink,
+                        "title": (post.get("title") or "").strip(),
+                        "body": body[:1500],
+                        "tags": [str(t) for t in post_tags if isinstance(t, str)],
+                        "timestamp": post.get("created", ""),
+                    })
+                    added += 1
+
+                tag_fetched += len(batch)
+                if len(batch) < 100:
+                    break  # No more results for this tag
+                # Paginate: use last post as cursor
+                last = batch[-1]
+                start_author = last.get("author", "")
+                start_permlink = last.get("permlink", "")
 
         total_added += added
         status["fetched"] = status.get("fetched", 0) + added
-        log.info("[STRATIFY] '%s': queued %d posts from %d results", cat, added, len(rows))
-
-    try:
-        conn.close()
-    except Exception:
-        pass
+        log.info("[STRATIFY] '%s': queued %d posts", cat, added)
 
     log.info("[STRATIFY] Done — queued %d targeted posts across %d categories",
              total_added, len(weak_categories))

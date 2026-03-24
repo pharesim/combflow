@@ -93,8 +93,8 @@ function applyPreferenceFilters(prefs) {
     || (prefs.default_languages?.length > 0)
     || !!prefs.default_sentiment;
   Alpine.store('app').hasDefaultFilters = hasDefaults;
-  // DOM sync happens via Alpine.effect() in filters.js
   updateFilterCounts();
+  syncAllChipsDom();
 }
 
 async function savePreferences() {

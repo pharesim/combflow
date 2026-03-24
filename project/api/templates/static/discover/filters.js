@@ -144,6 +144,7 @@ function loadSessionFilters() {
     if (s.following) setFollowingActive(true);
     syncCommunityChips();
     updateFilterCounts();
+    syncAllChipsDom();
     return true;
   } catch(e) { return false; }
 }

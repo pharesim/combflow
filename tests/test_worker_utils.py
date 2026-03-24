@@ -111,6 +111,29 @@ class TestDetectLanguagesFtParagraph:
         codes = [code for code, _ in results]
         assert "en" in codes
 
+    def test_bilingual_raw_body_with_markdown(self):
+        """Bilingual post with Markdown + HTML should detect both languages
+        when paragraph breaks (\\n\\n) are preserved through light cleaning."""
+        text = (
+            "# Mi Viaje a la Ciudad\n\n"
+            "Hoy fue un día maravilloso en la ciudad. Caminé por las calles antiguas "
+            "y visité muchos lugares históricos. La comida fue increíble, especialmente "
+            "el arroz con pollo que prepararon en el restaurante local. Me encantó la "
+            "arquitectura colonial y los jardines hermosos del centro histórico.\n\n"
+            '<div class="text-justify">\n\n'
+            "## My Trip to the City\n\n"
+            "Today was a wonderful day in the city. I walked through the old streets "
+            "and visited many historical places. The food was incredible, especially "
+            "the rice with chicken they prepared at the local restaurant. I loved the "
+            "colonial architecture and the beautiful gardens in the historic center.\n\n"
+            "</div>\n\n"
+            "![photo](https://images.example.com/photo.jpg)\n"
+        )
+        results = _detect_languages_ft(text)
+        codes = [code for code, _ in results]
+        assert "es" in codes, f"Expected 'es' in {codes}"
+        assert "en" in codes, f"Expected 'en' in {codes}"
+
 
 # ── _extract_community_id ───────────────────────────────────────────────────
 

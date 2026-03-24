@@ -47,12 +47,15 @@ function renderComment(comment, depth) {
     ? '<button type="button" class="comment-toggle comment-reply-btn" onclick="openReplyForm(\'' + esc(comment.author) + '\',\'' + esc(comment.permlink) + '\',this)">Reply</button>'
     : '';
 
+  const permalink = '<a class="comment-toggle comment-permalink" href="/@' + encodeURIComponent(comment.author) + '/' + encodeURIComponent(comment.permlink) + '" title="Direct link">\u{1F517}</a>';
+
   return '<div class="comment">' +
     '<div class="comment-head">' +
       '<a class="comment-author" href="https://peakd.com/@' + encodeURIComponent(comment.author) + '" target="_blank" rel="noopener noreferrer">@' + esc(comment.author) + '</a>' +
       (rep ? '<span class="comment-rep">' + esc(rep) + '</span>' : '') +
       voteBtn +
       replyBtn +
+      permalink +
       '<span class="comment-time">' + esc(relativeTime(comment.created)) + '</span>' +
     '</div>' +
     '<div class="comment-body rendered-body">' + bodyHtml + '</div>' +
