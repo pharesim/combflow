@@ -56,8 +56,8 @@ def _load_lid_model():
             "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
             _LID_MODEL_PATH,
         )
-    from fasttext import _FastText
-    _LID_MODEL = _FastText(model_path=str(_LID_MODEL_PATH))
+    import fasttext
+    _LID_MODEL = fasttext.load_model(str(_LID_MODEL_PATH))
     return _LID_MODEL
 
 
