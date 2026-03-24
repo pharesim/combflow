@@ -133,6 +133,10 @@ class TestRetryTransient:
 
 async def test_seed_category_tree_creates_correct_counts(seeded_db):
     from sqlalchemy import text
+    # Children sharing a name with their parent are not inserted as separate rows
+    overlaps = sum(1 for p, kids in CATEGORY_TREE.items() if p in kids)
+    expected_parents = len(CATEGORY_TREE)
+    expected_children = sum(len(v) for v in CATEGORY_TREE.values()) - overlaps
     async with _TestSession() as session:
         parents = await session.execute(
             text("SELECT COUNT(*) FROM categories WHERE parent_id IS NULL")
@@ -142,8 +146,8 @@ async def test_seed_category_tree_creates_correct_counts(seeded_db):
             text("SELECT COUNT(*) FROM categories WHERE parent_id IS NOT NULL")
         )
         child_count = children.scalar()
-    assert parent_count == len(CATEGORY_TREE)
-    assert child_count == sum(len(v) for v in CATEGORY_TREE.values())
+    assert parent_count == expected_parents
+    assert child_count == expected_children
 
 
 async def test_seed_category_tree_idempotent(seeded_db):
@@ -154,10 +158,11 @@ async def test_seed_category_tree_idempotent(seeded_db):
     async with _TestSession() as session:
         await seed_category_tree(session, CATEGORY_TREE)
 
+    overlaps = sum(1 for p, kids in CATEGORY_TREE.items() if p in kids)
     async with _TestSession() as session:
         rows = await session.execute(text("SELECT COUNT(*) FROM categories"))
         count = rows.scalar()
-    expected = len(CATEGORY_TREE) + sum(len(v) for v in CATEGORY_TREE.values())
+    expected = len(CATEGORY_TREE) + sum(len(v) for v in CATEGORY_TREE.values()) - overlaps
     assert count == expected
 
 

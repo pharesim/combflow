@@ -498,11 +498,24 @@ def fetcher_thread(
             if body.lstrip().startswith("@@"):
                 continue
 
+            tags = []
+            try:
+                jm = row.get("json_metadata") or ""
+                if jm:
+                    md = json.loads(jm) if isinstance(jm, str) else jm
+                    if isinstance(md, dict):
+                        tags = md.get("tags", [])
+                        if not isinstance(tags, list):
+                            tags = []
+            except Exception:
+                tags = []
+
             post_queue.put({
                 "author": row["author"],
                 "permlink": row["permlink"],
                 "title": (row.get("title") or "").strip(),
                 "body": body[:1500],
+                "tags": [str(t) for t in tags if isinstance(t, str)],
                 "timestamp": str(row.get("created", "")),
             })
             fetched += 1
@@ -603,12 +616,25 @@ def fetch_targeted(
             if body.lstrip().startswith("@@"):
                 continue
 
+            tags = []
+            try:
+                jm = row.get("json_metadata") or ""
+                if jm:
+                    md = json.loads(jm) if isinstance(jm, str) else jm
+                    if isinstance(md, dict):
+                        tags = md.get("tags", [])
+                        if not isinstance(tags, list):
+                            tags = []
+            except Exception:
+                tags = []
+
             seen_keys.add(key)
             post_queue.put({
                 "author": row["author"],
                 "permlink": row["permlink"],
                 "title": (row.get("title") or "").strip(),
                 "body": body[:1500],
+                "tags": [str(t) for t in tags if isinstance(t, str)],
                 "timestamp": str(row.get("created", "")),
             })
             added += 1
@@ -720,7 +746,7 @@ def classify_post(post: dict, model: str, categories: list[str]) -> list[str]:
         categories=", ".join(categories),
         category_hints=_build_hint_block(),
         title=post["title"] or "(no title)",
-        body=clean_body[:800],
+        body=clean_body[:1500],
     )
     try:
         resp = _ollama.chat(
@@ -810,7 +836,8 @@ def validate_centroids(
         # Embed and classify via cosine similarity (same logic as worker)
         clean_body = clean_post_body(post.get("body", ""))
         title = post.get("title", "")
-        text = f"{title} {clean_body}".strip()[:2000]
+        tags_hint = " ".join(post.get("tags", []))
+        text = f"{title} {clean_body} {tags_hint}".strip()[:2000]
         emb = embedder.encode([text], normalize_embeddings=True)[0]
 
         sims = centroid_matrix @ emb
@@ -905,7 +932,8 @@ def compute_centroids(
     for p in labeled:
         clean_body = clean_post_body(p.get("body", ""))
         title = p.get("title", "")
-        text = f"{title} {clean_body}".strip()[:2000]
+        tags_hint = " ".join(p.get("tags", []))
+        text = f"{title} {clean_body} {tags_hint}".strip()[:2000]
         for i, c in enumerate(p["categories"]):
             if c in by_cat:
                 weight = 1.0 if i == 0 else secondary_weight
@@ -967,7 +995,8 @@ def refine_centroids(
     for p in labeled:
         clean_body = clean_post_body(p.get("body", ""))
         title = p.get("title", "")
-        texts.append(f"{title} {clean_body}".strip()[:2000])
+        tags_hint = " ".join(p.get("tags", []))
+        texts.append(f"{title} {clean_body} {tags_hint}".strip()[:2000])
     log.info("[REFINE] Encoding %d posts ...", len(texts))
     all_embs = embedder.encode(texts, normalize_embeddings=True, show_progress_bar=True)
 

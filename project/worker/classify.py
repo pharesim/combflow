@@ -1,6 +1,7 @@
 """Classification, sentiment analysis, and language detection for the Hive worker."""
 import json
 import logging
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -38,7 +39,26 @@ _NEGATIVE_ANCHORS = [
     "Sad, angry, disgusted, terrible news",
 ]
 
-_LANG_PROB_THRESHOLD = 0.25
+_LANG_HIGH_CONFIDENCE = 0.60
+_LANG_MIN_CONFIDENCE = 0.25
+
+_LID_MODEL_PATH = Path("/tmp/lid.176.ftz")
+_LID_MODEL = None
+
+
+def _load_lid_model():
+    global _LID_MODEL
+    if _LID_MODEL is not None:
+        return _LID_MODEL
+    if not _LID_MODEL_PATH.exists():
+        logger.info("Downloading fasttext language ID model ...")
+        urllib.request.urlretrieve(
+            "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
+            _LID_MODEL_PATH,
+        )
+    import fasttext
+    _LID_MODEL = fasttext.load_model(str(_LID_MODEL_PATH))
+    return _LID_MODEL
 
 
 def _load_embedder():
@@ -85,29 +105,56 @@ def _load_centroids(db) -> dict[str, np.ndarray]:
     return {cat: np.array(vec) for cat, vec in centroids.items()}
 
 
+def _detect_languages_ft(text: str) -> list[tuple[str, float]]:
+    """Detect languages with confidence scores via fasttext.
+
+    Returns [(lang_code, confidence), ...] sorted by confidence descending.
+    """
+    try:
+        model = _load_lid_model()
+    except Exception:
+        return []
+    clean = text[:2000].replace("\n", " ").strip()
+    if not clean:
+        return []
+    try:
+        # Use pybind C function directly — the Python wrapper's np.array(copy=False)
+        # is broken with numpy 2.x.
+        results = model.f.predict(clean, 3, 0.10, "probabilities")
+        return [
+            (label.replace("__label__", ""), float(score))
+            for score, label in results
+        ]
+    except Exception:
+        return []
+
+
 def _detect_languages(text: str, meta_langs: list[str] | None = None) -> list[str]:
     """Detect languages from text + json_metadata.
 
-    Returns a deduplicated list.  json_metadata languages are trusted;
-    langdetect probabilistic results above the threshold are added.
+    Uses fasttext for detection.  Meta languages are validated against
+    detection results — only included if they agree with detection or
+    if detection confidence is low.
     """
+    detected = _detect_languages_ft(text)
+    detected_codes = {code for code, _ in detected}
+
     langs: list[str] = []
 
+    # High-confidence detections first (primary languages)
+    for code, conf in detected:
+        if conf >= _LANG_MIN_CONFIDENCE and code not in langs:
+            langs.append(code)
+
+    # Meta languages: only add if they agree with detection OR detection is weak
     if meta_langs:
+        primary_conf = detected[0][1] if detected else 0.0
         for code in meta_langs:
             c = str(code).strip().lower()[:10]
-            if c and c not in langs:
+            if not c or c in langs:
+                continue
+            if c in detected_codes or primary_conf < _LANG_HIGH_CONFIDENCE:
                 langs.append(c)
-
-    try:
-        from langdetect import detect_langs, DetectorFactory
-        DetectorFactory.seed = 0
-        for result in detect_langs(text[:2000]):
-            code = result.lang.lower()
-            if result.prob >= _LANG_PROB_THRESHOLD and code not in langs:
-                langs.append(code)
-    except Exception:
-        pass
 
     return langs
 
@@ -256,6 +303,7 @@ def _classify_and_save(
         sentiment, sentiment_score = _sentiment_from_embedding(emb, pos_anchor, neg_anchor)
 
     languages = _detect_languages(clean_body, meta_langs)
+    primary_language = languages[0] if languages else None
 
     _save_post(db, {
         "author": author,
@@ -263,6 +311,7 @@ def _classify_and_save(
         "created": created,
         "categories": categories,
         "languages": languages,
+        "primary_language": primary_language,
         "sentiment": sentiment,
         "sentiment_score": sentiment_score,
         "community_id": community_id,

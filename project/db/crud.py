@@ -58,6 +58,8 @@ async def seed_category_tree(session: AsyncSession, tree: dict[str, list[str]]) 
         parent = await upsert_category(session, parent_name)
         await session.flush()
         for child_name in children:
+            if child_name == parent_name:
+                continue
             await session.execute(
                 insert(Category)
                 .values(name=child_name, parent_id=parent.id)
@@ -138,6 +140,8 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
         post.sentiment_score = data.get("sentiment_score")
         if "community_id" in data:
             post.community_id = data["community_id"]
+        if "primary_language" in data:
+            post.primary_language = data["primary_language"]
         if "is_nsfw" in data:
             post.is_nsfw = data["is_nsfw"]
         # Clear old categories and languages.
@@ -158,6 +162,7 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
             sentiment=data.get("sentiment"),
             sentiment_score=data.get("sentiment_score"),
             community_id=data.get("community_id"),
+            primary_language=data.get("primary_language"),
             is_nsfw=data.get("is_nsfw", False),
         )
         session.add(post)
@@ -201,7 +206,7 @@ async def get_post_by_permlink(
             """
             SELECT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   p.is_nsfw, cm.community_name
+                   p.primary_language, p.is_nsfw, cm.community_name
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
             WHERE p.author = :author AND p.permlink = :pl
@@ -450,7 +455,7 @@ async def browse_posts(
             f"""
             SELECT DISTINCT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   p.is_nsfw, cm.community_name
+                   p.primary_language, p.is_nsfw, cm.community_name
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
             {cat_join}

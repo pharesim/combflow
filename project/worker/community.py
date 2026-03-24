@@ -14,6 +14,16 @@ _COMMUNITY_PATTERN = re.compile(r"^hive-\d+$")
 _COMMUNITY_BOOST = 0.08
 _COMMUNITY_MAP_THRESHOLD = 0.40
 
+_HIVE_PLATFORM_RE = re.compile(
+    r'\b(?:hive|hivean|hiveans|hiver|hivers|hivian|hivians)\b',
+    re.IGNORECASE,
+)
+
+
+def _strip_hive_words(text: str) -> str:
+    """Remove Hive platform name from community text so it doesn't bias embedding."""
+    return _HIVE_PLATFORM_RE.sub('', text).strip()
+
 # community_id -> (category_slug | None, community_name, score)
 _community_cache: dict[str, tuple[str | None, str, float]] = {}
 _persisted_communities: set[str] = set()
@@ -48,8 +58,10 @@ def _resolve_community(
 
     result: tuple[str | None, str, float] = (None, name, 0.0)
 
+    text = ""
     if embedder and centroids and (name or about):
-        text = f"{name} {about}".strip()
+        text = _strip_hive_words(f"{name} {about}".strip())
+    if text:
         emb = embedder.encode(text, normalize_embeddings=True)
         scores = [(cat, float(np.dot(emb, centroid))) for cat, centroid in centroids.items()]
         if scores:

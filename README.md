@@ -35,7 +35,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 ### How it works
 
 1. **Seed script** runs on your GPU. Fetches Hive posts (with stratified sampling for rare categories), classifies them with a local LLM, optionally uses multi-model ensemble voting, computes per-category centroid vectors, and uploads them.
-2. **Worker** streams blocks from Hive (live) and walks backwards through HAFSQL (backfill). For each post: embeds the body in-process (`all-MiniLM-L6-v2`), compares against centroids, detects languages (`langdetect` + `json_metadata`), analyses sentiment (embedding-based), auto-maps Hive communities to categories (embedding community title+about, +0.08 boost), and saves everything directly to PostgreSQL.
+2. **Worker** streams blocks from Hive (live) and walks backwards through HAFSQL (backfill). For each post: embeds the body in-process (`all-MiniLM-L6-v2`), compares against centroids, detects languages (`fasttext` + `json_metadata`), analyses sentiment (embedding-based), auto-maps Hive communities to categories (embedding community title+about, +0.08 boost), and saves everything directly to PostgreSQL.
 3. **HiveComb UI** shows posts in a honeycomb hex grid built with **Alpine.js** (~17KB, CDN-loaded, no build step) for reactive rendering. Collapsible chip-based filters (category, sentiment, language, author), sticky filter bar, endless scrolling, sort toggle, lazy thumbnails, visibility-aware live polling, and toast notifications. WCAG AA accessible with full keyboard navigation. Three layout modes (hex grid, card grid, list) rendered via Alpine `x-for` loops. Embeds YouTube, 3Speak, and Instagram Reel videos. Hierarchical comment trees loaded directly from the Hive chain. Community discovery suggestions bar with subscribe/unsubscribe via Keychain. Open Graph meta tags for social media previews. Cross-post detection and thumbnail support (PeakD `cross_post_key` and Ecency `original_author`/`original_permlink` formats).
 4. **Hive Keychain auth** — users log in with their Hive account via Keychain browser extension (pure client-side, no server auth endpoints). Logged-in users can save default filter preferences on-chain (via `posting_json_metadata`), post comments and replies, author new top-level posts (to their blog or a community, with optional cross-post), follow/unfollow users, and join/leave communities — all broadcast client-side via Keychain (no private keys touch the server).
 
@@ -200,7 +200,7 @@ The seed script (`scripts/seed_categories.py`) bootstraps the classification sys
 
 Posts can have multiple languages (common on Hive where authors write bilingual content):
 
-- **Detection**: combines `json_metadata` app-provided language + `langdetect` probabilistic detection (threshold 0.25)
+- **Detection**: `fasttext` (lid.176.ftz model) as primary detector, merged with `json_metadata` app-provided languages. The highest-confidence language is stored as `primary_language` on each post.
 - **Storage**: `post_language` junction table (many-to-many)
 - **Filtering**: browse endpoint accepts multiple language filters
 - **Display**: all detected languages shown as tags in the discovery UI
@@ -223,7 +223,7 @@ Per-post pipeline:
 - Reject posts with < 80 chars of meaningful text
 - Classify against category centroids (sentence-transformers)
 - Auto-map Hive communities to categories (fetch title+about via Hive API `bridge.get_community`, embed, 0.40 threshold, +0.08 boost)
-- Detect languages (langdetect + json_metadata)
+- Detect languages (fasttext + json_metadata)
 - Compute sentiment via embedding similarity
 - Save classification + community mapping to PostgreSQL
 
@@ -237,7 +237,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 | Table | Purpose |
 |-------|---------|
-| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id) |
+| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, primary_language) |
 | `categories` | 2-level hierarchy (parent_id for nesting) |
 | `post_category` | Many-to-many: posts <-> categories |
 | `post_language` | Many-to-many: posts <-> languages |
@@ -257,7 +257,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 ### Migration
 
-Migrations: `001_initial_schema.py` (all tables, indexes, pgvector), `002_add_title.py` (title column), `003_drop_thumbnail_url.py` (thumbnails fetched client-side), `004_drop_title.py` (title fetched client-side). Verified by `alembic/verify_migration.py` on startup.
+Migrations: `001_initial_schema.py` (all tables, indexes, pgvector), `002_add_title.py` (title column), `003_drop_thumbnail_url.py` (thumbnails fetched client-side), `004_drop_title.py` (title fetched client-side), `005_add_is_nsfw.py` (NSFW flag), `006_add_primary_language.py` (fasttext primary language). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
@@ -388,7 +388,7 @@ A GoAccess dashboard is served at your API domain's `/stats` path (e.g. `https:/
 ```
 combflow/combflow/
 ├── project/
-│   ├── categories.py     # 2-level category tree (9 parents, 43 leaves)
+│   ├── categories.py     # 2-level category tree (9 parents, 35 leaves)
 │   ├── config.py          # pydantic-settings
 │   ├── text.py            # shared text cleaning (zero deps, used by worker + seed script)
 │   ├── cache.py           # in-process TTL cache
@@ -428,7 +428,9 @@ combflow/combflow/
 │   │   ├── 001_initial_schema.py  # all tables + indexes (fresh install)
 │   │   ├── 002_add_title.py       # title column on posts
 │   │   ├── 003_drop_thumbnail_url.py  # thumbnails now client-side only
-│   │   └── 004_drop_title.py          # title now client-side only
+│   │   ├── 004_drop_title.py          # title now client-side only
+│   │   ├── 005_add_is_nsfw.py         # NSFW flag on posts
+│   │   └── 006_add_primary_language.py # fasttext primary language
 │   └── verify_migration.py        # post-migration table verification
 ├── scripts/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification

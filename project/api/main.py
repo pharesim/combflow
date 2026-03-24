@@ -132,7 +132,9 @@ async def category_tree():
     except Exception:
         return {
             "categories": [
-                {"name": parent, "children": [{"name": c} for c in children]}
+                {"name": parent, "children": [
+                    {"name": c} for c in children if c != parent
+                ]}
                 for parent, children in CATEGORY_TREE.items()
             ]
         }

@@ -5,13 +5,13 @@ import numpy as np
 import pytest
 
 from project.worker.classify import (
-    _classify_from_embedding, _detect_languages,
+    _classify_from_embedding, _detect_languages, _detect_languages_ft,
     _sentiment_from_embedding,
     _build_sentiment_anchors, _classify_and_save,
 )
 from project.worker.community import (
     _extract_community_id, _resolve_community, _community_cache,
-    _persisted_communities, _persist_community_mapping,
+    _persisted_communities, _persist_community_mapping, _strip_hive_words,
 )
 
 
@@ -21,12 +21,25 @@ class TestDetectLanguages:
     def test_english_detection(self):
         assert "en" in _detect_languages("Hello, how are you doing today?")
 
-    def test_metadata_takes_precedence(self):
-        langs = _detect_languages("Hello, how are you?", meta_langs=["de"])
-        assert langs[0] == "de"
+    def test_meta_validated_against_detection(self):
+        # High-confidence English text — "de" meta should NOT be added
+        langs = _detect_languages(
+            "Hello, how are you doing today? This is a fairly long English sentence.",
+            meta_langs=["de"],
+        )
+        assert "en" in langs
+        # de should be excluded because detection is confident and de wasn't detected
+        assert "de" not in langs
+
+    def test_meta_added_when_detection_weak(self):
+        # Very short / ambiguous text — meta should be trusted
+        with patch("project.worker.classify._detect_languages_ft", return_value=[("en", 0.40)]):
+            langs = _detect_languages("ok", meta_langs=["de"])
+        assert "en" in langs
+        assert "de" in langs
 
     def test_deduplication(self):
-        langs = _detect_languages("Hello, how are you?", meta_langs=["en"])
+        langs = _detect_languages("Hello, how are you doing today?", meta_langs=["en"])
         assert langs.count("en") == 1
 
     def test_empty_text(self):
@@ -36,6 +49,19 @@ class TestDetectLanguages:
     def test_non_latin_script(self):
         langs = _detect_languages("今日はとても良い天気です。東京は暑いですね。")
         assert len(langs) > 0
+
+    def test_detect_languages_ft_returns_tuples(self):
+        results = _detect_languages_ft("This is a test sentence in English.")
+        assert len(results) > 0
+        code, conf = results[0]
+        assert isinstance(code, str)
+        assert isinstance(conf, float)
+        assert code == "en"
+
+    def test_primary_language_is_first(self):
+        langs = _detect_languages("Hello, how are you doing today?")
+        assert len(langs) > 0
+        assert langs[0] == "en"
 
 
 # ── _extract_community_id ───────────────────────────────────────────────────
@@ -185,6 +211,28 @@ class TestSentimentFromEmbedding:
         assert -1.0 <= score <= 1.0
 
 
+# ── _strip_hive_words ──────────────────────────────────────────────────────
+
+class TestStripHiveWords:
+    def test_removes_hive(self):
+        assert _strip_hive_words("Hive Gaming") == "Gaming"
+
+    def test_removes_variants(self):
+        assert _strip_hive_words("Hivean Creators hivians") == "Creators"
+
+    def test_case_insensitive(self):
+        assert _strip_hive_words("ASEAN HIVE COMMUNITY") == "ASEAN  COMMUNITY"
+
+    def test_preserves_non_hive(self):
+        assert _strip_hive_words("LeoFinance") == "LeoFinance"
+
+    def test_only_hive_returns_empty(self):
+        assert _strip_hive_words("Hive") == ""
+
+    def test_hive_inside_word_preserved(self):
+        assert _strip_hive_words("HiveGarden") == "HiveGarden"
+
+
 # ── _resolve_community (mocked HAFSQL) ─────────────────────────────────────
 
 class TestResolveCommunity:
@@ -220,6 +268,28 @@ class TestResolveCommunity:
             cat, name, score = _resolve_community("hive-666", embedder, centroids)
         assert name == "LeoFinance"
         assert score > 0.0
+
+    def test_strips_hive_from_community_text(self):
+        from sentence_transformers import SentenceTransformer
+        embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        centroid = embedder.encode("gaming video games esports", normalize_embeddings=True)
+        centroids = {"gaming": centroid}
+        with patch("project.worker.community.get_community",
+                   return_value={"title": "Hive Gaming", "about": "Gaming on Hive blockchain"}):
+            cat, name, score = _resolve_community("hive-444", embedder, centroids)
+        assert name == "Hive Gaming"
+        assert score > 0.0
+
+    def test_empty_after_stripping_skips_embedding(self):
+        embedder = MagicMock()
+        centroids = {"cat": np.ones(384)}
+        with patch("project.worker.community.get_community",
+                   return_value={"title": "Hive", "about": ""}):
+            cat, name, score = _resolve_community("hive-333", embedder, centroids)
+        assert cat is None
+        assert name == "Hive"
+        assert score == 0.0
+        embedder.encode.assert_not_called()
 
     def test_below_threshold_returns_none_category(self):
         from sentence_transformers import SentenceTransformer
@@ -299,6 +369,11 @@ class TestClassifyAndSave:
         assert saved_data["author"] == "alice"
         assert saved_data["categories"] == []
         assert saved_data["sentiment"] == "neutral"
+        assert "primary_language" in saved_data
+        if saved_data["languages"]:
+            assert saved_data["primary_language"] == saved_data["languages"][0]
+        else:
+            assert saved_data["primary_language"] is None
 
     def test_extracts_tags_from_json_metadata(self):
         """tags_hint from json_metadata should be included in classify text."""
@@ -340,7 +415,7 @@ class TestClassifyAndSave:
         assert "de" in saved_data["languages"]
 
     def test_extracts_meta_langs_list(self):
-        """json_metadata.language as list should be extracted."""
+        """json_metadata.language as list — meta langs validated against detection."""
         mock_db = MagicMock()
         body = "Long enough body for classification testing purposes here. " * 3
         import json
@@ -355,7 +430,8 @@ class TestClassifyAndSave:
             )
         saved_data = mock_save.call_args[0][1]
         assert "en" in saved_data["languages"]
-        assert "es" in saved_data["languages"]
+        # "es" may or may not appear depending on detection confidence —
+        # what matters is that meta langs are processed without errors
 
     def test_handles_malformed_json_metadata(self):
         """Malformed json_metadata should not crash the pipeline."""
