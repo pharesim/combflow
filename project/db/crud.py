@@ -56,6 +56,11 @@ async def upsert_category(session: AsyncSession, name: str) -> Category:
 async def seed_category_tree(session: AsyncSession, tree: dict[str, list[str]]) -> None:
     for parent_name, children in tree.items():
         parent = await upsert_category(session, parent_name)
+        if parent.parent_id is not None:
+            await session.execute(
+                text("UPDATE categories SET parent_id = NULL WHERE id = :id"),
+                {"id": parent.id},
+            )
         await session.flush()
         for child_name in children:
             if child_name == parent_name:
