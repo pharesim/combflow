@@ -601,12 +601,13 @@ body{overflow-x:hidden}
 /* ── Hive content layout classes ── */
 .modal-body .pull-left,
 .modal-body .pull-right {
-  width: 49%;
+  width: 50%;
   display: inline-block;
   vertical-align: top;
+  box-sizing: border-box;
 }
-.modal-body .pull-left { float: left; }
-.modal-body .pull-right { float: right; }
+.modal-body .pull-left { float: left; padding-right: 8px; }
+.modal-body .pull-right { float: right; padding-left: 8px; }
 .modal-body .text-justify { text-align: justify; overflow: hidden; }
 
 @media (max-width: 767px) {
