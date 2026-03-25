@@ -45,7 +45,8 @@ server.use({
     if (req.prerender.statusCode === 200 && req.prerender.content) {
       const file = cachePath(req.prerender.url);
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFile(file, req.prerender.content, function(err) {
+      const tagged = '<!-- ' + req.prerender.url + ' -->\n' + req.prerender.content;
+      fs.writeFile(file, tagged, function(err) {
         if (err) console.error('cache write error:', err.message);
       });
     }
