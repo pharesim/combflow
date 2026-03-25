@@ -277,7 +277,7 @@ function updateAuthorFilterBanner() {
   const banner = document.getElementById('author-filter-banner');
   if (!banner) return;
   if (state.authorFilterUser) {
-    banner.innerHTML = `Posts by <strong>@${esc(state.authorFilterUser)}</strong> <button type="button" class="author-filter-clear" aria-label="Clear author filter" onclick="clearAuthorFilter();scheduleFilter()">&times;</button>`;
+    banner.innerHTML = `Posts by <strong>@${esc(state.authorFilterUser)}</strong> <button type="button" class="author-filter-clear" aria-label="Clear author filter" data-action="clear-author-filter">&times;</button>`;
     banner.style.display = '';
   } else {
     banner.style.display = 'none';

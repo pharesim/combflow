@@ -124,7 +124,7 @@ function confirmLocation() {
 function _updateLocationBadge() {
   const badge = document.getElementById('editor-location-badge');
   if (_selectedLocation) {
-    badge.innerHTML = `&#x1F4CD; ${esc(_selectedLocation.description || 'Location set')} <span class="remove-location" onclick="event.stopPropagation();removeLocation()" title="Remove location">&times;</span>`;
+    badge.innerHTML = `&#x1F4CD; ${esc(_selectedLocation.description || 'Location set')} <span class="remove-location" data-action="remove-location" title="Remove location">&times;</span>`;
     badge.style.display = '';
     badge.onclick = (e) => { if (!e.target.classList.contains('remove-location')) openLocationPicker(); };
   } else {

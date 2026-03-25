@@ -31,7 +31,7 @@ function renderComment(comment, depth) {
     });
     childrenHtml += '</div>';
     if (collapsed) {
-      childrenHtml = '<button type="button" class="comment-toggle" onclick="toggleCommentChildren(this,\'' + esc(toggleId) + '\')">' +
+      childrenHtml = '<button type="button" class="comment-toggle" data-action="toggle-comment-children" data-toggle-id="' + esc(toggleId) + '">' +
         comment.children.length + ' replies &#9660;</button>' + childrenHtml;
     }
   }
@@ -39,12 +39,12 @@ function renderComment(comment, depth) {
   const voteKey = comment.author + '/' + comment.permlink;
   const isVoted = comment.voted || state.votedPosts[voteKey];
   const voteBtn = getStoredAuth()
-    ? '<button type="button" class="comment-toggle comment-vote-btn' + (isVoted ? ' voted' : '') + '" onclick="handleCommentVote(\'' + esc(comment.author) + '\',\'' + esc(comment.permlink) + '\',this)">' +
+    ? '<button type="button" class="comment-toggle comment-vote-btn' + (isVoted ? ' voted' : '') + '" data-action="comment-vote" data-author="' + esc(comment.author) + '" data-permlink="' + esc(comment.permlink) + '">' +
       '&#9650; <span class="comment-vote-count">' + (comment.net_votes || 0) + '</span></button>'
     : '';
 
   const replyBtn = getStoredAuth()
-    ? '<button type="button" class="comment-toggle comment-reply-btn" onclick="openReplyForm(\'' + esc(comment.author) + '\',\'' + esc(comment.permlink) + '\',this)">Reply</button>'
+    ? '<button type="button" class="comment-toggle comment-reply-btn" data-action="comment-reply" data-author="' + esc(comment.author) + '" data-permlink="' + esc(comment.permlink) + '">Reply</button>'
     : '';
 
   const permalink = '<a class="comment-toggle comment-permalink" href="/@' + encodeURIComponent(comment.author) + '/' + encodeURIComponent(comment.permlink) + '" title="Direct link">\u{1F517}</a>';
@@ -63,7 +63,8 @@ function renderComment(comment, depth) {
   '</div>';
 }
 
-function toggleCommentChildren(btn, id) {
+function toggleCommentChildren(btn) {
+  const id = btn.dataset.toggleId;
   const el = document.getElementById(id);
   if (!el) return;
   const hidden = el.style.display === 'none';
@@ -115,10 +116,10 @@ function renderCommentForm(parentAuthor, parentPermlink, isTopLevel) {
   return '<div class="comment-form" id="' + formId + '">' +
     '<textarea class="comment-textarea" id="' + formId + '-textarea" placeholder="Write a comment..." maxlength="64000" rows="3"></textarea>' +
     '<div class="comment-form-actions">' +
-      '<button type="button" class="comment-preview-btn" onclick="toggleCommentPreview(\'' + formId + '\')">Preview</button>' +
+      '<button type="button" class="comment-preview-btn" data-action="comment-preview" data-form-id="' + formId + '">Preview</button>' +
       '<div style="flex:1"></div>' +
-      (!isTopLevel ? '<button type="button" class="btn btn-ghost comment-cancel-btn" onclick="closeReplyForm()">Cancel</button>' : '') +
-      '<button type="button" class="btn comment-submit-btn" id="' + formId + '-submit" onclick="submitComment(\'' + esc(parentAuthor) + '\',\'' + esc(parentPermlink) + '\',\'' + formId + '\')">Post Comment</button>' +
+      (!isTopLevel ? '<button type="button" class="btn btn-ghost comment-cancel-btn" data-action="close-reply-form">Cancel</button>' : '') +
+      '<button type="button" class="btn comment-submit-btn" id="' + formId + '-submit" data-action="submit-comment" data-parent-author="' + esc(parentAuthor) + '" data-parent-permlink="' + esc(parentPermlink) + '" data-form-id="' + formId + '">Post Comment</button>' +
     '</div>' +
     '<div class="comment-preview rendered-body" id="' + formId + '-preview" style="display:none"></div>' +
   '</div>';

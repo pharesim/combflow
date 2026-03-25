@@ -154,7 +154,7 @@ function renderFollowedUsersList() {
   state.followedUsers.forEach(user => {
     const item = document.createElement('div');
     item.className = 'followed-user-item';
-    item.innerHTML = `<span class="followed-user-name">@${esc(user)}</span><button type="button" class="btn btn-ghost followed-user-unfollow" onclick="handleUnfollowUser('${esc(user)}')">Unfollow</button>`;
+    item.innerHTML = `<span class="followed-user-name">@${esc(user)}</span><button type="button" class="btn btn-ghost followed-user-unfollow" data-action="unfollow-user" data-user="${esc(user)}">Unfollow</button>`;
     container.appendChild(item);
   });
 }

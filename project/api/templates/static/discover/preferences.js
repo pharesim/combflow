@@ -501,7 +501,7 @@ function renderMutedUsersList() {
   state.mutedUsers.forEach(user => {
     const item = document.createElement('div');
     item.className = 'muted-user-item';
-    item.innerHTML = `<span class="muted-user-name">@${esc(user)}</span><button type="button" class="btn btn-ghost muted-user-unmute" onclick="handleUnmuteUser('${esc(user)}')">Unmute</button>`;
+    item.innerHTML = `<span class="muted-user-name">@${esc(user)}</span><button type="button" class="btn btn-ghost muted-user-unmute" data-action="unmute-user" data-user="${esc(user)}">Unmute</button>`;
     container.appendChild(item);
   });
 }

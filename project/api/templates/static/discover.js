@@ -354,6 +354,20 @@ document.addEventListener('click', e => {
     case 'toggle-theme': toggleTheme(); break;
     // Back to top
     case 'back-to-top': window.scrollTo({top:0,behavior:'smooth'}); break;
+    // Comments
+    case 'comment-vote': handleCommentVote(el.dataset.author, el.dataset.permlink, el); break;
+    case 'comment-reply': openReplyForm(el.dataset.author, el.dataset.permlink, el); break;
+    case 'toggle-comment-children': toggleCommentChildren(el); break;
+    case 'comment-preview': toggleCommentPreview(el.dataset.formId); break;
+    case 'close-reply-form': closeReplyForm(); break;
+    case 'submit-comment': submitComment(el.dataset.parentAuthor, el.dataset.parentPermlink, el.dataset.formId); break;
+    case 'navigate-post': e.preventDefault(); closeModal(); openModal({author: el.dataset.author, permlink: el.dataset.permlink}); break;
+    case 'filter-community': e.preventDefault(); e.stopPropagation(); filterByCommunity(el.dataset.community); break;
+    case 'clear-author-filter': clearAuthorFilter(); scheduleFilter(); break;
+    case 'unmute-user': handleUnmuteUser(el.dataset.user); break;
+    case 'unfollow-user': handleUnfollowUser(el.dataset.user); break;
+    case 'remove-editor-tag': removeEditorTag(parseInt(el.dataset.index)); break;
+    case 'remove-location': e.stopPropagation(); removeLocation(); break;
   }
 });
 

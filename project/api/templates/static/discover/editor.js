@@ -341,7 +341,7 @@ function renderEditorTagsHtml() {
   const tags = Alpine.store('app').editorTags;
   let html = '';
   tags.forEach((tag, i) => {
-    html += '<span class="editor-tag">' + esc(tag) + '<button type="button" onclick="removeEditorTag(' + i + ')" aria-label="Remove tag">&times;</button></span>';
+    html += '<span class="editor-tag">' + esc(tag) + '<button type="button" data-action="remove-editor-tag" data-index="' + i + '" aria-label="Remove tag">&times;</button></span>';
   });
   return html;
 }

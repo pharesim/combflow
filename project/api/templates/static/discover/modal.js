@@ -98,9 +98,9 @@ async function openModal(post, skipPush) {
         && result.parent_permlink === result.root_permlink;
       let navHtml = '<div class="comment-nav">';
       if (!isDirectReply) {
-        navHtml += '<a href="/@' + encodeURIComponent(result.parent_author) + '/' + encodeURIComponent(result.parent_permlink) + '" onclick="event.preventDefault();closeModal();openModal({author:\'' + esc(result.parent_author) + '\',permlink:\'' + esc(result.parent_permlink) + '\'})">Parent comment</a>';
+        navHtml += '<a href="/@' + encodeURIComponent(result.parent_author) + '/' + encodeURIComponent(result.parent_permlink) + '" data-action="navigate-post" data-author="' + esc(result.parent_author) + '" data-permlink="' + esc(result.parent_permlink) + '">Parent comment</a>';
       }
-      navHtml += '<a href="/@' + encodeURIComponent(result.root_author) + '/' + encodeURIComponent(result.root_permlink) + '" onclick="event.preventDefault();closeModal();openModal({author:\'' + esc(result.root_author) + '\',permlink:\'' + esc(result.root_permlink) + '\'})">Original post</a>';
+      navHtml += '<a href="/@' + encodeURIComponent(result.root_author) + '/' + encodeURIComponent(result.root_permlink) + '" data-action="navigate-post" data-author="' + esc(result.root_author) + '" data-permlink="' + esc(result.root_permlink) + '">Original post</a>';
       navHtml += '</div>';
       document.getElementById('modal-body').insertAdjacentHTML('afterbegin', navHtml);
     }
@@ -156,7 +156,7 @@ async function openModal(post, skipPush) {
         const communityName = result.community_title || result.category || '';
         banner.innerHTML = `Cross-posted by <a href="/@${esc(post.author)}">@${esc(post.author)}</a>`
           + (communityName ? ` in ${esc(communityName)}` : '')
-          + ` · <a href="/@${esc(cpAuthor)}/${esc(cpPermlink)}" onclick="event.preventDefault();closeModal();openModal({author:'${esc(cpAuthor)}',permlink:'${esc(cpPermlink)}'})">View original</a>`;
+          + ` · <a href="/@${esc(cpAuthor)}/${esc(cpPermlink)}" data-action="navigate-post" data-author="${esc(cpAuthor)}" data-permlink="${esc(cpPermlink)}">View original</a>`;
         banner.style.display = '';
         // Fetch and render the original post content
         try {

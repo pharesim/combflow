@@ -206,7 +206,7 @@ function getPostTagsHtml(p) {
   void Alpine.store('app').metaRev;
   let html = '';
   if (p.community_name) {
-    html += `<span class="community-badge" data-community="${esc(p.community_id)}" onclick="event.preventDefault();event.stopPropagation();filterByCommunity('${esc(p.community_id)}')" title="${esc(p.community_name)}">${esc(p.community_name)}</span>`;
+    html += `<span class="community-badge" data-community="${esc(p.community_id)}" data-action="filter-community" title="${esc(p.community_name)}">${esc(p.community_name)}</span>`;
   }
   (p.categories || []).slice(0, 2).forEach(c => { html += `<span class="tag">${esc(c)}</span>`; });
   if (p.sentiment && safeSentiment(p.sentiment)) {
@@ -223,7 +223,7 @@ function getListTagsHtml(p) {
   void Alpine.store('app').metaRev;
   let html = '';
   if (p.community_name) {
-    html += `<span class="community-badge clickable" data-community="${esc(p.community_id)}" onclick="event.preventDefault();event.stopPropagation();filterByCommunity('${esc(p.community_id)}')">${esc(p.community_name)}</span>`;
+    html += `<span class="community-badge clickable" data-community="${esc(p.community_id)}" data-action="filter-community">${esc(p.community_name)}</span>`;
   }
   (p.categories || []).slice(0, 2).forEach(c => { html += `<span class="tag">${esc(c)}</span>`; });
   return html;
