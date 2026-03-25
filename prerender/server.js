@@ -5,9 +5,17 @@ const crypto = require('crypto');
 
 const CACHE_DIR = process.env.CACHE_ROOT_DIR || '/cache';
 
+function isPostUrl(url) {
+  try {
+    const p = new URL(url).pathname;
+    return /^\/@[^/]+\/.+/.test(p);
+  } catch { return false; }
+}
+
 function cachePath(url) {
   const hash = crypto.createHash('sha1').update(url).digest('hex');
-  return path.join(CACHE_DIR, hash.slice(0, 2), hash + '.html');
+  const sub = isPostUrl(url) ? 'posts' : 'pages';
+  return path.join(CACHE_DIR, sub, hash.slice(0, 2), hash + '.html');
 }
 
 const server = prerender({
