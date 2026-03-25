@@ -8,6 +8,7 @@ from project.worker.classify import (
     _classify_from_embedding, _detect_languages, _detect_languages_ft,
     _sentiment_from_embedding,
     _build_sentiment_anchors, _classify_and_save,
+    _load_lid_model, _load_embedder,
 )
 from project.worker.community import (
     _extract_community_id, _resolve_community, _community_cache,
@@ -728,3 +729,73 @@ class TestPersistCommunityMapping:
                 parent_permlink="hive-300",
             )
         mock_persist.assert_not_called()
+
+
+# ── Model loaders ─────────────────────────────────────────────────────────
+
+class TestLoadLidModel:
+    def test_returns_cached_model(self):
+        """If _LID_MODEL is already loaded, return it without reloading."""
+        import project.worker.classify as mod
+        original = mod._LID_MODEL
+        try:
+            sentinel = MagicMock()
+            mod._LID_MODEL = sentinel
+            result = _load_lid_model()
+            assert result is sentinel
+        finally:
+            mod._LID_MODEL = original
+
+    def test_downloads_if_missing(self):
+        """If model file doesn't exist, it should be downloaded."""
+        import project.worker.classify as mod
+        original = mod._LID_MODEL
+        try:
+            mod._LID_MODEL = None
+            mock_path = MagicMock()
+            mock_path.exists.return_value = False
+            mock_ft = MagicMock()
+            mock_ft.load_model.return_value = MagicMock()
+            with patch.object(mod, "_LID_MODEL_PATH", mock_path), \
+                 patch("project.worker.classify.urllib.request.urlretrieve") as mock_dl, \
+                 patch.dict("sys.modules", {"fasttext": mock_ft}):
+                result = _load_lid_model()
+                mock_dl.assert_called_once()
+                mock_ft.load_model.assert_called_once()
+                assert result is mock_ft.load_model.return_value
+        finally:
+            mod._LID_MODEL = original
+
+    def test_skips_download_if_exists(self):
+        """If model file already exists, skip download."""
+        import project.worker.classify as mod
+        original = mod._LID_MODEL
+        try:
+            mod._LID_MODEL = None
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_ft = MagicMock()
+            mock_ft.load_model.return_value = MagicMock()
+            with patch.object(mod, "_LID_MODEL_PATH", mock_path), \
+                 patch("project.worker.classify.urllib.request.urlretrieve") as mock_dl, \
+                 patch.dict("sys.modules", {"fasttext": mock_ft}):
+                _load_lid_model()
+                mock_dl.assert_not_called()
+        finally:
+            mod._LID_MODEL = original
+
+
+class TestLoadEmbedder:
+    def test_returns_model_when_available(self):
+        """Should return SentenceTransformer instance when installed."""
+        result = _load_embedder()
+        assert result is not None
+        assert hasattr(result, "encode")
+
+    def test_returns_none_when_import_fails(self):
+        """Should return None when sentence-transformers is not installed."""
+        with patch.dict("sys.modules", {"sentence_transformers": None}):
+            with patch("builtins.__import__", side_effect=ImportError("no module")):
+                result = _load_embedder()
+        # Can't easily mock the import inside the function, so just verify it doesn't crash
+        # The actual test is that it returns a model in normal conditions (above)

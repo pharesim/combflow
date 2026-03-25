@@ -108,11 +108,6 @@ class TestGetCommunity:
             result = get_community("hive-999999")
         assert result is None
 
-    def test_returns_none_on_exception(self):
-        with patch("project.hafsql.requests.post", side_effect=Exception("down")):
-            result = get_community("hive-174578")
-        assert result is None
-
     def test_handles_empty_fields(self):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"result": {"title": "", "about": ""}}
@@ -172,18 +167,23 @@ class TestCursorContextManager:
 # ── get_community edge cases ────────────────────────────────────────────────
 
 class TestGetCommunityEdgeCases:
-    def test_network_timeout_returns_none(self):
+    @pytest.mark.parametrize("side_effect,desc", [
+        (Exception("down"), "generic-exception"),
+        (None, "timeout"),  # handled below
+        (None, "malformed-json"),  # handled below
+    ], ids=["generic-exception", "timeout", "malformed-json"])
+    def test_error_returns_none(self, side_effect, desc):
         import requests
-        with patch("project.hafsql.requests.post", side_effect=requests.Timeout("timeout")):
-            result = get_community("hive-bad")
-        assert result is None
-
-    def test_malformed_response_returns_none(self):
-        mock_resp = MagicMock()
-        mock_resp.json.side_effect = ValueError("bad json")
-        with patch("project.hafsql.requests.post", return_value=mock_resp):
-            result = get_community("hive-bad")
-        assert result is None
+        if desc == "timeout":
+            side_effect = requests.Timeout("timeout")
+        if desc == "malformed-json":
+            mock_resp = MagicMock()
+            mock_resp.json.side_effect = ValueError("bad json")
+            with patch("project.hafsql.requests.post", return_value=mock_resp):
+                assert get_community("hive-bad") is None
+            return
+        with patch("project.hafsql.requests.post", side_effect=side_effect):
+            assert get_community("hive-bad") is None
 
     def test_none_title_coerced_to_empty(self):
         mock_resp = MagicMock()

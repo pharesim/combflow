@@ -1,6 +1,8 @@
 """Core API tests — health, schema validation, categories, middleware, SEO, OG tags."""
 from unittest.mock import patch
 
+import pytest
+
 from project.categories import CATEGORY_TREE, LEAF_CATEGORIES
 from project import cache
 from project.api.routes.ui import _OG_DEFAULT_TITLE, _OG_DEFAULT_DESC
@@ -237,82 +239,69 @@ async def test_categories_fallback_on_exception(client):
 
 # ── OG meta tags (proposal 043) ──────────────────────────────────────────
 
-_MOCK_POST_RESULT = {
-    "title": "My Great Post About Hive",
-    "body": "This is the body of the post with some interesting content about blockchain.",
-    "json_metadata": {
-        "description": "A short description of my post",
-        "image": ["https://example.com/photo.jpg"],
-    },
-}
 
-
-async def test_og_post_deep_link_injects_post_tags(client):
-    """/@author/permlink should have post-specific OG tags when Hive API returns data."""
+@pytest.mark.parametrize("url,metadata,expect_in,expect_not_in", [
+    # Post deep link injects OG tags from Hive API
+    (
+        "/@alice/my-great-post",
+        {"title": "My Great Post About Hive", "description": "A short description of my post", "image": "https://example.com/photo.jpg"},
+        ['content="My Great Post About Hive"', 'content="A short description of my post"',
+         'content="https://images.hive.blog/0x0/https://example.com/photo.jpg"', 'content="article"'],
+        ["{{OG_", 'content="website"'],
+    ),
+    # Prefixed post URLs also get OG overrides
+    (
+        "/hive-139531/@bob/cross-post",
+        {"title": "Cross-posted Article", "description": "Some description", "image": ""},
+        ['content="Cross-posted Article"', 'content="article"'],
+        [],
+    ),
+    # Post with no image keeps default og:image
+    (
+        "/@alice/no-img",
+        {"title": "No Image Post", "description": "Desc", "image": ""},
+        ["og-image.png"],
+        [],
+    ),
+    # HTML special chars are escaped
+    (
+        "/@alice/xss-attempt",
+        {"title": 'Post with <script> & "quotes"', "description": "Safe description", "image": ""},
+        ["&lt;script&gt;", "&amp;"],
+        ["<script>"],
+    ),
+    # Post with title but no description keeps default description
+    (
+        "/@alice/title-only",
+        {"title": "Title Only", "description": "", "image": ""},
+        ['content="Title Only"'],
+        [],
+    ),
+], ids=["deep-link", "prefixed", "no-image", "html-escape", "partial-metadata"])
+async def test_og_post_with_metadata(client, url, metadata, expect_in, expect_not_in):
     with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = {
-            "title": "My Great Post About Hive",
-            "description": "A short description of my post",
-            "image": "https://example.com/photo.jpg",
-        }
-        resp = await client.get("/@alice/my-great-post")
+        mock_get.return_value = metadata
+        resp = await client.get(url)
     assert resp.status_code == 200
     body = resp.text
-    assert 'content="My Great Post About Hive"' in body
-    assert 'content="A short description of my post"' in body
-    assert 'content="https://images.hive.blog/0x0/https://example.com/photo.jpg"' in body
-    assert 'content="article"' in body
-    # Defaults should NOT be present for overridden fields
-    assert "{{OG_" not in body
-    assert 'content="website"' not in body
+    for text in expect_in:
+        assert text in body, f"Expected {text!r} in response for {url}"
+    for text in expect_not_in:
+        assert text not in body, f"Did not expect {text!r} in response for {url}"
 
 
-async def test_og_post_deep_link_fallback_on_api_failure(client):
-    """When Hive API fails, OG tags should use defaults."""
+@pytest.mark.parametrize("return_value,side_effect", [
+    (None, None),  # API returns None
+    (None, Exception("network error")),  # API raises exception
+], ids=["api-returns-none", "api-raises-exception"])
+async def test_og_post_fallback_on_failure(client, return_value, side_effect):
+    """When Hive API fails or returns None, OG tags use defaults."""
     with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = None
-        resp = await client.get("/@alice/my-great-post")
-    assert resp.status_code == 200
-    body = resp.text
-    assert "{{OG_" not in body
-    assert _OG_DEFAULT_TITLE in body
-    assert 'content="website"' in body
-
-
-async def test_og_post_deep_link_exception_falls_back(client):
-    """Exception in Hive API call should not break the page."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.side_effect = Exception("network error")
+        mock_get.return_value = return_value
+        mock_get.side_effect = side_effect
         resp = await client.get("/@alice/my-great-post")
     assert resp.status_code == 200
     assert _OG_DEFAULT_TITLE in resp.text
-
-
-async def test_og_prefixed_post_injects_tags(client):
-    """Prefixed post URLs also get OG overrides."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = {
-            "title": "Cross-posted Article",
-            "description": "Some description",
-            "image": "",
-        }
-        resp = await client.get("/hive-139531/@bob/cross-post")
-    assert resp.status_code == 200
-    assert 'content="Cross-posted Article"' in resp.text
-    assert 'content="article"' in resp.text
-
-
-async def test_og_prefixed_post_no_image_keeps_default(client):
-    """When post has no image, the default og:image should remain."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = {
-            "title": "No Image Post",
-            "description": "Desc",
-            "image": "",
-        }
-        resp = await client.get("/@alice/no-img")
-    assert resp.status_code == 200
-    assert "og-image.png" in resp.text
 
 
 async def test_og_author_profile(client):
@@ -333,37 +322,5 @@ async def test_og_root_page_keeps_defaults(client):
     assert "{{OG_" not in body
     assert _OG_DEFAULT_TITLE in body
     assert 'content="website"' in body
-
-
-async def test_og_html_escapes_special_chars(client):
-    """Post titles with HTML special chars should be escaped."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = {
-            "title": 'Post with <script> & "quotes"',
-            "description": "Safe description",
-            "image": "",
-        }
-        resp = await client.get("/@alice/xss-attempt")
-    assert resp.status_code == 200
-    body = resp.text
-    assert "<script>" not in body
-    assert "&lt;script&gt;" in body
-    assert "&amp;" in body
-
-
-async def test_og_post_partial_metadata(client):
-    """Post with title but no description keeps default description."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = {
-            "title": "Title Only",
-            "description": "",
-            "image": "",
-        }
-        resp = await client.get("/@alice/title-only")
-    assert resp.status_code == 200
-    body = resp.text
-    assert 'content="Title Only"' in body
-    # Default description should remain since override is empty
-    assert _OG_DEFAULT_DESC in body
 
 

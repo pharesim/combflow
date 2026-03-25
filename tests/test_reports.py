@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from project.api.hive_auth import verify_hive_signature
+
 
 # ── Submit report ─────────────────────────────────────────────────────────────
 
@@ -118,33 +120,15 @@ async def test_submit_report_nonexistent_post(client):
     assert resp.status_code == 404
 
 
+@pytest.mark.parametrize("payload,desc", [
+    ({"username": "INVALID!", "reason": "Wrong", "signature": "1f" + "ab" * 64}, "invalid-username"),
+    ({"username": "dave", "reason": "   ", "signature": "1f" + "ab" * 64}, "empty-reason"),
+    ({"username": "dave", "reason": "x" * 1001, "signature": "1f" + "ab" * 64}, "reason-too-long"),
+], ids=["invalid-username", "empty-reason", "reason-too-long"])
 @pytest.mark.usefixtures("seeded_db")
-async def test_submit_report_invalid_username(client):
-    """Invalid username format returns 422."""
-    resp = await client.post(
-        "/api/posts/alice/test-post-one/report",
-        json={"username": "INVALID!", "reason": "Wrong", "signature": "1f" + "ab" * 64},
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.usefixtures("seeded_db")
-async def test_submit_report_empty_reason(client):
-    """Empty reason returns 422."""
-    resp = await client.post(
-        "/api/posts/alice/test-post-one/report",
-        json={"username": "dave", "reason": "   ", "signature": "1f" + "ab" * 64},
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.usefixtures("seeded_db")
-async def test_submit_report_reason_too_long(client):
-    """Reason over 1000 chars returns 422."""
-    resp = await client.post(
-        "/api/posts/alice/test-post-one/report",
-        json={"username": "dave", "reason": "x" * 1001, "signature": "1f" + "ab" * 64},
-    )
+async def test_submit_report_validation_422(client, payload, desc):
+    """Invalid input returns 422."""
+    resp = await client.post("/api/posts/alice/test-post-one/report", json=payload)
     assert resp.status_code == 422
 
 
@@ -303,20 +287,11 @@ async def test_different_users_report_same_post(client):
 # ── Signature verification unit tests ─────────────────────────────────────────
 
 
-def test_verify_hive_signature_wrong_length():
-    """Signature with wrong byte count returns False."""
-    from project.api.hive_auth import verify_hive_signature
-    assert verify_hive_signature("test", "aabb", ["STM7abc"]) is False
-
-
-def test_verify_hive_signature_invalid_hex():
-    """Non-hex signature returns False."""
-    from project.api.hive_auth import verify_hive_signature
-    assert verify_hive_signature("test", "not-hex", ["STM7abc"]) is False
-
-
-def test_verify_hive_signature_bad_recovery_flag():
-    """Invalid recovery flag returns False."""
-    from project.api.hive_auth import verify_hive_signature
-    sig = "ff" + "00" * 64  # recovery flag 0xff is invalid
+@pytest.mark.parametrize("sig,desc", [
+    ("aabb", "wrong-length"),
+    ("not-hex", "invalid-hex"),
+    ("ff" + "00" * 64, "bad-recovery-flag"),
+], ids=["wrong-length", "invalid-hex", "bad-recovery-flag"])
+def test_verify_hive_signature_rejects_invalid(sig, desc):
+    """Invalid signatures return False."""
     assert verify_hive_signature("test", sig, ["STM7abc"]) is False

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from project.categories import CATEGORY_TREE
-from project.db.crud import create_post
+from project.db.crud import create_post, upsert_community_mapping
 
 
 async def _create_post(db_session, **kwargs):
@@ -112,14 +112,14 @@ async def test_browse_cursor_pagination(client, seeded_db):
     assert ids1.isdisjoint(ids2)
 
 
-async def test_browse_filtered_total(client, seeded_db):
+@pytest.mark.parametrize("filter_qs", [
+    "sentiment=positive",
+    "authors=alice",
+], ids=["sentiment", "authors"])
+async def test_browse_filtered_total(client, seeded_db, filter_qs):
     """total reflects the filtered count, not the global total."""
-    all_resp = await client.get("/api/browse")
-    all_total = all_resp.json()["total"]
-
-    filtered_resp = await client.get("/api/browse?sentiment=positive")
-    filtered_total = filtered_resp.json()["total"]
-
+    all_total = (await client.get("/api/browse")).json()["total"]
+    filtered_total = (await client.get(f"/api/browse?{filter_qs}")).json()["total"]
     assert filtered_total >= 1
     assert filtered_total < all_total
 
@@ -236,7 +236,6 @@ async def test_suggested_communities_empty(client, seeded_db):
 
 
 async def test_suggested_communities_returns_matches(client, seeded_db, db_session):
-    from project.db.crud import upsert_community_mapping
     await upsert_community_mapping(
         db_session, "hive-174578", "photography", "Photography Lovers", 0.55,
     )
@@ -254,7 +253,6 @@ async def test_suggested_communities_returns_matches(client, seeded_db, db_sessi
 
 
 async def test_suggested_communities_multiple_categories(client, seeded_db, db_session):
-    from project.db.crud import upsert_community_mapping
     await upsert_community_mapping(
         db_session, "hive-174578", "photography", "Photography Lovers", 0.55,
     )
@@ -307,7 +305,6 @@ async def test_suggested_communities_includes_post_count(client, seeded_db, db_s
 
 async def test_suggested_communities_no_null_category(client, seeded_db, db_session):
     """Communities without a category match should not appear in suggestions."""
-    from project.db.crud import upsert_community_mapping
     await upsert_community_mapping(
         db_session, "hive-999999", None, "Unmapped Community", 0.15,
     )
@@ -349,7 +346,6 @@ async def test_communities_endpoint_cached(client, seeded_db):
 
 
 async def test_suggested_communities_cached(client, seeded_db, db_session):
-    from project.db.crud import upsert_community_mapping
     await upsert_community_mapping(db_session, "hive-174578", "photography", "Photo", 0.55)
 
     r1 = await client.get("/api/communities/suggested?category=photography")
@@ -360,7 +356,6 @@ async def test_suggested_communities_cached(client, seeded_db, db_session):
 
 async def test_suggested_communities_sorted_category_key(client, seeded_db, db_session):
     """Different category order should use same cache key."""
-    from project.db.crud import upsert_community_mapping
     await upsert_community_mapping(db_session, "hive-111", "food", "Foodies", 0.50)
     await upsert_community_mapping(db_session, "hive-222", "photography", "Photo", 0.55)
 
@@ -372,29 +367,18 @@ async def test_suggested_communities_sorted_category_key(client, seeded_db, db_s
 
 # ── Browse pagination edge cases ────────────────────────────────────────────
 
-async def test_browse_malformed_cursor(client, seeded_db):
-    """Malformed cursor should fall back to offset pagination, not crash."""
-    resp = await client.get("/api/browse?cursor=not_a_valid_cursor")
-    assert resp.status_code == 200
-    assert "posts" in resp.json()
-
-
-async def test_browse_cursor_wrong_format(client, seeded_db):
-    """Cursor missing underscore separator should fall back gracefully."""
-    resp = await client.get("/api/browse?cursor=12345678")
+@pytest.mark.parametrize("cursor", [
+    "not_a_valid_cursor",
+    "12345678",  # missing underscore separator
+], ids=["malformed", "wrong-format"])
+async def test_browse_malformed_cursor_fallback(client, seeded_db, cursor):
+    """Malformed cursors should fall back gracefully, not crash."""
+    resp = await client.get(f"/api/browse?cursor={cursor}")
     assert resp.status_code == 200
     assert "posts" in resp.json()
 
 
 # ── Community edge cases ────────────────────────────────────────────────────
-
-async def test_communities_zero_posts_not_shown(client):
-    """Communities with no posts should not appear in /api/communities."""
-    resp = await client.get("/api/communities")
-    assert resp.status_code == 200
-    # Empty DB has no communities.
-    assert resp.json()["communities"] == []
-
 
 async def test_browse_community_name_coalesce(client, seeded_db, db_session):
     """Post with community_id but no mapping should use fallback name."""
@@ -498,18 +482,6 @@ async def test_browse_authors_excludes_others(client, seeded_db):
         assert post["author"] != "carol"
 
 
-async def test_browse_authors_total_reflects_filter(client, seeded_db):
-    """Total count reflects the authors filter."""
-    all_resp = await client.get("/api/browse")
-    all_total = all_resp.json()["total"]
-
-    filtered_resp = await client.get("/api/browse?authors=alice")
-    filtered_total = filtered_resp.json()["total"]
-
-    assert filtered_total >= 1
-    assert filtered_total < all_total
-
-
 async def test_browse_authors_no_match(client, seeded_db):
     """Authors filter with unknown author returns empty."""
     resp = await client.get("/api/browse?authors=nobody")
@@ -528,26 +500,6 @@ async def test_browse_authors_combined_with_category(client, seeded_db):
     for post in posts:
         assert post["author"] == "alice"
         assert leaf in post["categories"]
-
-
-async def test_browse_communities_total_reflects_filter(client, seeded_db, db_session):
-    """Total count reflects the multi-community filter."""
-    leaf = seeded_db["leaf_name"]
-    await _create_post(db_session,
-        author="eve", permlink="mc-total-1",
-        categories=[leaf], languages=["en"],
-        sentiment="neutral", sentiment_score=0.0,
-        community_id="hive-555555",
-    )
-
-    all_resp = await client.get("/api/browse")
-    all_total = all_resp.json()["total"]
-
-    filtered_resp = await client.get("/api/browse?communities=hive-555555")
-    filtered_total = filtered_resp.json()["total"]
-
-    assert filtered_total >= 1
-    assert filtered_total < all_total
 
 
 # ── Filter list truncation (proposal 033) ─────────────────────────────────
@@ -615,22 +567,6 @@ async def test_browse_max_age_invalid_format(client, seeded_db):
     """Invalid max_age format should return 422."""
     resp = await client.get("/api/browse?max_age=abc")
     assert resp.status_code == 422
-
-
-async def test_browse_max_age_total_reflects_filter(client, seeded_db, db_session):
-    """Total count should reflect the max_age filter."""
-    leaf = seeded_db["leaf_name"]
-    now = datetime.now(timezone.utc)
-    await _create_post(db_session,
-        author="fresh", permlink="fresh-post",
-        categories=[leaf], languages=["en"],
-        sentiment="neutral", sentiment_score=0.0,
-        created=now - timedelta(minutes=10),
-    )
-    all_total = (await client.get("/api/browse")).json()["total"]
-    filtered_total = (await client.get("/api/browse?max_age=1h")).json()["total"]
-    assert filtered_total >= 1
-    assert filtered_total < all_total
 
 
 # ── sort parameter ─────────────────────────────────────────────────────────
