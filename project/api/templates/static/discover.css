@@ -597,3 +597,23 @@ body{overflow-x:hidden}
 .notif-time{font-size:11px;color:var(--text-dim);flex-shrink:0;white-space:nowrap;margin-left:6px}
 .notif-empty{padding:32px 16px;text-align:center;color:var(--text-dim);font-size:13px}
 @media(max-width:768px){.notif-dropdown{width:calc(100vw - 32px);right:-60px}}
+
+/* ── Hive content layout classes ── */
+.modal-body .pull-left,
+.modal-body .pull-right {
+  width: 49%;
+  display: inline-block;
+  vertical-align: top;
+}
+.modal-body .pull-left { float: left; }
+.modal-body .pull-right { float: right; }
+.modal-body .text-justify { text-align: justify; overflow: hidden; }
+
+@media (max-width: 767px) {
+  .modal-body .pull-left,
+  .modal-body .pull-right {
+    width: 100%;
+    float: none;
+    display: block;
+  }
+}

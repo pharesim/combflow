@@ -297,6 +297,15 @@ function editorInsertTable() {
   editorInsert('\n| Column 1 | Column 2 | Column 3 |\n|----------|----------|----------|\n| ', ' |  |  |\n');
 }
 
+function editorInsertColumns() {
+  const ta = document.getElementById('editor-body');
+  const pos = ta.selectionStart;
+  const template = '\n<div class="text-justify">\n\n<div class="pull-left">\n\nLeft column text\n\n</div>\n\n<div class="pull-right">\n\nRight column text\n\n</div>\n\n</div>\n';
+  ta.setRangeText(template, pos, pos, 'end');
+  ta.focus();
+  autoSaveDraft();
+}
+
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
   const ta = document.getElementById('editor-body');

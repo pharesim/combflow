@@ -344,6 +344,7 @@ document.addEventListener('click', e => {
     case 'editor-insert-link': editorInsertLink(); break;
     case 'editor-insert-image': editorInsertImage(); break;
     case 'editor-insert-table': editorInsertTable(); break;
+    case 'editor-insert-columns': editorInsertColumns(); break;
     case 'show-md-help': showMarkdownHelp(); break;
     case 'publish-post': publishPost(); break;
     // Location picker
