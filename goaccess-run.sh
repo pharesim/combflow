@@ -1,7 +1,7 @@
 #!/bin/sh
 mkdir -p /var/www/goaccess
 while true; do
-  (zcat /var/log/caddy/access.log-*.gz 2>/dev/null; cat /var/log/caddy/access.log 2>/dev/null) | \
+  (zcat /var/log/caddy/access-*.log.gz 2>/dev/null; cat /var/log/caddy/access.log 2>/dev/null) | \
   awk '{
     ip="";ts="";m="";u="";H="";s="";b="";ua="-";v=""
     if(match($0,/"remote_ip":"[^"]+"/))ip=substr($0,RSTART+13,RLENGTH-14)
