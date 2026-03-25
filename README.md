@@ -41,7 +41,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 
 ### Category hierarchy (2 levels)
 
-**9 parents, 35 leaf categories:**
+**9 parents, 38 leaf categories:**
 
 | Parent | Leaves |
 |--------|--------|
@@ -52,7 +52,7 @@ CombFlow listens to the Hive blockchain, classifies posts by meaning (not just k
 | society | politics, philosophy, history, social-issues |
 | finance-business | finance, entrepreneurship, precious-metals |
 | entertainment | gaming, movies-tv, books |
-| sports | sports, outdoor-sports |
+| sports | team-sports, combat-sports, motorsports, outdoor-sports, chess |
 | community | hive, contests, spirituality |
 
 Classification happens at the leaf level. Filtering by a parent covers all its children.
@@ -84,7 +84,7 @@ This builds the image, runs migrations, verifies tables, seeds the category tree
 | `combflow-app` | FastAPI on port 8000 (1G memory limit) |
 | `db` | PostgreSQL 17 + pgvector |
 | `hive_worker` | Streams + classifies + saves posts (2G memory limit) |
-| `caddy` | Reverse proxy with auto-TLS, domain routing, access logging, API→docs redirect (128M memory limit) |
+| `caddy` | Reverse proxy on port 8080 (HTTP only, behind external nginx for TLS), domain routing, access logging, API→docs redirect (128M memory limit) |
 | `prerender` | Headless Chromium prerender for bot/crawler SSR — Caddy routes bot user-agents here for fully-rendered HTML (1G memory limit) |
 | `goaccess` | Usage stats dashboard at `CADDY_API/stats` — regenerates from Caddy access logs every 60s (128M memory limit) |
 
@@ -389,7 +389,7 @@ curl https://your-server:8000/posts/alice/my-post-permlink
 | `POSTGRES_USER` | Postgres username | `combflow` |
 | `POSTGRES_PASSWORD` | Postgres password | `change-me` |
 | `POSTGRES_DB` | Postgres database name | `combflow` |
-| `CADDY_UI` | UI domain (Caddy auto-TLS when no port) | `honeycomb.example.com` |
+| `CADDY_UI` | UI domain (bare hostname, TLS handled by external nginx) | `honeycomb.example.com` |
 | `CADDY_API` | API domain (root redirects to `/docs`) | `api.example.com` |
 | `CADDY_UI_OLD` | Previous UI domain — 301 redirects to `CADDY_UI` | `old.example.com` |
 
@@ -404,7 +404,7 @@ A GoAccess dashboard is served at your API domain's `/stats` path (e.g. `https:/
 ```
 combflow/combflow/
 ├── project/
-│   ├── categories.py     # 2-level category tree (9 parents, 35 leaves)
+│   ├── categories.py     # 2-level category tree (9 parents, 38 leaves)
 │   ├── config.py          # pydantic-settings
 │   ├── text.py            # shared text cleaning (zero deps, used by worker + seed script)
 │   ├── cache.py           # in-process TTL cache
@@ -451,7 +451,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 172 tests
+├── tests/                   # 236 tests
 ├── prerender/               # Headless Chromium prerender for bot SSR
 ├── Dockerfile
 ├── docker-compose.yml

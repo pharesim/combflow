@@ -3,7 +3,7 @@
 	http_port 8080
 }
 
-{$CADDY_UI:honeycomb.lvh.me} {
+http://{$CADDY_UI:honeycomb.lvh.me} {
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB
@@ -44,11 +44,11 @@ Preferred-Languages: en
 	}
 }
 
-{$CADDY_UI_OLD:old.invalid} {
+http://{$CADDY_UI_OLD:old.invalid} {
 	redir http://{$CADDY_UI}{uri} permanent
 }
 
-{$CADDY_API:combflow.lvh.me} {
+http://{$CADDY_API:combflow.lvh.me} {
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB
