@@ -109,11 +109,9 @@ function proxyImages(div) {
   div.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || '';
     if (src && !src.startsWith('data:')) {
-      const fixedSrc = src.replace(/^https?:\/\/(?:cdn\.)?steemitimages\.com\//, 'https://images.hive.blog/');
-      if (fixedSrc !== src) img.src = fixedSrc;
-      img.dataset.directSrc = fixedSrc;
-      if (!/images\.hive\.blog/.test(fixedSrc)) {
-        img.src = 'https://images.hive.blog/768x0/' + fixedSrc;
+      img.dataset.directSrc = src;
+      if (!/images\.hive\.blog/.test(src)) {
+        img.src = 'https://images.hive.blog/768x0/' + src;
       }
     }
     img.removeAttribute('width');
