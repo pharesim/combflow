@@ -551,8 +551,11 @@ body{overflow-x:hidden}
 .follow-btn:hover{color:var(--gold);border-color:var(--gold)}
 
 /* ── Report button ── */
+.modal-tags-row{display:flex;align-items:center;gap:6px}
+.modal-tags-row .modal-tags{flex:1;min-width:0}
 .report-btn{background:none;border:1px solid var(--border-medium);color:var(--text-dim);padding:4px 10px;border-radius:12px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center}
 .report-btn:hover{color:var(--hive-red);border-color:var(--hive-red)}
+.report-btn-sm{padding:2px 7px;border-radius:10px;flex-shrink:0}
 
 /* ── Report overlay ── */
 .report-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center}
