@@ -18,6 +18,7 @@ _REQUIRED_TABLES = [
     "post_language",
     "category_centroids",
     "stream_cursors",
+    "post_reports",
 ]
 
 

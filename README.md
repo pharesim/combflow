@@ -161,6 +161,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — post-specific Open Graph meta tags on deep links (title, description, thumbnail fetched from Hive API) for rich previews on Discord, Twitter, Slack, etc. Author profile pages show `@username — HiveComb`.
+- **Misclassification reporting** — flag icon in post modal lets logged-in users report misclassified posts with a reason, signed via Hive Keychain (server verifies signature against on-chain posting keys)
 - **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed iframe handling)
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
 
@@ -245,6 +246,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 | `category_centroids` | 384-dim pgvector centroids + HNSW index |
 | `stream_cursors` | Per-worker last-processed block |
 | `community_mappings` | Auto-mapped community→category associations (worker-maintained) |
+| `post_reports` | User-submitted misclassification reports with Hive Keychain signature verification |
 
 ### Indexes
 
@@ -256,10 +258,12 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 - `ix_posts_primary_language` — language filter queries
 - `ix_community_mappings_category_slug` — community suggestion queries
 - `ix_posts_created_desc` — descending date sort
+- `ix_post_reports_post_id` — report lookups by post
+- `ix_post_reports_created_at` — paginated report listing
 
 ### Migration
 
-Single migration `001_initial_schema.py` creates all tables, indexes, and pgvector extension. Verified by `alembic/verify_migration.py` on startup.
+Migrations `001_initial_schema.py` (base schema) and `002_post_reports.py` (misclassification reports). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
@@ -293,7 +297,7 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-196 tests across 8 files:
+213 tests across 9 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -305,6 +309,7 @@ Tests use in-process fixtures with a real DB — they don't interfere with the r
 | `test_text.py` | 9 | Text cleaning utilities |
 | `test_cache.py` | 5 | TTL cache operations |
 | `test_posts.py` | 2 | Post detail, community_id handling |
+| `test_reports.py` | 17 | Misclassification reporting, signature verification, pagination |
 
 ---
 
@@ -326,6 +331,8 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | GET | `/api/stats` | Overview statistics |
 | GET | `/api/communities` | Communities with post counts, names, and categories |
 | GET | `/api/communities/suggested` | Suggested communities for given category filters (cached 300s) |
+| POST | `/api/posts/{author}/{permlink}/report` | Report a misclassified post (requires Keychain signature) |
+| GET | `/api/reports` | List misclassification reports (paginated, filterable) |
 
 ---
 
@@ -398,8 +405,10 @@ combflow/combflow/
 │   ├── api/
 │   │   ├── main.py        # FastAPI app, lifespan, OpenAPI config
 │   │   ├── deps.py        # DB session dependency
+│   │   ├── hive_auth.py    # Hive signature verification (secp256k1)
 │   │   ├── routes/
 │   │   │   ├── posts.py     # GET /posts/{author}/{permlink}
+│   │   │   ├── reports.py   # POST report, GET /api/reports
 │   │   │   └── ui.py        # HTML pages, browse API
 │   │   └── templates/
 │   │       ├── discover.html  # HiveComb discovery UI (Alpine.js reactive templates)
@@ -411,7 +420,7 @@ combflow/combflow/
 │   │           │   └── markdown.js  # Hive markdown rendering, sanitization, video embeds
 │   │           └── discover/    # 13 focused JS modules
 │   │               ├── state.js, filters.js, rendering.js, voting.js,
-│   │               ├── social.js, comments.js, modal.js, auth.js,
+│   │               ├── social.js, comments.js, modal.js, auth.js, report.js,
 │   │               └── preferences.js, communities.js, editor.js, location.js, notifications.js
 │   ├── db/
 │   │   ├── models.py      # ORM models (Post, Category, etc.)
@@ -429,6 +438,7 @@ combflow/combflow/
 ├── alembic/
 │   ├── versions/
 │   │   └── 001_initial_schema.py  # complete schema (all tables + indexes + pgvector)
+│   │   └── 002_post_reports.py       # misclassification reports table
 │   └── verify_migration.py        # post-migration table verification
 ├── scripts/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification

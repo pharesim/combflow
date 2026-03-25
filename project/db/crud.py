@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from .. import cache as _cache
-from .models import Category, Post
+from .models import Category, Post, PostReport
 
 logger = logging.getLogger(__name__)
 
@@ -636,5 +636,123 @@ async def get_suggested_communities(
         params,
     )
     return [dict(r) for r in rows.mappings()]
+
+
+# ── Post Reports ─────────────────────────────────────────────────────────────
+
+
+@retry_transient
+async def create_post_report(
+    session: AsyncSession,
+    post_id: int,
+    reporter: str,
+    reason: str,
+    signature: str,
+    message: str,
+) -> dict:
+    """Insert a misclassification report. Returns the created report as a dict.
+
+    Raises sqlalchemy.exc.IntegrityError on duplicate (post_id, reporter).
+    """
+    report = PostReport(
+        post_id=post_id,
+        reporter=reporter,
+        reason=reason,
+        signature=signature,
+        message=message,
+    )
+    session.add(report)
+    await session.flush()
+    result = {
+        "id": report.id,
+        "post_id": report.post_id,
+        "reporter": report.reporter,
+        "reason": report.reason,
+        "created_at": report.created_at,
+    }
+    await session.commit()
+    return result
+
+
+@retry_transient
+async def list_post_reports(
+    session: AsyncSession,
+    limit: int = 50,
+    offset: int = 0,
+    post_author: str | None = None,
+    post_permlink: str | None = None,
+    reporter: str | None = None,
+) -> dict:
+    """List misclassification reports with pagination and optional filters."""
+    conditions = []
+    params: dict = {"lim": limit, "off": offset}
+
+    if post_author:
+        conditions.append("p.author = :post_author")
+        params["post_author"] = post_author
+    if post_permlink:
+        conditions.append("p.permlink = :post_permlink")
+        params["post_permlink"] = post_permlink
+    if reporter:
+        conditions.append("r.reporter = :reporter")
+        params["reporter"] = reporter
+
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+    count_row = await session.execute(
+        text(
+            f"SELECT COUNT(*) FROM post_reports r "
+            f"JOIN posts p ON p.id = r.post_id {where}"
+        ),
+        params,
+    )
+    total = count_row.scalar()
+
+    rows = await session.execute(
+        text(
+            f"""
+            SELECT r.id, r.reporter, r.reason, r.created_at,
+                   r.post_id, p.author AS post_author, p.permlink AS post_permlink
+            FROM post_reports r
+            JOIN posts p ON p.id = r.post_id
+            {where}
+            ORDER BY r.created_at DESC
+            LIMIT :lim OFFSET :off
+            """
+        ),
+        params,
+    )
+    raw_rows = rows.mappings().fetchall()
+
+    # Batch-fetch categories for all referenced posts.
+    post_ids = list({row["post_id"] for row in raw_rows})
+    pid_cat_map: dict[int, list[str]] = {}
+    if post_ids:
+        cat_rows = await session.execute(
+            text(
+                "SELECT pc.post_id, c.name FROM categories c "
+                "JOIN post_category pc ON c.id = pc.category_id "
+                "WHERE pc.post_id = ANY(:ids)"
+            ),
+            {"ids": post_ids},
+        )
+        for cr in cat_rows.fetchall():
+            pid_cat_map.setdefault(cr[0], []).append(cr[1])
+
+    reports = []
+    for row in raw_rows:
+        reports.append({
+            "id": row["id"],
+            "reporter": row["reporter"],
+            "reason": row["reason"],
+            "created_at": row["created_at"],
+            "post": {
+                "author": row["post_author"],
+                "permlink": row["post_permlink"],
+                "categories": pid_cat_map.get(row["post_id"], []),
+            },
+        })
+
+    return {"reports": reports, "total": total, "limit": limit, "offset": offset}
 
 

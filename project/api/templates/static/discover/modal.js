@@ -74,6 +74,7 @@ async function openModal(post, skipPush) {
   }
 
   const modalEl = document.getElementById('modal');
+  Alpine.store('app').modalPost = { author: post.author, permlink: post.permlink };
   Alpine.store('app').modalOpen = true;
   trapFocus(modalEl.querySelector('.modal'));
 
@@ -184,6 +185,8 @@ function closeModal(skipPush) {
   const modalEl = document.getElementById('modal');
   releaseFocus(modalEl.querySelector('.modal'));
   Alpine.store('app').modalOpen = false;
+  Alpine.store('app').modalPost = null;
+  Alpine.store('app').reportOpen = false;
   if (!skipPush && !state.deepLinked && window.location.pathname !== '/') {
     history.pushState(null, '', '/');
   }

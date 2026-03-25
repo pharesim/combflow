@@ -60,6 +60,22 @@ class StreamCursor(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class PostReport(Base):
+    __tablename__ = "post_reports"
+
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
+    reporter = Column(String(16), nullable=False)
+    reason = Column(String, nullable=False)
+    signature = Column(String(200), nullable=False)
+    message = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "reporter", name="uq_post_report_user"),
+    )
+
+
 class CommunityMapping(Base):
     __tablename__ = "community_mappings"
 

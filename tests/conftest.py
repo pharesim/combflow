@@ -57,7 +57,7 @@ def _apply_migrations():
 
 
 _ALL_TABLES = [
-    "post_category", "post_language",
+    "post_reports", "post_category", "post_language",
     "stream_cursors", "category_centroids", "community_mappings",
     "posts", "categories",
 ]
@@ -68,7 +68,14 @@ async def setup_db(_apply_migrations):
     """Truncate all tables before each test for isolation."""
     cache.clear()
     async with _test_engine.begin() as conn:
-        await conn.execute(text("TRUNCATE " + ", ".join(_ALL_TABLES) + " CASCADE"))
+        # Check which tables exist before truncating (post_reports requires migration 002).
+        result = await conn.execute(text(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+        ))
+        existing = {row[0] for row in result.fetchall()}
+        tables = [t for t in _ALL_TABLES if t in existing]
+        if tables:
+            await conn.execute(text("TRUNCATE " + ", ".join(tables) + " CASCADE"))
     yield
     cache.clear()
 

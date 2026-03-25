@@ -123,6 +123,8 @@ document.addEventListener('alpine:init', () => {
     mdHelpOpen: false,
     modalOpen: false,
     votePopupOpen: false,
+    reportOpen: false,
+    modalPost: null,
     authDropdownOpen: false,
     // Auth — initialize from localStorage so Alpine template renders immediately
     currentUser: localStorage.getItem('honeycomb_user') || null,

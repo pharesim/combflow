@@ -245,7 +245,8 @@ async function init() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const s = Alpine.store('app');
-    if (s.notifOpen) { s.notifOpen = false; }
+    if (s.reportOpen) closeReport();
+    else if (s.notifOpen) { s.notifOpen = false; }
     else if (s.mdHelpOpen) closeMdHelp();
     else if (s.locationOpen) closeLocationPicker();
     else if (s.votePopupOpen) closeVotePopup();
@@ -329,6 +330,10 @@ document.addEventListener('click', e => {
     // Post modal
     case 'close-modal': closeModal(); break;
     case 'copy-post-link': copyPostLink(); break;
+    // Report
+    case 'open-report': openReport(); break;
+    case 'close-report': closeReport(); break;
+    case 'submit-report': submitReport(); break;
     // Editor
     case 'open-editor': openEditor(); break;
     case 'close-editor': confirmCloseEditor(); break;
@@ -398,6 +403,7 @@ document.addEventListener('input', e => {
     case 'editor-desc-input': updateEditorDescCount(); autoSaveDraft(); break;
     case 'editor-body-input': autoSaveDraft(); break;
     case 'editor-tags-input': showTagSuggestions(); break;
+    case 'report-reason-input': updateReportCount(); break;
     case 'location-desc-input': _locationAutoFilled = !el.value.trim(); break;
   }
 });

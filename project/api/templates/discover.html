@@ -517,6 +517,9 @@
       </div>
       <a id="modal-hivelink" target="_blank" rel="noopener noreferrer">Hivel.ink</a>
       <button type="button" class="copy-link" id="modal-copy-link" aria-label="Copy link to clipboard" data-action="copy-post-link">Copy link</button>
+      <template x-if="$store.app.currentUser">
+        <button type="button" class="report-btn" aria-label="Report misclassification" data-action="open-report" title="Report misclassification"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>
+      </template>
       <div style="flex:1"></div>
       <button type="button" class="follow-btn" id="modal-follow-btn" style="display:none">Follow</button>
       <button type="button" class="mute-btn" id="modal-mute-btn" style="display:none">Mute</button>
@@ -529,6 +532,24 @@
       <div id="comments-tree" x-html="renderCommentsHtml()"></div>
       <div class="comments-hidden" x-show="$store.app.hiddenCount > 0" x-cloak x-text="$store.app.hiddenCount + ' comment' + ($store.app.hiddenCount !== 1 ? 's' : '') + ' hidden by reputation filter'"></div>
     </div>
+  </div>
+</div>
+
+<!-- Report misclassification popup -->
+<div class="report-overlay" role="dialog" aria-modal="true" aria-label="Report misclassification" x-show="$store.app.reportOpen" x-cloak @click.self="closeReport()">
+  <div class="report-box">
+    <button type="button" class="modal-close" aria-label="Close" data-action="close-report">&times;</button>
+    <h3>Report Misclassification</h3>
+    <p>Why is this post incorrectly classified?</p>
+    <textarea id="report-reason" maxlength="1000" rows="4" placeholder="e.g. This post is about photography, not technology" data-action="report-reason-input"></textarea>
+    <div class="report-footer">
+      <span class="report-char-count" id="report-char-count">0 / 1000</span>
+      <div class="report-btns">
+        <button type="button" class="btn btn-ghost" data-action="close-report">Cancel</button>
+        <button type="button" class="btn" id="report-submit-btn" style="background:var(--hive-red);color:#fff;padding:6px 20px" data-action="submit-report">Sign &amp; Submit</button>
+      </div>
+    </div>
+    <div class="report-error" id="report-error"></div>
   </div>
 </div>
 
@@ -721,6 +742,7 @@
 <script defer src="/static/discover/editor.js"></script>
 <script defer src="/static/discover/location.js"></script>
 <script defer src="/static/discover/notifications.js"></script>
+<script defer src="/static/discover/report.js"></script>
 <script defer src="/static/discover.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.15.3/dist/cdn.min.js" integrity="sha384-6WOLkykwLb3YWzXZ6lAq+GI0p3V+enUm9jY6yIXGpIriiAUOSF5dgNJLoSSNam4j" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js" integrity="sha384-LXWjKwDZz29o7TduNe+r/UxaolHh5FsSvy2W7bDHSZ8jJeGgDeuNnsDNHoxpSgDi" crossorigin="anonymous"></script>
