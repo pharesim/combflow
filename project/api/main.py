@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
@@ -16,6 +17,7 @@ from ..categories import CATEGORY_TREE
 from ..config import settings
 from ..db import crud
 from ..db.session import AsyncSessionLocal, engine
+from ..hafsql import shutdown as hafsql_shutdown
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -46,7 +48,7 @@ async def lifespan(app: FastAPI):
     try:
         async with AsyncSessionLocal() as session:
             await crud.seed_category_tree(session, CATEGORY_TREE)
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.warning("Could not seed category tree: %s", exc)
 
     # Load centroids into memory (from DB or seeds file).
@@ -56,7 +58,7 @@ async def lifespan(app: FastAPI):
             centroids = await crud.get_centroids(session)
         if centroids:
             logger.info("Loaded %d centroids from pgvector", len(centroids))
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.warning("Could not load centroids from DB: %s", exc)
 
     if not centroids and _SEEDS_FILE.exists():
@@ -69,9 +71,9 @@ async def lifespan(app: FastAPI):
                     async with AsyncSessionLocal() as session:
                         await crud.save_centroids(session, centroids, data.get("metadata", {}))
                     logger.info("Persisted seeds to pgvector")
-                except Exception as exc:
+                except SQLAlchemyError as exc:
                     logger.warning("Could not persist seeds to pgvector: %s", exc)
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Could not read seeds file: %s", exc)
 
     if centroids:
@@ -83,6 +85,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("startup complete")
     yield
+    hafsql_shutdown()
     await engine.dispose()
     logger.info("shutdown complete")
 
@@ -129,7 +132,7 @@ async def category_tree():
         result = {"categories": tree}
         cache.put("category_tree", result, ttl=86400)
         return result
-    except Exception:
+    except SQLAlchemyError:
         return {
             "categories": [
                 {"name": parent, "children": [

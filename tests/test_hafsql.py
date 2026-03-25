@@ -5,6 +5,7 @@ import pytest
 
 from project.hafsql import (
     _raw_rep_to_score, build_dsn, get_reputations,
+    get_reputations_via_api, get_reputation_via_api, shutdown,
     get_community, get_post_body, get_post_metadata,
     _cursor, _get_pool,
 )
@@ -311,3 +312,86 @@ class TestGetPostMetadata:
         assert result["title"] == ""
         assert result["description"] == ""
         assert result["image"] == ""
+
+
+# ── get_reputations_via_api (mocked HTTP) ──────────────────────────────────
+
+class TestGetReputationsViaApi:
+    def test_empty_list_returns_empty(self):
+        assert get_reputations_via_api([]) == {}
+
+    def test_returns_scores(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": [
+                {"name": "alice", "reputation": 1_000_000_000},
+                {"name": "bob", "reputation": 500_000_000_000_000},
+            ]
+        }
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_reputations_via_api(["alice", "bob"])
+        assert "alice" in result
+        assert "bob" in result
+        assert result["bob"] > result["alice"]
+
+    def test_failover_to_second_node(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "result": [{"name": "alice", "reputation": 1_000_000_000}]
+        }
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("first node down")
+            return mock_resp
+        with patch("project.hafsql.requests.post", side_effect=side_effect):
+            result = get_reputations_via_api(["alice"])
+        assert "alice" in result
+
+    def test_all_nodes_fail_returns_empty(self):
+        with patch("project.hafsql.requests.post", side_effect=Exception("all down")):
+            result = get_reputations_via_api(["alice"])
+        assert result == {}
+
+
+# ── get_reputation_via_api (async wrapper) ──────────────────────────────────
+
+class TestGetReputationViaApi:
+    async def test_returns_score(self):
+        with patch("project.hafsql.get_reputations_via_api", return_value={"alice": 55.0}):
+            result = await get_reputation_via_api("alice")
+        assert result == 55.0
+
+    async def test_returns_none_on_miss(self):
+        with patch("project.hafsql.get_reputations_via_api", return_value={}):
+            result = await get_reputation_via_api("nobody")
+        assert result is None
+
+
+# ── shutdown ────────────────────────────────────────────────────────────────
+
+class TestShutdown:
+    def test_shutdown_idempotent(self):
+        """Calling shutdown multiple times should not raise."""
+        import project.hafsql as mod
+        old_pool = mod._pool
+        try:
+            mod._pool = MagicMock()
+            mod._pool.closed = False
+            shutdown()
+            assert mod._pool is None
+            # Second call should be safe.
+            shutdown()
+        finally:
+            mod._pool = old_pool
+
+    def test_shutdown_with_no_pool(self):
+        """shutdown() when pool is None should not raise."""
+        import project.hafsql as mod
+        old_pool = mod._pool
+        try:
+            mod._pool = None
+            shutdown()
+        finally:
+            mod._pool = old_pool

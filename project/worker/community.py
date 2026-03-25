@@ -1,6 +1,7 @@
 """Community → category resolution for the Hive worker."""
 import logging
 import re
+import threading
 
 import numpy as np
 
@@ -25,6 +26,7 @@ def _strip_hive_words(text: str) -> str:
     return _HIVE_PLATFORM_RE.sub('', text).strip()
 
 # community_id -> (category_slug | None, community_name, score)
+_cache_lock = threading.Lock()
 _community_cache: dict[str, tuple[str | None, str, float]] = {}
 _persisted_communities: set[str] = set()
 
@@ -44,7 +46,8 @@ def _resolve_community(
     Returns (category_slug | None, community_name, score).
     Results are cached for the worker's lifetime.
     """
-    cached = _community_cache.get(community_id)
+    with _cache_lock:
+        cached = _community_cache.get(community_id)
     if cached is not None:
         return cached
 
@@ -72,7 +75,8 @@ def _resolve_community(
             else:
                 result = (None, name, best_score)
 
-    _community_cache[community_id] = result
+    with _cache_lock:
+        _community_cache[community_id] = result
     logger.info("community %s resolved: category=%s name=%r score=%.3f",
                 community_id, result[0], result[1], result[2])
     return result

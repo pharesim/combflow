@@ -52,8 +52,6 @@ class TestCachedResponseDecorator:
         assert call_count == 1  # second call hit cache
 
     async def test_respects_ttl(self):
-        import time
-
         call_count = 0
 
         @cache.cached_response("ttl_key", ttl=10)
@@ -62,20 +60,20 @@ class TestCachedResponseDecorator:
             call_count += 1
             return "data"
 
-        await my_func()
-        assert call_count == 1
+        with patch("project.cache.time") as mock_time:
+            mock_time.monotonic.return_value = 1000.0
+            await my_func()
+            assert call_count == 1
 
-        # Simulate TTL expiry
-        now = time.monotonic()
-        with patch("time.monotonic", return_value=now + 20):
-            # Cache should be expired, but cached_response uses cache.get internally
-            # which calls time.monotonic — we need to also patch cache module's time
-            pass
+            # Before expiry — should still be cached.
+            mock_time.monotonic.return_value = 1009.0
+            await my_func()
+            assert call_count == 1
 
-        # Clear to simulate expiry
-        cache._store.clear()
-        await my_func()
-        assert call_count == 2
+            # After expiry — cache should miss, function called again.
+            mock_time.monotonic.return_value = 1011.0
+            await my_func()
+            assert call_count == 2
 
     async def test_preserves_function_name(self):
         @cache.cached_response("k", ttl=60)

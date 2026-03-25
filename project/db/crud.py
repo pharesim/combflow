@@ -238,7 +238,10 @@ async def get_centroids(session: AsyncSession) -> dict[str, list[float]]:
     )
     centroids: dict[str, list[float]] = {}
     for name, vec_str in rows.fetchall():
-        centroids[name] = [float(x) for x in vec_str.strip("[]").split(",")]
+        try:
+            centroids[name] = [float(x) for x in vec_str.strip("[]").split(",")]
+        except (ValueError, AttributeError) as exc:
+            logger.error("Corrupted centroid for %s, skipping: %s", name, exc)
     return centroids
 
 
@@ -347,7 +350,7 @@ def _browse_count_cache_key(categories, languages, sentiment, community=None, co
                        "nsfw": include_nsfw,
                        "nsfw_only": nsfw_only,
                        "age": max_age}, sort_keys=True)
-    return f"browse_count:{hashlib.md5(raw.encode()).hexdigest()}"
+    return f"browse_count:{hashlib.sha256(raw.encode()).hexdigest()}"
 
 @retry_transient
 async def browse_posts(
@@ -412,8 +415,8 @@ async def browse_posts(
             else:
                 conditions.append("(p.created, p.id) < (:cursor_created, :cursor_id)")
             use_cursor = True
-        except (ValueError, TypeError):
-            pass  # malformed cursor — fall back to offset
+        except (ValueError, TypeError) as exc:
+            logger.debug("Malformed browse cursor %r: %s — falling back to offset", cursor, exc)
 
     if not use_cursor:
         params["off"] = offset

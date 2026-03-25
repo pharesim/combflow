@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     hafsql_password: str = "hafsql_public"
     hafsql_connect_timeout: int = 10
 
+    # Hive API
+    hive_api_nodes: list[str] = [
+        "https://api.hive.blog",
+        "https://api.deathwing.me",
+        "https://api.openhive.network",
+    ]
+
     # Worker
     api_url: str = "http://combflow-app:8000"
 

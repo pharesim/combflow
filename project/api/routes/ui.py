@@ -94,7 +94,9 @@ async def discover_page_redirect():
 
 
 @router.get("/{prefix}/@{author}/{permlink}", include_in_schema=False)
-async def discover_prefixed_post(request: Request, prefix: str, author: str, permlink: str):
+async def discover_prefixed_post(
+    request: Request, prefix: str, author: str, permlink: str  # prefix: path capture only, not used
+):
     og = await _fetch_post_og(author, permlink)
     return _render("discover.html", request, og=og)
 

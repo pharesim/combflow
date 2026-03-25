@@ -6,6 +6,7 @@ import threading
 from ..categories import CATEGORY_TREE
 from ..db import crud
 from ..db.session import WorkerSessionLocal as AsyncSessionLocal, worker_engine as engine
+from ..hafsql import shutdown as hafsql_shutdown
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,12 @@ class _DB:
             return self._loop.run_until_complete(coro)
 
     def close(self):
+        hafsql_shutdown()
         with self._lock:
-            self._loop.run_until_complete(engine.dispose())
-            self._loop.close()
+            try:
+                self._loop.run_until_complete(engine.dispose())
+            finally:
+                self._loop.close()
 
 
 def _seed_categories(db: _DB) -> None:

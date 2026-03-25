@@ -77,6 +77,17 @@ def _raw_rep_to_score(raw: int) -> float:
 
 
 
+def shutdown():
+    """Close the HAFSQL connection pool. Safe to call multiple times."""
+    global _pool
+    if _pool is not None and not _pool.closed:
+        try:
+            _pool.closeall()
+        except Exception:
+            pass
+        _pool = None
+
+
 def get_reputations(authors: list[str]) -> dict[str, float]:
     """Batch reputation lookup."""
     if not authors:
@@ -96,6 +107,41 @@ def get_reputations(authors: list[str]) -> dict[str, float]:
         logger.debug("hafsql batch reputation failed: %s", exc)
     return {}
 
+
+
+def get_reputations_via_api(authors: list[str]) -> dict[str, float]:
+    """Fallback: fetch reputations via Hive API when HAFSQL is unreachable."""
+    if not authors:
+        return {}
+    for node in settings.hive_api_nodes:
+        try:
+            resp = requests.post(
+                node,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "condenser_api.get_accounts",
+                    "params": [authors[:1000]],
+                    "id": 1,
+                },
+                timeout=4,
+            )
+            data = resp.json()
+            accounts = data.get("result", [])
+            return {
+                acc["name"]: _raw_rep_to_score(int(acc.get("reputation", 0)))
+                for acc in accounts
+                if "name" in acc
+            }
+        except Exception:
+            continue
+    return {}
+
+
+async def get_reputation_via_api(username: str) -> float | None:
+    """Fetch a single user's reputation via Hive API. Returns score or None on failure."""
+    import asyncio
+    reps = await asyncio.to_thread(get_reputations_via_api, [username])
+    return reps.get(username)
 
 
 def get_post_body(author: str, permlink: str) -> str | None:
@@ -120,7 +166,7 @@ def get_post_body(author: str, permlink: str) -> str | None:
 def get_post_metadata(author: str, permlink: str) -> dict | None:
     """Fetch post title, description, and image via Hive API bridge.get_post.
 
-    Returns {"title": ..., "description": ..., "image": ...} or None.
+    Returns {"title": ..., "description": ..., "image": ...} or None on error/not found.
     """
     try:
         resp = requests.post(
@@ -172,7 +218,7 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
 def get_community(community_id: str) -> dict | None:
     """Fetch community title and about via Hive API bridge.get_community.
 
-    Returns {"title": ..., "about": ...} or None if unavailable.
+    Returns {"title": ..., "about": ...} or None on error/not found.
     """
     try:
         resp = requests.post(

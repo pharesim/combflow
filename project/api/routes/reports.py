@@ -1,6 +1,7 @@
 """Report endpoints — misclassification reporting with signature verification."""
 import logging
 import re
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
@@ -8,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db import crud
+from ...hafsql import get_reputation_via_api
 from ..deps import get_db
 from ..hive_auth import fetch_posting_keys, verify_hive_signature
 
@@ -15,7 +17,26 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,15}$")
+_USERNAME_PATTERN = r"^[a-z0-9][a-z0-9.\-]{0,15}$"
+_USERNAME_RE = re.compile(_USERNAME_PATTERN)
+REPORT_MESSAGE_PREFIX = "combflow_report_"
+
+# Per-user rate limiting for reports.
+_report_counts: dict[str, list[float]] = {}
+_RATE_LIMIT = 5
+_RATE_WINDOW = 60  # seconds
+
+
+def _check_rate_limit(username: str) -> bool:
+    now = time.monotonic()
+    timestamps = _report_counts.get(username, [])
+    timestamps = [t for t in timestamps if now - t < _RATE_WINDOW]
+    if len(timestamps) >= _RATE_LIMIT:
+        _report_counts[username] = timestamps
+        return False
+    timestamps.append(now)
+    _report_counts[username] = timestamps
+    return True
 
 
 class ReportRequest(BaseModel):
@@ -56,7 +77,7 @@ class ReportRequest(BaseModel):
 )
 async def submit_report(
     body: ReportRequest,
-    author: str = Path(..., max_length=16, pattern=r"^[a-z0-9][a-z0-9.\-]{0,15}$"),
+    author: str = Path(..., max_length=16, pattern=_USERNAME_PATTERN),
     permlink: str = Path(..., max_length=256),
     db: AsyncSession = Depends(get_db),
 ):
@@ -64,7 +85,7 @@ async def submit_report(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    message = f"combflow_report_{author}/{permlink}_{body.reason}"
+    message = f"{REPORT_MESSAGE_PREFIX}{author}/{permlink}_{body.reason}"
 
     posting_keys = await fetch_posting_keys(body.username)
     if not posting_keys:
@@ -73,6 +94,15 @@ async def submit_report(
     sig_valid = verify_hive_signature(message, body.signature, posting_keys)
     if not sig_valid:
         raise HTTPException(status_code=403, detail="Signature verification failed")
+
+    # Reputation check: reject reporters with reputation <= 25.
+    rep = await get_reputation_via_api(body.username)
+    if rep is not None and rep <= 25:
+        raise HTTPException(status_code=403, detail="Insufficient reputation")
+
+    # Per-user rate limiting.
+    if not _check_rate_limit(body.username):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
         report = await crud.create_post_report(

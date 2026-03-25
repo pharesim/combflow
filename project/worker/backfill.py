@@ -106,16 +106,23 @@ def _backfill_thread(
             rows = cur.fetchall()
             cur.close()
             retries = 0
-        except Exception as exc:
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
             delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
             retries += 1
-            logger.warning("BACKFILL query failed (retry %d, next in %ds): %s",
+            logger.warning("BACKFILL connection failed (retry %d, next in %ds): %s",
                            retries, delay, exc)
             stop_event.wait(delay)
             try:
                 _connect()
             except Exception:
                 pass
+            continue
+        except Exception as exc:
+            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
+            retries += 1
+            logger.warning("BACKFILL query error (retry %d, next in %ds): %s",
+                           retries, delay, exc)
+            stop_event.wait(delay)
             continue
 
         if not rows:
@@ -134,9 +141,8 @@ def _backfill_thread(
             catching_up = False
             logger.info("BACKFILL catch-up complete — switching to explore")
 
-        # Only save the frontier when exploring past it.
-        if not catching_up:
-            _set_cursor(db, _BACKFILL_CURSOR_KEY, int(cursor_dt.timestamp()))
+        # Save cursor after every batch (including catch-up) to avoid re-processing on crash.
+        _set_cursor(db, _BACKFILL_CURSOR_KEY, int(cursor_dt.timestamp()))
 
         # Check which posts we already have.
         pairs = [(row["author"], row["permlink"]) for row in rows]

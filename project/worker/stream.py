@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from ..hafsql import get_reputations
+from ..hafsql import get_reputations, get_reputations_via_api
 from .blacklist import check_authors
 from .bridge import _set_cursor
 from .classify import _classify_and_save, MIN_AUTHOR_REPUTATION
@@ -28,8 +28,8 @@ def _parse_op_timestamp(op: dict) -> datetime | None:
             return datetime.fromisoformat(ts.replace("Z", "+00:00"))
         if isinstance(ts, datetime):
             return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("failed to parse timestamp %r: %s", ts, exc)
     return None
 
 
@@ -45,6 +45,13 @@ def _process_batch(
     blacklisted = check_authors(unique_authors)
     reps = get_reputations(unique_authors)
     hafsql_available = len(reps) > 0 or len(unique_authors) == 0
+
+    if not hafsql_available:
+        reps = get_reputations_via_api(unique_authors)
+        if reps:
+            hafsql_available = True
+        else:
+            logger.warning("Both HAFSQL and Hive API unreachable — skipping rep check")
 
     processed = 0
     for op in batch:
@@ -152,6 +159,8 @@ def _stream_range(
                     _set_cursor(db, _CURSOR_KEY, last_block)
     finally:
         watchdog_stop.set()
+        if stop is None:  # live mode — join the watchdog thread
+            wd.join(timeout=2)
 
     # Flush remaining.
     if batch:

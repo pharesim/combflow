@@ -33,6 +33,9 @@ def _stream() -> None:
 
     embedder = _load_embedder()
     centroids = _load_centroids(db)
+    if not centroids:
+        logger.info("No centroids available — exiting cleanly")
+        return
     threshold = 0.38
 
     if embedder:
@@ -92,9 +95,15 @@ def _stream() -> None:
             )
     finally:
         stop_event.set()
-        backfill.join(timeout=10)
-        blacklist_sweep.join(timeout=5)
-        db.close()
+        try:
+            backfill.join(timeout=10)
+            blacklist_sweep.join(timeout=5)
+        except Exception as exc:
+            logger.warning("error joining threads: %s", exc)
+        try:
+            db.close()
+        except Exception as exc:
+            logger.warning("error closing DB bridge: %s", exc)
 
 
 def run() -> None:

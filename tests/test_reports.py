@@ -1,9 +1,31 @@
-"""Tests for misclassification reporting (proposal 044)."""
+"""Tests for misclassification reporting (proposal 044, hardened by 049)."""
+import contextlib
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from project.api.hive_auth import verify_hive_signature
+from project.api.routes import reports as _reports_module
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Clear rate limit state between tests."""
+    _reports_module._report_counts.clear()
+    yield
+    _reports_module._report_counts.clear()
+
+
+@contextlib.contextmanager
+def _report_mocks():
+    """Context manager that mocks signature verification and reputation for report tests."""
+    with (
+        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock, return_value=["STM7abc123"]),
+        patch("project.api.routes.reports.verify_hive_signature", return_value=True),
+        patch("project.api.routes.reports.get_reputation_via_api", new_callable=AsyncMock, return_value=50.0),
+    ):
+        yield
 
 
 # ── Submit report ─────────────────────────────────────────────────────────────
@@ -12,13 +34,7 @@ from project.api.hive_auth import verify_hive_signature
 @pytest.mark.usefixtures("seeded_db")
 async def test_submit_report_success(client):
     """Valid report with mocked signature verification returns 201."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         resp = await client.post(
             "/api/posts/alice/test-post-one/report",
             json={
@@ -80,13 +96,7 @@ async def test_submit_report_no_posting_keys(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_submit_report_duplicate(client):
     """Second report by same user on same post returns 409."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         resp1 = await client.post(
             "/api/posts/alice/test-post-one/report",
             json={"username": "dave", "reason": "Wrong", "signature": "1f" + "ab" * 64},
@@ -105,13 +115,7 @@ async def test_submit_report_duplicate(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_submit_report_nonexistent_post(client):
     """Report on a post that doesn't exist returns 404."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         resp = await client.post(
             "/api/posts/nobody/no-such-post/report",
             json={"username": "dave", "reason": "Wrong", "signature": "1f" + "ab" * 64},
@@ -148,13 +152,7 @@ async def test_list_reports_empty(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_list_reports_with_data(client):
     """Reports are returned with post context."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         await client.post(
             "/api/posts/alice/test-post-one/report",
             json={"username": "dave", "reason": "Wrong category", "signature": "1f" + "ab" * 64},
@@ -175,13 +173,7 @@ async def test_list_reports_with_data(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_list_reports_filter_by_reporter(client):
     """Filter reports by reporter username."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         await client.post(
             "/api/posts/alice/test-post-one/report",
             json={"username": "dave", "reason": "Wrong", "signature": "1f" + "ab" * 64},
@@ -200,13 +192,7 @@ async def test_list_reports_filter_by_reporter(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_list_reports_filter_by_post(client):
     """Filter reports by post author and permlink."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         await client.post(
             "/api/posts/alice/test-post-one/report",
             json={"username": "dave", "reason": "Wrong", "signature": "1f" + "ab" * 64},
@@ -225,13 +211,7 @@ async def test_list_reports_filter_by_post(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_list_reports_pagination(client):
     """Pagination limits and offsets work."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         await client.post(
             "/api/posts/alice/test-post-one/report",
             json={"username": "dave", "reason": "Wrong", "signature": "1f" + "ab" * 64},
@@ -261,13 +241,7 @@ async def test_list_reports_pagination(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_different_users_report_same_post(client):
     """Multiple users can report the same post."""
-    with (
-        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock) as mock_keys,
-        patch("project.api.routes.reports.verify_hive_signature") as mock_verify,
-    ):
-        mock_keys.return_value = ["STM7abc123"]
-        mock_verify.return_value = True
-
+    with _report_mocks():
         resp1 = await client.post(
             "/api/posts/alice/test-post-one/report",
             json={"username": "dave", "reason": "Wrong", "signature": "1f" + "ab" * 64},
@@ -295,3 +269,80 @@ async def test_different_users_report_same_post(client):
 def test_verify_hive_signature_rejects_invalid(sig, desc):
     """Invalid signatures return False."""
     assert verify_hive_signature("test", sig, ["STM7abc"]) is False
+
+
+# ── Reputation check (proposal 049) ──────────────────────────────────────────
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_submit_report_low_reputation_rejected(client):
+    """Reporter with reputation <= 25 is rejected with 403."""
+    with (
+        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock, return_value=["STM7abc123"]),
+        patch("project.api.routes.reports.verify_hive_signature", return_value=True),
+        patch("project.api.routes.reports.get_reputation_via_api", new_callable=AsyncMock, return_value=20.0),
+    ):
+        resp = await client.post(
+            "/api/posts/alice/test-post-one/report",
+            json={"username": "lowrep", "reason": "Wrong", "signature": "1f" + "ab" * 64},
+        )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Insufficient reputation"
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_submit_report_reputation_none_allowed(client):
+    """When reputation API returns None, report is allowed (fail-open)."""
+    with (
+        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock, return_value=["STM7abc123"]),
+        patch("project.api.routes.reports.verify_hive_signature", return_value=True),
+        patch("project.api.routes.reports.get_reputation_via_api", new_callable=AsyncMock, return_value=None),
+    ):
+        resp = await client.post(
+            "/api/posts/alice/test-post-one/report",
+            json={"username": "unknownrep", "reason": "Wrong", "signature": "1f" + "ab" * 64},
+        )
+    assert resp.status_code == 201
+
+
+# ── Rate limiting (proposal 049) ─────────────────────────────────────────────
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_submit_report_rate_limit_exceeded(client):
+    """6th report within 60s returns 429."""
+    with _report_mocks():
+        for i in range(5):
+            resp = await client.post(
+                f"/api/posts/alice/test-post-one/report",
+                json={"username": f"user{i}", "reason": f"Wrong {i}", "signature": "1f" + "ab" * 64},
+            )
+            # Each is a different reporter on same post — may get 201 or 409
+            # We just need to use the same username to hit rate limit.
+        # Now use a single user that already has 5 entries.
+
+    # Fill rate limit for a single user.
+    _reports_module._report_counts["ratelimited"] = [time.monotonic() for _ in range(5)]
+
+    with _report_mocks():
+        resp = await client.post(
+            "/api/posts/alice/test-post-one/report",
+            json={"username": "ratelimited", "reason": "One more", "signature": "1f" + "ab" * 64},
+        )
+    assert resp.status_code == 429
+    assert resp.json()["detail"] == "Rate limit exceeded"
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_submit_report_rate_limit_different_users(client):
+    """Rate limits are per-user, not global."""
+    # Fill rate limit for user "full"
+    _reports_module._report_counts["full"] = [time.monotonic() for _ in range(5)]
+
+    # Different user should not be rate limited.
+    with _report_mocks():
+        resp = await client.post(
+            "/api/posts/alice/test-post-one/report",
+            json={"username": "fresh", "reason": "Wrong", "signature": "1f" + "ab" * 64},
+        )
+    assert resp.status_code == 201

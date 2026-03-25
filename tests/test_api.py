@@ -2,6 +2,7 @@
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from project.categories import CATEGORY_TREE, LEAF_CATEGORIES
 from project import cache
@@ -229,7 +230,7 @@ async def test_categories_fallback_on_exception(client):
     """When DB fails, /categories returns in-memory CATEGORY_TREE fallback."""
     cache.clear()
     with patch("project.api.main.AsyncSessionLocal") as mock_session_cls:
-        mock_session_cls.side_effect = Exception("db down")
+        mock_session_cls.side_effect = SQLAlchemyError("db down")
         resp = await client.get("/categories")
     assert resp.status_code == 200
     data = resp.json()
@@ -290,15 +291,19 @@ async def test_og_post_with_metadata(client, url, metadata, expect_in, expect_no
         assert text not in body, f"Did not expect {text!r} in response for {url}"
 
 
-@pytest.mark.parametrize("return_value,side_effect", [
-    (None, None),  # API returns None
-    (None, Exception("network error")),  # API raises exception
-], ids=["api-returns-none", "api-raises-exception"])
-async def test_og_post_fallback_on_failure(client, return_value, side_effect):
-    """When Hive API fails or returns None, OG tags use defaults."""
+async def test_og_post_fallback_returns_none(client):
+    """When Hive API returns None, OG tags use defaults."""
     with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.return_value = return_value
-        mock_get.side_effect = side_effect
+        mock_get.return_value = None
+        resp = await client.get("/@alice/my-great-post")
+    assert resp.status_code == 200
+    assert _OG_DEFAULT_TITLE in resp.text
+
+
+async def test_og_post_fallback_raises_exception(client):
+    """When Hive API raises, OG tags use defaults."""
+    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
+        mock_get.side_effect = Exception("network error")
         resp = await client.get("/@alice/my-great-post")
     assert resp.status_code == 200
     assert _OG_DEFAULT_TITLE in resp.text

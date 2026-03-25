@@ -7,6 +7,7 @@ signs SHA256(message) and produces a recoverable signature (65 bytes:
 Public keys are base58check-encoded with an "STM" prefix.
 """
 import hashlib
+import hmac
 import logging
 
 import httpx
@@ -127,7 +128,7 @@ def verify_hive_signature(
     for pubkey_str in expected_pubkeys:
         try:
             expected_bytes = _decode_pubkey(pubkey_str)
-            if recovered_compressed == expected_bytes:
+            if hmac.compare_digest(recovered_compressed, expected_bytes):
                 return True
         except Exception:
             continue

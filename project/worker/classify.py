@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+import threading
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ from ..text import clean_post_body as _clean_post_body
 from .bridge import _save_post
 from .community import (
     _extract_community_id, _resolve_community, _persist_community_mapping,
-    _persisted_communities, _COMMUNITY_BOOST, _COMMUNITY_MAP_THRESHOLD,
+    _persisted_communities, _cache_lock, _COMMUNITY_BOOST, _COMMUNITY_MAP_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,21 +46,25 @@ _LANG_MIN_CONFIDENCE = 0.15
 
 _LID_MODEL_PATH = Path("/tmp/lid.176.ftz")
 _LID_MODEL = None
+_lid_lock = threading.Lock()
 
 
 def _load_lid_model():
     global _LID_MODEL
     if _LID_MODEL is not None:
         return _LID_MODEL
-    if not _LID_MODEL_PATH.exists():
-        logger.info("Downloading fasttext language ID model ...")
-        urllib.request.urlretrieve(
-            "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
-            _LID_MODEL_PATH,
-        )
-    import fasttext
-    _LID_MODEL = fasttext.load_model(str(_LID_MODEL_PATH))
-    return _LID_MODEL
+    with _lid_lock:
+        if _LID_MODEL is not None:
+            return _LID_MODEL
+        if not _LID_MODEL_PATH.exists():
+            logger.info("Downloading fasttext language ID model ...")
+            urllib.request.urlretrieve(
+                "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
+                _LID_MODEL_PATH,
+            )
+        import fasttext
+        _LID_MODEL = fasttext.load_model(str(_LID_MODEL_PATH))
+        return _LID_MODEL
 
 
 def _load_embedder():
@@ -321,9 +326,11 @@ def _classify_and_save(
         if community_id and centroids:
             comm_cat, comm_name, comm_score = _resolve_community(community_id, embedder, centroids)
             # Persist mapping to DB on first resolve (cache means this runs once per community).
-            if community_id not in _persisted_communities:
-                _persist_community_mapping(db, community_id, comm_cat, comm_name, comm_score)
+            with _cache_lock:
+                already_persisted = community_id in _persisted_communities
                 _persisted_communities.add(community_id)
+            if not already_persisted:
+                _persist_community_mapping(db, community_id, comm_cat, comm_name, comm_score)
             if comm_cat and comm_score >= _COMMUNITY_MAP_THRESHOLD:
                 categories = _classify_from_embedding(
                     emb, centroids, threshold, comm_cat, _COMMUNITY_BOOST,

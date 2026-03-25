@@ -11,11 +11,14 @@ http://{$CADDY_UI:honeycomb.lvh.me} {
 		}
 	}
 	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
+		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
-		Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' https://unpkg.com 'unsafe-inline'; img-src 'self' data: https://images.hive.blog https://img.youtube.com https://images.3speak.tv https://files.peakd.com https://images.ecency.com https://usermedia.actifit.io https://cdn.steemitimages.com https://img.leopedia.io; connect-src 'self' https://api.hive.blog https://techcoderx.com https://api.openhive.network https://images.hive.blog https://nominatim.openstreetmap.org; frame-src https://youtube.com https://www.youtube.com https://youtube-nocookie.com https://www.youtube-nocookie.com https://player.vimeo.com https://play.3speak.tv https://www.instagram.com https://www.skatehype.com https://odysee.com https://rumble.com https://open.spotify.com https://w.soundcloud.com https://emb.d.tube https://lbry.tv https://hivedapps.com about:blank; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+		# unsafe-eval: required by Alpine.js v3 (uses new Function() for x-data expressions; CSP build would require pre-compiling all expressions)
+		# unsafe-inline in style-src: required by Leaflet (inline styles on map tiles)
+		Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' https://unpkg.com 'unsafe-inline'; img-src 'self' data: https://images.hive.blog https://img.youtube.com https://images.3speak.tv https://files.peakd.com https://images.ecency.com https://usermedia.actifit.io https://cdn.steemitimages.com https://img.leopedia.io; connect-src 'self' https://api.hive.blog https://api.deathwing.me https://techcoderx.com https://api.openhive.network https://images.hive.blog https://nominatim.openstreetmap.org; frame-src https://youtube.com https://www.youtube.com https://youtube-nocookie.com https://www.youtube-nocookie.com https://player.vimeo.com https://play.3speak.tv https://www.instagram.com https://www.skatehype.com https://odysee.com https://rumble.com https://open.spotify.com https://w.soundcloud.com https://emb.d.tube https://lbry.tv https://hivedapps.com about:blank; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
 	}
 	handle /.well-known/security.txt {
 		header Content-Type "text/plain; charset=utf-8"
@@ -54,6 +57,12 @@ http://{$CADDY_API:combflow.lvh.me} {
 			roll_size 100MiB
 			roll_keep 3
 		}
+	}
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 	handle /.well-known/security.txt {
 		header Content-Type "text/plain; charset=utf-8"

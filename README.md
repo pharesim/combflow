@@ -162,7 +162,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — post-specific Open Graph meta tags on deep links (title, description, thumbnail fetched from Hive API) for rich previews on Discord, Twitter, Slack, etc. Author profile pages show `@username — HiveComb`.
-- **Misclassification reporting** — flag icon in post modal lets logged-in users report misclassified posts with a reason, signed via Hive Keychain (server verifies signature against on-chain posting keys)
+- **Misclassification reporting** — flag icon in post modal lets logged-in users report misclassified posts with a reason, signed via Hive Keychain (server verifies signature against on-chain posting keys, requires reputation > 25, rate-limited to 5 reports/minute)
 - **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed iframe handling)
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
 
@@ -219,6 +219,8 @@ The worker runs entirely self-contained with two concurrent modes:
    - **Catch-up**: starts from NOW, works backwards to the saved frontier (covers downtime gaps)
    - **Explore**: continues from the frontier into older history
    - Unlimited retry with exponential backoff (10s–5min) on network failures — never dies on transient issues
+   - Cursor saved after every batch (including catch-up) — crash loses at most one batch
+   - Smart reconnect: connection errors trigger reconnect, query errors retry without reconnect
 
 Per-post pipeline:
 - Check author reputation via HAFSQL (>= 20)
@@ -259,12 +261,14 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 - `ix_posts_primary_language` — language filter queries
 - `ix_community_mappings_category_slug` — community suggestion queries
 - `ix_posts_created_desc` — descending date sort
+- `ix_posts_author` — author filter queries + delete by author
 - `ix_post_reports_post_id` — report lookups by post
+- `ix_post_reports_reporter` — report lookups by reporter
 - `ix_post_reports_created_at` — paginated report listing
 
 ### Migration
 
-Migrations `001_initial_schema.py` (base schema) and `002_post_reports.py` (misclassification reports). Verified by `alembic/verify_migration.py` on startup.
+Migrations `001_initial_schema.py` (base schema), `002_post_reports.py` (misclassification reports), and `003_schema_cleanup.py` (indexes on `posts.author` + `post_reports.reporter`, CASCADE DELETE on junction table FKs, nullable fixes). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
@@ -298,7 +302,7 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-266 tests across 11 files:
+290+ tests across 11 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
@@ -334,7 +338,7 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | GET | `/api/stats` | Overview statistics |
 | GET | `/api/communities` | Communities with post counts, names, and categories |
 | GET | `/api/communities/suggested` | Suggested communities for given category filters (cached 300s) |
-| POST | `/api/posts/{author}/{permlink}/report` | Report a misclassified post (requires Keychain signature) |
+| POST | `/api/posts/{author}/{permlink}/report` | Report a misclassified post (requires Keychain signature, reputation > 25, rate-limited 5/min) |
 | GET | `/api/reports` | List misclassification reports (paginated, filterable) |
 
 ---
@@ -394,6 +398,7 @@ curl https://your-server:8000/posts/alice/my-post-permlink
 | `CADDY_UI` | UI domain (bare hostname, TLS handled by external nginx) | `honeycomb.example.com` |
 | `CADDY_API` | API domain (root redirects to `/docs`) | `api.example.com` |
 | `CADDY_UI_OLD` | Previous UI domain — 301 redirects to `CADDY_UI` | `old.example.com` |
+| `HIVE_API_NODES` | Hive JSON-RPC nodes (JSON list) | `["https://api.hive.blog","https://api.deathwing.me"]` |
 
 ### Usage statistics
 
@@ -448,12 +453,13 @@ combflow/combflow/
 │   ├── versions/
 │   │   └── 001_initial_schema.py  # complete schema (all tables + indexes + pgvector)
 │   │   └── 002_post_reports.py       # misclassification reports table
+│   │   └── 003_schema_cleanup.py     # indexes, CASCADE DELETE, nullable fixes
 │   └── verify_migration.py        # post-migration table verification
 ├── scripts/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 266 tests
+├── tests/                   # 290+ tests
 ├── prerender/               # Headless Chromium prerender for bot SSR
 ├── Dockerfile
 ├── docker-compose.yml
