@@ -298,19 +298,21 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-236 tests across 9 files:
+266 tests across 11 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
-| `test_worker_utils.py` | 63 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
-| `test_browse.py` | 66 | Browse with all filter combinations, single + multi community filter, authors filter, max_age + sort filters, filter list truncation, pagination edge cases (including cursor + sort=oldest), communities endpoint, suggested communities, cache TTL |
-| `test_hafsql.py` | 26 | Reputation conversion, community metadata parsing, post body lookup, connection pool, cursor lifecycle |
-| `test_api.py` | 25 | Health, categories, HTML page routes, GZip middleware, 404s |
+| `test_worker_utils.py` | 68 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, model loaders |
+| `test_browse.py` | 55 | Browse with all filter combinations, single + multi community filter, authors filter, max_age + sort filters, filter list truncation, pagination edge cases (including cursor + sort=oldest), communities endpoint, suggested communities, cache TTL |
+| `test_api.py` | 35 | Health, categories, HTML page routes, GZip middleware, OG meta tags (parametrized), 404s |
+| `test_hafsql.py` | 25 | Reputation conversion, community metadata parsing (parametrized error handling), post body lookup, connection pool, cursor lifecycle |
 | `test_crud.py` | 23 | Retry decorator, category tree, seed idempotency |
+| `test_stream.py` | 17 | Stream timestamp parsing, batch processing (reputation, blacklist, HAFSQL fallback) |
+| `test_reports.py` | 14 | Misclassification reporting, signature verification (parametrized), pagination |
 | `test_text.py` | 9 | Text cleaning utilities |
-| `test_cache.py` | 5 | TTL cache operations |
+| `test_cache.py` | 9 | TTL cache operations, cached_response decorator |
+| `test_backfill.py` | 8 | Backfill thread: filtering, catch-up phase, error handling, stop signal |
 | `test_posts.py` | 2 | Post detail, community_id handling |
-| `test_reports.py` | 17 | Misclassification reporting, signature verification, pagination |
 
 ---
 
@@ -451,7 +453,7 @@ combflow/combflow/
 │   ├── seed_categories.py  # LLM-based centroid computation with stratification
 │   └── requirements.txt
 ├── seeds/                   # centroid JSON files
-├── tests/                   # 236 tests
+├── tests/                   # 266 tests
 ├── prerender/               # Headless Chromium prerender for bot SSR
 ├── Dockerfile
 ├── docker-compose.yml
