@@ -31,7 +31,7 @@ Preferred-Languages: en
 		not path /static/*
 	}
 	handle @bot {
-		rewrite * /http://combflow-app:8000{path}
+		rewrite * /{scheme}://{host}{path}
 		reverse_proxy prerender:3000
 	}
 	handle /static/* {
