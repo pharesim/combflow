@@ -186,8 +186,8 @@ async function submitComment(parentAuthor, parentPermlink, formId) {
     // Cooldown
     _commentCooldown = true;
     setTimeout(() => { _commentCooldown = false; }, 3000);
-    // Re-fetch after a short delay (blockchain confirmation)
-    setTimeout(() => fetchComments(s.commentPostAuthor, s.commentPostPermlink), 2000);
+    // Re-fetch after delay (blockchain confirmation takes ~3s)
+    setTimeout(() => fetchComments(s.commentPostAuthor, s.commentPostPermlink), 4000);
   } catch(e) {
     showToast(e.message || 'Could not post comment', 'error');
   }
