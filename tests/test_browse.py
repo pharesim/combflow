@@ -1,4 +1,6 @@
 """Integration tests for the browse/discovery API."""
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from project.categories import CATEGORY_TREE
@@ -566,3 +568,126 @@ async def test_browse_truncates_long_filter_lists(client, seeded_db):
     assert "posts" in data
     # No matching data expected, but the request must not error.
     assert isinstance(data["posts"], list)
+
+
+# ── max_age filter ─────────────────────────────────────────────────────────
+
+async def test_browse_max_age_filters_old_posts(client, seeded_db, db_session):
+    """max_age=1h should exclude posts older than 1 hour."""
+    leaf = seeded_db["leaf_name"]
+    now = datetime.now(timezone.utc)
+    await _create_post(db_session,
+        author="recent", permlink="recent-post",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        created=now - timedelta(minutes=30),
+    )
+    resp = await client.get("/api/browse?max_age=1h")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    # Only the recent post should appear; seeded posts are from March 2026.
+    assert len(posts) >= 1
+    authors = {p["author"] for p in posts}
+    assert "recent" in authors
+    # Seeded posts (days old) should be excluded.
+    assert "alice" not in authors
+    assert "bob" not in authors
+
+
+async def test_browse_max_age_days(client, seeded_db, db_session):
+    """max_age=1d should filter to last 24 hours."""
+    leaf = seeded_db["leaf_name"]
+    now = datetime.now(timezone.utc)
+    await _create_post(db_session,
+        author="yesterday", permlink="yesterday-post",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        created=now - timedelta(hours=12),
+    )
+    resp = await client.get("/api/browse?max_age=1d")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    authors = {p["author"] for p in posts}
+    assert "yesterday" in authors
+
+
+async def test_browse_max_age_invalid_format(client, seeded_db):
+    """Invalid max_age format should return 422."""
+    resp = await client.get("/api/browse?max_age=abc")
+    assert resp.status_code == 422
+
+
+async def test_browse_max_age_total_reflects_filter(client, seeded_db, db_session):
+    """Total count should reflect the max_age filter."""
+    leaf = seeded_db["leaf_name"]
+    now = datetime.now(timezone.utc)
+    await _create_post(db_session,
+        author="fresh", permlink="fresh-post",
+        categories=[leaf], languages=["en"],
+        sentiment="neutral", sentiment_score=0.0,
+        created=now - timedelta(minutes=10),
+    )
+    all_total = (await client.get("/api/browse")).json()["total"]
+    filtered_total = (await client.get("/api/browse?max_age=1h")).json()["total"]
+    assert filtered_total >= 1
+    assert filtered_total < all_total
+
+
+# ── sort parameter ─────────────────────────────────────────────────────────
+
+async def test_browse_sort_oldest(client, seeded_db):
+    """sort=oldest should return posts in ascending order."""
+    resp = await client.get("/api/browse?sort=oldest")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 2
+    dates = [p["created"] for p in posts]
+    assert dates == sorted(dates)
+
+
+async def test_browse_sort_newest_default(client, seeded_db):
+    """Default sort (newest) should return posts in descending order."""
+    resp = await client.get("/api/browse")
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 2
+    dates = [p["created"] for p in posts]
+    assert dates == sorted(dates, reverse=True)
+
+
+async def test_browse_sort_invalid(client, seeded_db):
+    """Invalid sort value should return 422."""
+    resp = await client.get("/api/browse?sort=random")
+    assert resp.status_code == 422
+
+
+async def test_browse_sort_oldest_cursor_pagination(client, seeded_db, db_session):
+    """Cursor pagination should work correctly with sort=oldest."""
+    leaf = seeded_db["leaf_name"]
+    now = datetime.now(timezone.utc)
+    # Add more posts so we have enough for pagination.
+    for i in range(3):
+        await _create_post(db_session,
+            author=f"user{i}", permlink=f"sort-page-{i}",
+            categories=[leaf], languages=["en"],
+            sentiment="neutral", sentiment_score=0.0,
+            created=now - timedelta(hours=i),
+        )
+
+    resp1 = await client.get("/api/browse?sort=oldest&limit=2")
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["next_cursor"] is not None
+
+    resp2 = await client.get(f"/api/browse?sort=oldest&limit=2&cursor={data1['next_cursor']}")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+
+    # No overlap between pages.
+    ids1 = {p["id"] for p in data1["posts"]}
+    ids2 = {p["id"] for p in data2["posts"]}
+    assert ids1.isdisjoint(ids2)
+
+    # Page 2 posts should be newer than page 1 posts (ascending order).
+    if data2["posts"]:
+        assert data1["posts"][-1]["created"] <= data2["posts"][0]["created"]

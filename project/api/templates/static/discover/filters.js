@@ -87,7 +87,9 @@ function updateResultsBar() {
     || state.authorFilterUser;
   const displayTotal = hasFilters ? state.filteredTotalCount : state.totalPostCount;
   const filterLabel = hasFilters ? ' (filtered)' : '';
-  bar.textContent = `Showing ${state.posts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}`;
+  const curationLabel = state.curationMode && state.curationFilteredCount > 0
+    ? ` (${state.curationFilteredCount} hidden by curation filters)` : '';
+  bar.textContent = `Showing ${state.posts.length.toLocaleString()} of ${displayTotal.toLocaleString()} posts${filterLabel}${curationLabel}`;
 }
 
 // ── Check if current filters match saved defaults ──
@@ -156,7 +158,112 @@ function scheduleFilter() {
   filterTimer = setTimeout(applyFilters, 150);
   scheduleSuggestions();
   saveSessionFilters();
+  saveCurationSession();
   checkFiltersMatchDefault();
+}
+
+// ── Curation mode: age slider steps ──
+// Steps 0-23 = 1h through 24h, steps 24-30 = 2d through 7d
+const CURATION_AGE_STEPS = [
+  '1h','2h','3h','4h','5h','6h','7h','8h','9h','10h','11h','12h',
+  '13h','14h','15h','16h','17h','18h','19h','20h','21h','22h','23h','24h',
+  '2d','3d','4d','5d','6d','7d','7d'
+];
+const CURATION_AGE_LABELS = [
+  '< 1 hour','< 2 hours','< 3 hours','< 4 hours','< 5 hours','< 6 hours',
+  '< 7 hours','< 8 hours','< 9 hours','< 10 hours','< 11 hours','< 12 hours',
+  '< 13 hours','< 14 hours','< 15 hours','< 16 hours','< 17 hours','< 18 hours',
+  '< 19 hours','< 20 hours','< 21 hours','< 22 hours','< 23 hours','< 1 day',
+  '< 2 days','< 3 days','< 4 days','< 5 days','< 6 days','< 7 days','< 7 days'
+];
+
+function getCurationAgeValue(step) { return CURATION_AGE_STEPS[step] || '7d'; }
+function getCurationAgeLabel(step) { return CURATION_AGE_LABELS[step] || '< 7 days'; }
+
+// ── Curation mode: toggle ──
+function setCurationMode(enabled) {
+  state.curationMode = enabled;
+  localStorage.setItem('honeycomb_curationMode', enabled);
+  // Show/hide the collapsible curation section in the filter sidebar
+  const section = document.getElementById('filter-curation');
+  if (section) section.style.display = enabled ? '' : 'none';
+  // Sync settings modal checkbox if open
+  const settingsCb = document.getElementById('settings-curation-mode');
+  if (settingsCb) settingsCb.checked = enabled;
+  scheduleFilter();
+}
+
+function initCurationUI() {
+  // Restore state from sessionStorage
+  const raw = sessionStorage.getItem('honeycomb_curationFilters');
+  if (raw) {
+    try {
+      const s = JSON.parse(raw);
+      if (s.maxAge) state.curationMaxAge = s.maxAge;
+      if (s.votes != null) state.curationVotes = s.votes;
+      if (s.maxPayout != null) state.curationMaxPayout = s.maxPayout;
+      if (s.sort) state.curationSort = s.sort;
+    } catch(e) {}
+  }
+  // Set UI controls to match state
+  const slider = document.getElementById('curation-age-slider');
+  const label = document.getElementById('curation-age-label');
+  if (slider) {
+    const idx = CURATION_AGE_STEPS.indexOf(state.curationMaxAge);
+    slider.value = idx >= 0 ? idx : 30;
+    if (label) label.textContent = getCurationAgeLabel(Number(slider.value));
+  }
+  const voteSel = document.getElementById('curation-votes');
+  if (voteSel) voteSel.value = state.curationVotes;
+  const payoutIn = document.getElementById('curation-payout');
+  if (payoutIn) payoutIn.value = state.curationMaxPayout;
+  const sortSel = document.getElementById('curation-sort');
+  if (sortSel) sortSel.value = state.curationSort;
+  // Show curation section only if curation mode is active
+  const section = document.getElementById('filter-curation');
+  if (section) section.style.display = state.curationMode ? '' : 'none';
+}
+
+function saveCurationSession() {
+  sessionStorage.setItem('honeycomb_curationFilters', JSON.stringify({
+    maxAge: state.curationMaxAge,
+    votes: state.curationVotes,
+    maxPayout: state.curationMaxPayout,
+    sort: state.curationSort,
+  }));
+}
+
+// ── Curation mode: client-side filtering (votes + payout) ──
+function applyCurationFilters(posts) {
+  if (!state.curationMode) { state.curationFilteredCount = 0; return posts; }
+  const before = posts.length;
+  let filtered = posts;
+  // Vote count filter (< threshold)
+  if (state.curationVotes) {
+    const maxVotes = parseInt(state.curationVotes);
+    if (!isNaN(maxVotes)) {
+      filtered = filtered.filter(p => {
+        const key = `${p.author}/${p.permlink}`;
+        const meta = state.metaCache[key];
+        if (!meta || meta.votes == null) return true; // keep if meta not loaded yet
+        return meta.votes < maxVotes;
+      });
+    }
+  }
+  // Payout filter
+  if (state.curationMaxPayout !== '' && state.curationMaxPayout != null) {
+    const maxP = parseFloat(state.curationMaxPayout);
+    if (!isNaN(maxP) && maxP >= 0) {
+      filtered = filtered.filter(p => {
+        const key = `${p.author}/${p.permlink}`;
+        const meta = state.metaCache[key];
+        if (!meta || meta.payout == null) return true; // keep if meta not loaded yet
+        return meta.payout < maxP;
+      });
+    }
+  }
+  state.curationFilteredCount = before - filtered.length;
+  return filtered;
 }
 
 // ── Build filter URL (reads from Alpine store) ──
@@ -184,6 +291,15 @@ function buildFilterUrl(limit, offset) {
   const nsfwMode = getNsfwMode();
   if (nsfwMode === 'show' || nsfwMode === 'filter') url += '&include_nsfw=true';
   if (nsfwMode === 'filter' && sentiments.includes('nsfw')) url += '&nsfw_only=true';
+  // Curation mode: server-side params
+  if (state.curationMode) {
+    if (state.curationMaxAge && state.curationMaxAge !== '7d') {
+      url += `&max_age=${encodeURIComponent(state.curationMaxAge)}`;
+    }
+    if (state.curationSort && state.curationSort !== 'newest') {
+      url += `&sort=${encodeURIComponent(state.curationSort)}`;
+    }
+  }
   return { url, sentiments: realSentiments };
 }
 
@@ -200,8 +316,22 @@ function clearFilters() {
   updateSuggestionActiveState();
   updateFilterCounts();
   document.getElementById('suggestions-bar').style.display = 'none';
+  // Reset curation filter values (keep mode toggle as-is)
+  state.curationMaxAge = '7d';
+  state.curationVotes = '';
+  state.curationMaxPayout = '';
+  state.curationSort = 'newest';
+  const ageSlider = document.getElementById('curation-age-slider');
+  if (ageSlider) { ageSlider.value = 30; document.getElementById('curation-age-label').textContent = getCurationAgeLabel(30); }
+  const voteSel = document.getElementById('curation-votes');
+  if (voteSel) voteSel.value = '';
+  const payoutIn = document.getElementById('curation-payout');
+  if (payoutIn) payoutIn.value = '';
+  const sortSel = document.getElementById('curation-sort');
+  if (sortSel) sortSel.value = 'newest';
   // Clear session filters so cleared state persists across navigation
   sessionStorage.removeItem('honeycomb_sessionFilters');
+  sessionStorage.removeItem('honeycomb_curationFilters');
   // Apply immediately (don't wait for effect's debounce)
   clearTimeout(filterTimer);
   applyFilters();
@@ -283,6 +413,7 @@ async function applyFilters() {
       state.posts = state.posts.filter(p => sentiments.includes(p.sentiment));
     }
     state.posts = filterMutedPosts(state.posts);
+    state.posts = applyCurationFilters(state.posts);
     state.currentOffset = state.posts.length;
     state.lastCursor = data.next_cursor || null;
     state.noMorePosts = serverCount < PAGE_SIZE;

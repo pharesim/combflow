@@ -143,14 +143,30 @@ async function fetchSingleMeta(p, retries = 2) {
         }
       }
     }
+    // Parse pending_payout_value (e.g. "1.234 HBD") to float
+    let payout = null;
+    if (result.pending_payout_value) {
+      const pf = parseFloat(result.pending_payout_value);
+      if (!isNaN(pf)) payout = pf;
+    }
     cacheMetaEntry(key, {
       title: result.title || '',
       thumbnail: images.length ? images[0] : '',
       votes: (result.stats && result.stats.total_votes) || (result.active_votes || []).length,
       children: result.children || 0,
+      payout: payout,
     });
     // Bump Alpine metaRev so reactive templates re-evaluate
     Alpine.store('app').metaRev++;
+    // Re-apply curation client-side filters now that new meta is available
+    if (state.curationMode && (state.curationVotes || state.curationMaxPayout !== '')) {
+      const before = state.posts.length;
+      state.posts = applyCurationFilters(state.posts);
+      if (state.posts.length !== before) {
+        syncPostsToStore();
+        updateResultsBar();
+      }
+    }
   }
 }
 
@@ -159,7 +175,7 @@ function seedMetaFromServer(posts) {
     if (!p.title) continue;
     const key = `${p.author}/${p.permlink}`;
     if (state.metaCache[key]) continue;
-    cacheMetaEntry(key, { title: p.title, thumbnail: '', votes: null, children: null });
+    cacheMetaEntry(key, { title: p.title, thumbnail: '', votes: null, children: null, payout: null });
   }
 }
 
@@ -265,6 +281,7 @@ async function loadMore() {
       newPosts = newPosts.filter(p => sentiments.includes(p.sentiment));
     }
     newPosts = filterMutedPosts(newPosts);
+    newPosts = applyCurationFilters(newPosts);
     state.lastCursor = data.next_cursor || null;
     if (serverCount < PAGE_SIZE) state.noMorePosts = true;
     if (newPosts.length > 0) {

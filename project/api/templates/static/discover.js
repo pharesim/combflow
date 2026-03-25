@@ -164,6 +164,7 @@ async function init() {
     }
   }
   applyNsfwMode(getNsfwMode());
+  initCurationUI();
 
   // Fetch suggestions based on active categories (from preferences or manual)
   scheduleSuggestions();
@@ -374,6 +375,18 @@ document.addEventListener('click', e => {
     case 'unfollow-user': handleUnfollowUser(el.dataset.user); break;
     case 'remove-editor-tag': removeEditorTag(parseInt(el.dataset.index)); break;
     case 'remove-location': e.stopPropagation(); removeLocation(); break;
+    // Curation mode
+    case 'toggle-curation-mode': break; // handled via change event
+    case 'curation-age-dec': {
+      const s = document.getElementById('curation-age-slider');
+      if (s && Number(s.value) > 0) { s.value = Number(s.value) - 1; handleCurationAgeChange(s); }
+      break;
+    }
+    case 'curation-age-inc': {
+      const s = document.getElementById('curation-age-slider');
+      if (s && Number(s.value) < 30) { s.value = Number(s.value) + 1; handleCurationAgeChange(s); }
+      break;
+    }
   }
 });
 
@@ -388,6 +401,13 @@ document.addEventListener('keydown', e => {
   if (action === 'stop-propagation') e.stopPropagation();
   if (action === 'editor-tags-input') handleTagKey(e);
 });
+
+function handleCurationAgeChange(slider) {
+  const step = Number(slider.value);
+  state.curationMaxAge = getCurationAgeValue(step);
+  document.getElementById('curation-age-label').textContent = getCurationAgeLabel(step);
+  scheduleFilter();
+}
 
 document.addEventListener('input', e => {
   const el = e.target.closest('[data-action]');
@@ -406,6 +426,11 @@ document.addEventListener('input', e => {
     case 'editor-tags-input': showTagSuggestions(); break;
     case 'report-reason-input': updateReportCount(); break;
     case 'location-desc-input': _locationAutoFilled = !el.value.trim(); break;
+    case 'curation-age-input': handleCurationAgeChange(el); break;
+    case 'curation-payout-input':
+      state.curationMaxPayout = el.value;
+      scheduleFilter();
+      break;
   }
 });
 
@@ -416,8 +441,20 @@ document.addEventListener('change', e => {
   if (action === 'sort-select') applySort(el.value);
   if (action === 'toggle-manual-voting') {
     document.getElementById('auto-vote-settings').style.display = el.checked ? 'none' : '';
+    // Show/hide curation mode option (only available when manual voting is on)
+    const curationRow = document.getElementById('settings-curation-row');
+    if (curationRow) curationRow.style.display = el.checked ? '' : 'none';
+    // If manual voting turned off, disable curation mode too
+    if (!el.checked) {
+      const curationCb = document.getElementById('settings-curation-mode');
+      if (curationCb) curationCb.checked = false;
+      setCurationMode(false);
+    }
   }
   if (action === 'community-select') onCommunitySelect();
+  if (action === 'curation-votes-select') { state.curationVotes = el.value; scheduleFilter(); }
+  if (action === 'curation-sort-select') { state.curationSort = el.value; scheduleFilter(); }
+  if (action === 'toggle-curation-mode') setCurationMode(el.checked);
 });
 
 init().then(startLiveUpdates);

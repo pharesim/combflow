@@ -158,6 +158,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Toast notifications** — non-blocking feedback for saves, errors, etc.
 - **Author profile URLs** — `/@username` shows posts filtered by that author; also triggered by clicking any username
 
+- **Curation mode** — advanced filter panel for manual curators (toggle visible when manual voting is enabled in settings). Post age slider (1h–7d with hourly/daily steps and +/- buttons), vote count dropdown, max payout $ input, and sort order (newest/oldest). Age and sort filters are server-side; vote count and payout filters apply client-side from cached Hive post metadata. Curation filter values persist per session; mode toggle persists across sessions in localStorage.
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — post-specific Open Graph meta tags on deep links (title, description, thumbnail fetched from Hive API) for rich previews on Discord, Twitter, Slack, etc. Author profile pages show `@username — HiveComb`.
@@ -297,12 +298,12 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-213 tests across 9 files:
+236 tests across 9 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `test_worker_utils.py` | 63 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, text cleaning |
-| `test_browse.py` | 43 | Browse with all filter combinations, single + multi community filter, authors filter, filter list truncation, pagination edge cases, communities endpoint, suggested communities, cache TTL |
+| `test_browse.py` | 66 | Browse with all filter combinations, single + multi community filter, authors filter, max_age + sort filters, filter list truncation, pagination edge cases (including cursor + sort=oldest), communities endpoint, suggested communities, cache TTL |
 | `test_hafsql.py` | 26 | Reputation conversion, community metadata parsing, post body lookup, connection pool, cursor lifecycle |
 | `test_api.py` | 25 | Health, categories, HTML page routes, GZip middleware, 404s |
 | `test_crud.py` | 23 | Retry decorator, category tree, seed idempotency |
@@ -326,7 +327,7 @@ CORS is open by default — any origin can call the API. To restrict access, set
 | GET | `/health` | Liveness check |
 | GET | `/categories` | Full 2-level category tree |
 | GET | `/posts/{author}/{permlink}` | Post detail with categories, languages, sentiment |
-| GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `communities`, `authors`, `limit`, `offset`) |
+| GET | `/api/browse` | Browse posts (query: `category`, `language`, `sentiment`, `community`, `communities`, `authors`, `max_age`, `sort`, `limit`, `offset`) |
 | GET | `/api/languages` | Available languages with post counts |
 | GET | `/api/stats` | Overview statistics |
 | GET | `/api/communities` | Communities with post counts, names, and categories |
@@ -358,6 +359,12 @@ curl 'https://your-server:8000/api/browse?authors=alice&authors=bob'
 
 # Filter by language and sentiment
 curl 'https://your-server:8000/api/browse?language=en&sentiment=positive&limit=20'
+
+# Filter by post age (e.g. last 6 hours, useful for curation)
+curl 'https://your-server:8000/api/browse?max_age=6h'
+
+# Sort oldest first (combine with max_age for chronological curation)
+curl 'https://your-server:8000/api/browse?max_age=1d&sort=oldest'
 
 # Paginate with cursor (from previous response's next_cursor)
 curl 'https://your-server:8000/api/browse?cursor=1711234567.0_4821'

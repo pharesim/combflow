@@ -221,6 +221,47 @@
       <button type="button" class="chip chip-nsfw" id="nsfw-filter-chip" data-sentiment="nsfw" aria-pressed="false" style="display:none">NSFW</button>
     </div>
   </div>
+  <!-- Curation filters: collapsible, visible when curation mode enabled -->
+  <div class="filter-section collapsed" id="filter-curation" style="display:none">
+    <button type="button" class="filter-header" aria-expanded="false" aria-controls="curation-filters" data-action="toggle-section" data-section="filter-curation">
+      <span>Curation</span>
+      <span class="filter-toggle" aria-hidden="true">&#9660;</span>
+    </button>
+    <div class="filter-body curation-filters" id="curation-filters">
+      <div class="curation-row">
+        <label class="curation-label">Post age</label>
+        <div class="curation-slider-wrap">
+          <button type="button" class="curation-adj" data-action="curation-age-dec" aria-label="Decrease max age">&minus;</button>
+          <input type="range" id="curation-age-slider" min="0" max="30" value="30" data-action="curation-age-input" aria-label="Maximum post age">
+          <button type="button" class="curation-adj" data-action="curation-age-inc" aria-label="Increase max age">&plus;</button>
+          <span class="curation-val" id="curation-age-label">&lt; 7 days</span>
+        </div>
+      </div>
+      <div class="curation-row">
+        <label class="curation-label" for="curation-votes">Max votes</label>
+        <select id="curation-votes" data-action="curation-votes-select">
+          <option value="">Any</option>
+          <option value="1">< 1</option>
+          <option value="5">< 5</option>
+          <option value="10">< 10</option>
+          <option value="25">< 25</option>
+          <option value="50">< 50</option>
+          <option value="100">< 100</option>
+        </select>
+      </div>
+      <div class="curation-row">
+        <label class="curation-label" for="curation-payout">Max payout $</label>
+        <input type="number" id="curation-payout" min="0" step="0.01" placeholder="No limit" data-action="curation-payout-input">
+      </div>
+      <div class="curation-row">
+        <label class="curation-label" for="curation-sort">Sort</label>
+        <select id="curation-sort" data-action="curation-sort-select">
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+        </select>
+      </div>
+    </div>
+  </div>
   <div class="filter-actions" style="display:flex;gap:8px;padding:8px 12px">
     <button type="button" class="btn btn-ghost" id="btn-save-prefs" data-action="save-preferences" x-show="$store.app.currentUser && !$store.app.filtersMatchDefault" x-cloak>Save as default</button>
     <button type="button" class="btn btn-ghost" id="btn-load-default" data-action="reset-filters" x-show="$store.app.hasDefaultFilters && !$store.app.filtersMatchDefault" x-cloak>Load default</button>
@@ -447,6 +488,10 @@
       <div class="settings-slider-row">
         <label for="settings-vote-manual">Manual voting</label>
         <input type="checkbox" id="settings-vote-manual" data-action="toggle-manual-voting">
+      </div>
+      <div class="settings-slider-row" id="settings-curation-row" style="display:none">
+        <label for="settings-curation-mode">Curation mode</label>
+        <input type="checkbox" id="settings-curation-mode" data-action="toggle-curation-mode">
       </div>
       <div id="auto-vote-settings">
         <div class="settings-slider-row">

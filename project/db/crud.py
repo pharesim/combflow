@@ -3,6 +3,8 @@ import functools
 import hashlib
 import json as _json
 import logging
+import re
+from datetime import datetime as _dt, timedelta, timezone as _tz
 
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
@@ -335,7 +337,7 @@ async def _attach_categories_and_languages(
 # ── Browse & discovery ────────────────────────────────────────────────────────
 
 
-def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None, authors=None, include_nsfw=False, nsfw_only=False):
+def _browse_count_cache_key(categories, languages, sentiment, community=None, communities=None, authors=None, include_nsfw=False, nsfw_only=False, max_age=None):
     raw = _json.dumps({"c": sorted(categories or []),
                        "l": sorted(languages or []),
                        "s": sentiment,
@@ -343,7 +345,8 @@ def _browse_count_cache_key(categories, languages, sentiment, community=None, co
                        "ms": sorted(communities) if communities else None,
                        "a": sorted(authors) if authors else None,
                        "nsfw": include_nsfw,
-                       "nsfw_only": nsfw_only}, sort_keys=True)
+                       "nsfw_only": nsfw_only,
+                       "age": max_age}, sort_keys=True)
     return f"browse_count:{hashlib.md5(raw.encode()).hexdigest()}"
 
 @retry_transient
@@ -360,6 +363,8 @@ async def browse_posts(
     cursor: str | None = None,
     include_nsfw: bool = False,
     nsfw_only: bool = False,
+    max_age: str | None = None,
+    sort: str | None = None,
 ) -> dict:
     """Browse all posts with optional filters.
 
@@ -370,6 +375,11 @@ async def browse_posts(
 
     Returns ``{"posts": [...], "next_cursor": "..." | null}``.
     """
+    # Validate sort parameter.
+    sort_order = "newest"
+    if sort and sort in ("newest", "oldest"):
+        sort_order = sort
+
     conditions = [
         "EXISTS (SELECT 1 FROM post_category WHERE post_id = p.id)",
     ]
@@ -379,15 +389,28 @@ async def browse_posts(
         conditions.append("p.is_nsfw = false")
     params: dict = {"lim": limit}
 
+    # max_age filter: restrict to posts newer than cutoff.
+    if max_age:
+        m = re.fullmatch(r"(\d+)([hd])", max_age)
+        if m:
+            value, unit = int(m.group(1)), m.group(2)
+            valid = (unit == "h" and 1 <= value <= 24) or (unit == "d" and 1 <= value <= 7)
+            if valid:
+                delta = timedelta(hours=value) if unit == "h" else timedelta(days=value)
+                params["age_cutoff"] = _dt.now(_tz.utc) - delta
+                conditions.append("p.created > :age_cutoff")
+
     # Cursor-based keyset pagination takes priority over offset.
     use_cursor = False
     if cursor:
         try:
-            from datetime import datetime as _dt, timezone as _tz
             ts_str, id_str = cursor.rsplit("_", 1)
             params["cursor_created"] = _dt.fromtimestamp(float(ts_str), tz=_tz.utc)
             params["cursor_id"] = int(id_str)
-            conditions.append("(p.created, p.id) < (:cursor_created, :cursor_id)")
+            if sort_order == "oldest":
+                conditions.append("(p.created, p.id) > (:cursor_created, :cursor_id)")
+            else:
+                conditions.append("(p.created, p.id) < (:cursor_created, :cursor_id)")
             use_cursor = True
         except (ValueError, TypeError):
             pass  # malformed cursor — fall back to offset
@@ -440,7 +463,7 @@ async def browse_posts(
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     # Filtered total count — cached with 30s TTL, keyed by filter combination.
-    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors, include_nsfw, nsfw_only)
+    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors, include_nsfw, nsfw_only, max_age=max_age)
     total = _cache.get(count_key)
     if total is None:
         count_conditions = [c for c in conditions if ":cursor_created" not in c]
@@ -465,7 +488,7 @@ async def browse_posts(
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
             {cat_join}
             {where}
-            ORDER BY p.created DESC, p.id DESC
+            ORDER BY p.created {"ASC" if sort_order == "oldest" else "DESC"}, p.id {"ASC" if sort_order == "oldest" else "DESC"}
             LIMIT :lim {offset_clause}
             """
         ),

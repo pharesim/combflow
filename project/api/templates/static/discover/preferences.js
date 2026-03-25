@@ -366,6 +366,11 @@ async function showSettingsModal() {
     document.getElementById('settings-vote-max-val').textContent = vm + '%';
     voteManualInput.checked = manual;
     document.getElementById('auto-vote-settings').style.display = manual ? 'none' : '';
+    // Curation mode checkbox: only visible when manual voting is on
+    const curationRow = document.getElementById('settings-curation-row');
+    const curationCb = document.getElementById('settings-curation-mode');
+    if (curationRow) curationRow.style.display = manual ? '' : 'none';
+    if (curationCb) curationCb.checked = state.curationMode;
     updateVoteEstimate();
   }
 
@@ -433,6 +438,9 @@ async function saveSettings() {
         localStorage.setItem('honeycomb_nsfwMode', nsfwMode);
         localStorage.setItem('honeycomb_payoutType', payoutType);
         applyNsfwMode(nsfwMode);
+        // Curation mode (localStorage only, not on-chain)
+        const curationEnabled = document.getElementById('settings-curation-mode')?.checked || false;
+        setCurationMode(voteManual && curationEnabled);
         // Merge with existing on-chain prefs
         const existing = postingMeta.combflow || {};
         postingMeta.combflow = { ...existing, ...filterPrefs, ...votePrefs };
@@ -461,6 +469,7 @@ async function saveSettings() {
   updateFilterCounts();
 
   closeSettingsModal();
+  initCurationUI();
   applyFilters();
 }
 

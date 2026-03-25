@@ -49,6 +49,7 @@ async function doLogin() {
     fetchUnreadCount();
     startNotifPolling();
     const prefs = await loadAndApplyPreferences();
+    initCurationUI();
     if (isFirstLogin(prefs)) {
       showSettingsModal();
     } else {
@@ -84,5 +85,8 @@ async function doLogout() {
   Alpine.store('app').unreadCount = 0;
   Alpine.store('app').notifOpen = false;
   Alpine.store('app').lastRead = null;
+  state.curationMode = false;
+  localStorage.removeItem('honeycomb_curationMode');
+  initCurationUI();
   clearFilters();
 }

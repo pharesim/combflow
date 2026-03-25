@@ -36,6 +36,13 @@ const state = {
   sortMode: 'newest',
   deepLinked: false,
   newestCreated: null,
+  // Curation mode
+  curationMode: localStorage.getItem('honeycomb_curationMode') === 'true',
+  curationMaxAge: '7d',
+  curationVotes: '',
+  curationMaxPayout: '',
+  curationSort: 'newest',
+  curationFilteredCount: 0,
 };
 
 // Constants

@@ -238,6 +238,8 @@ async def browse_posts(
     authors: list[str] | None = Query(default=None, description="Filter by author usernames"),
     include_nsfw: bool = Query(default=False, description="Include NSFW-tagged posts"),
     nsfw_only: bool = Query(default=False, description="Show only NSFW-tagged posts"),
+    max_age: str | None = Query(default=None, description="Max post age, e.g. '6h', '1d', '7d'", pattern=r"^\d+[hd]$"),
+    sort: str | None = Query(default=None, description="Sort order: 'newest' (default) or 'oldest'", pattern=r"^(newest|oldest)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0, le=10000),
     cursor: str | None = Query(default=None, description="Opaque cursor from previous response for keyset pagination"),
@@ -260,6 +262,7 @@ async def browse_posts(
         authors=authors,
         limit=limit, offset=offset, cursor=cursor,
         include_nsfw=include_nsfw, nsfw_only=nsfw_only,
+        max_age=max_age, sort=sort,
     )
     return {"posts": result["posts"], "count": len(result["posts"]), "total": result["total"], "next_cursor": result["next_cursor"]}
 
