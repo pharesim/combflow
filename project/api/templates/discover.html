@@ -505,12 +505,8 @@
       <span class="modal-community clickable" id="modal-community" style="display:none"></span>
       <div class="modal-date" id="modal-date"></div>
     </div>
-    <div class="modal-tags-row">
-      <div class="modal-tags" id="modal-tags"></div>
-      <template x-if="$store.app.currentUser">
-        <button type="button" class="report-btn report-btn-sm" aria-label="Report misclassification" data-action="open-report" title="Report misclassification"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>
-      </template>
-    </div>
+    <div class="modal-tags" id="modal-tags"></div>
+    <button type="button" class="report-btn report-btn-sm" style="display:none" aria-label="Report misclassification" data-action="open-report" title="Report misclassification"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>
     <div class="modal-post-tags" id="modal-post-tags"></div>
     <div class="cross-post-banner" id="cross-post-banner" style="display:none"></div>
     <div class="modal-body rendered-body" id="modal-body"></div>

@@ -21,12 +21,20 @@ async function openModal(post, skipPush) {
   document.getElementById('modal-body').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)"><div class="spinner" style="width:28px;height:28px;border:3px solid var(--card);border-top-color:var(--hive-red);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 8px"></div>Loading content...</div>';
 
   const tagsEl = document.getElementById('modal-tags');
+  // Preserve report button before clearing tags (innerHTML would destroy it)
+  const reportBtn = tagsEl.querySelector('.report-btn-sm') || document.querySelector('.report-btn-sm');
+  if (reportBtn) reportBtn.remove();
   tagsEl.innerHTML = '';
   document.getElementById('modal-post-tags').innerHTML = '';
   (post.categories||[]).forEach(c => {
     const t = document.createElement('span');
     t.className = 'tag'; t.textContent = c; tagsEl.appendChild(t);
   });
+  // Insert report button between categories and sentiment (visible only when logged in)
+  if (reportBtn) {
+    reportBtn.style.display = Alpine.store('app').currentUser ? '' : 'none';
+    tagsEl.appendChild(reportBtn);
+  }
   if (post.sentiment && safeSentiment(post.sentiment)) {
     const s = document.createElement('span');
     s.className = `tag sentiment-${safeSentiment(post.sentiment)}`;
