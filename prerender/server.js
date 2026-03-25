@@ -1,4 +1,14 @@
 const prerender = require('prerender');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const CACHE_DIR = process.env.CACHE_ROOT_DIR || '/cache';
+
+function cachePath(url) {
+  const hash = crypto.createHash('sha1').update(url).digest('hex');
+  return path.join(CACHE_DIR, hash.slice(0, 2), hash + '.html');
+}
 
 const server = prerender({
   chromeLocation: process.env.CHROME_BIN || '/usr/bin/chromium',
@@ -18,6 +28,29 @@ const server = prerender({
   waitAfterLastRequest: 1000
 });
 
-server.use(require('prerender-filesystem-cache'));
+server.use({
+  requestReceived: function(req, res, next) {
+    if (req.method !== 'GET') return next();
+    const file = cachePath(req.prerender.url);
+    fs.readFile(file, 'utf8', function(err, data) {
+      if (!err && data) {
+        console.info('cache hit for: ' + req.prerender.url);
+        res.send(200, data);
+      } else {
+        next();
+      }
+    });
+  },
+  beforeSend: function(req, res, next) {
+    if (req.prerender.statusCode === 200 && req.prerender.content) {
+      const file = cachePath(req.prerender.url);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFile(file, req.prerender.content, function(err) {
+        if (err) console.error('cache write error:', err.message);
+      });
+    }
+    next();
+  }
+});
 
 server.start();
