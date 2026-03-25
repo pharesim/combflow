@@ -1,9 +1,9 @@
-# Dev default: plain HTTP on port 80 (honeycomb.lvh.me:80)
-# Production: set CADDY_UI=honeycomb.example.com and CADDY_API=api.example.com
-#   (no port = Caddy auto-provisions TLS via Let's Encrypt + redirects HTTP→HTTPS)
-# Optional: set CADDY_UI_OLD to redirect a previous UI domain to the current one
+{
+	auto_https off
+	http_port 8080
+}
 
-{$CADDY_UI:honeycomb.lvh.me:80} {
+{$CADDY_UI:honeycomb.lvh.me} {
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB
@@ -15,7 +15,6 @@
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
-		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' https://unpkg.com 'unsafe-inline'; img-src 'self' data: https://images.hive.blog https://img.youtube.com https://images.3speak.tv https://files.peakd.com https://images.ecency.com https://usermedia.actifit.io https://cdn.steemitimages.com https://img.leopedia.io; connect-src 'self' https://api.hive.blog https://techcoderx.com https://api.openhive.network https://images.hive.blog https://nominatim.openstreetmap.org; frame-src https://youtube.com https://www.youtube.com https://youtube-nocookie.com https://www.youtube-nocookie.com https://player.vimeo.com https://play.3speak.tv https://www.instagram.com https://www.skatehype.com https://odysee.com https://rumble.com https://open.spotify.com https://w.soundcloud.com https://emb.d.tube https://lbry.tv https://hivedapps.com about:blank; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
 	}
 	handle /.well-known/security.txt {
@@ -45,11 +44,11 @@ Preferred-Languages: en
 	}
 }
 
-{$CADDY_UI_OLD:http://old.invalid} {
-	redir https://{$CADDY_UI}{uri} permanent
+{$CADDY_UI_OLD:old.invalid} {
+	redir http://{$CADDY_UI}{uri} permanent
 }
 
-{$CADDY_API:combflow.lvh.me:80} {
+{$CADDY_API:combflow.lvh.me} {
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB
@@ -70,7 +69,6 @@ Preferred-Languages: en
 		file_server
 	}
 	redir / /docs permanent
-	# Only allow API paths — block UI routes and static assets
 	@api_paths {
 		path /api/* /docs /docs/* /openapi.json /redoc /health /categories /posts/*
 	}
@@ -79,7 +77,6 @@ Preferred-Languages: en
 		encode zstd gzip
 		reverse_proxy combflow-app:8000
 	}
-	# Everything else returns 404
 	handle {
 		respond "Not Found" 404
 	}

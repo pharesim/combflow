@@ -3,18 +3,15 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:8080"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
       - caddy_logs:/var/log/caddy
       - goaccess_html:/var/www/goaccess:ro
     environment:
-      CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
-      CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
-      CADDY_UI_OLD: ${CADDY_UI_OLD:-http://old.invalid}
+      CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me}
+      CADDY_API: ${CADDY_API:-combflow.lvh.me}
+      CADDY_UI_OLD: ${CADDY_UI_OLD:-old.invalid}
     depends_on:
       combflow-app:
         condition: service_healthy
@@ -40,8 +37,8 @@ services:
       PYTHONPATH: /combflow
       HF_HUB_DISABLE_TELEMETRY: "1"
       HF_HUB_VERBOSITY: critical
-      CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me:80}
-      CADDY_API: ${CADDY_API:-combflow.lvh.me:80}
+      CADDY_UI: ${CADDY_UI:-honeycomb.lvh.me}
+      CADDY_API: ${CADDY_API:-combflow.lvh.me}
     depends_on:
       db:
         condition: service_healthy
@@ -182,8 +179,6 @@ services:
 
 volumes:
   postgres_data:
-  caddy_data:
-  caddy_config:
   caddy_logs:
   goaccess_html:
   prerender_cache:

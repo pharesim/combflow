@@ -22,12 +22,12 @@ class Settings(BaseSettings):
     api_url: str = "http://combflow-app:8000"
 
     # Public URLs
-    caddy_ui: str = ""  # e.g. "hivecomb.com" or "honeycomb.lvh.me:80" — UI domain
-    caddy_api: str = ""  # e.g. "api.example.com" or "combflow.lvh.me:80" — API domain
+    caddy_ui: str = ""  # e.g. "hivecomb.com" — UI domain
+    caddy_api: str = ""  # e.g. "api.example.com" — API domain
 
     @staticmethod
     def _host_to_url(host: str) -> str:
-        """Derive full URL from a Caddy host. Port 80 = HTTP, else HTTPS."""
+        """Derive full URL from a hostname. Bare hostname = HTTPS."""
         if not host:
             return ""
         if host.endswith(":80") or host.endswith(":443"):
