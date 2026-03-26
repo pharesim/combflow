@@ -103,15 +103,28 @@ async function openModal(post, skipPush) {
     }
     // Comment navigation — show parent/root links when viewing a comment
     if (result.parent_author) {
-      const isDirectReply = result.parent_author === result.root_author
-        && result.parent_permlink === result.root_permlink;
+      // Traverse up to find the root post
+      let rootAuthor = null, rootPermlink = null;
+      let cur = result;
+      while (cur && cur.parent_author) {
+        const parent = await hiveRpc('bridge.get_post', {author: cur.parent_author, permlink: cur.parent_permlink});
+        if (!parent) break;
+        rootAuthor = parent.author;
+        rootPermlink = parent.permlink;
+        cur = parent;
+      }
       let navHtml = '<div class="comment-nav">';
+      const isDirectReply = !rootAuthor || (result.parent_author === rootAuthor && result.parent_permlink === rootPermlink);
       if (!isDirectReply) {
         navHtml += '<a href="/@' + encodeURIComponent(result.parent_author) + '/' + encodeURIComponent(result.parent_permlink) + '" data-action="navigate-post" data-author="' + esc(result.parent_author) + '" data-permlink="' + esc(result.parent_permlink) + '">Parent comment</a>';
       }
-      navHtml += '<a href="/@' + encodeURIComponent(result.root_author) + '/' + encodeURIComponent(result.root_permlink) + '" data-action="navigate-post" data-author="' + esc(result.root_author) + '" data-permlink="' + esc(result.root_permlink) + '">Original post</a>';
+      if (rootAuthor && rootPermlink) {
+        navHtml += '<a href="/@' + encodeURIComponent(rootAuthor) + '/' + encodeURIComponent(rootPermlink) + '" data-action="navigate-post" data-author="' + esc(rootAuthor) + '" data-permlink="' + esc(rootPermlink) + '">Original post</a>';
+      }
       navHtml += '</div>';
-      document.getElementById('modal-body').insertAdjacentHTML('afterbegin', navHtml);
+      if (navHtml !== '<div class="comment-nav"></div>') {
+        document.getElementById('modal-body').insertAdjacentHTML('afterbegin', navHtml);
+      }
     }
     // Vote count in modal
     const voteCount = (result.stats && result.stats.total_votes) || (result.active_votes || []).length;
