@@ -110,31 +110,36 @@ def get_reputations(authors: list[str]) -> dict[str, float]:
 
 
 def get_reputations_via_api(authors: list[str]) -> dict[str, float]:
-    """Fallback: fetch reputations via Hive API when HAFSQL is unreachable."""
+    """Fallback: fetch reputations via Hive API when HAFSQL is unreachable.
+
+    Uses bridge.get_profile (one call per author) which returns the
+    pre-computed human-readable reputation score directly, unlike
+    condenser_api.get_accounts which now returns reputation: 0.
+    """
     if not authors:
         return {}
-    for node in settings.hive_api_nodes:
-        try:
-            resp = requests.post(
-                node,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "condenser_api.get_accounts",
-                    "params": [authors[:1000]],
-                    "id": 1,
-                },
-                timeout=4,
-            )
-            data = resp.json()
-            accounts = data.get("result", [])
-            return {
-                acc["name"]: _raw_rep_to_score(int(acc.get("reputation", 0)))
-                for acc in accounts
-                if "name" in acc
-            }
-        except Exception:
-            continue
-    return {}
+    result: dict[str, float] = {}
+    for author in authors[:1000]:
+        for node in settings.hive_api_nodes:
+            try:
+                resp = requests.post(
+                    node,
+                    json={
+                        "jsonrpc": "2.0",
+                        "method": "bridge.get_profile",
+                        "params": {"account": author},
+                        "id": 1,
+                    },
+                    timeout=4,
+                )
+                data = resp.json()
+                profile = data.get("result")
+                if profile and "reputation" in profile:
+                    result[author] = float(profile["reputation"])
+                break  # success on this node, move to next author
+            except Exception:
+                continue  # try next node
+    return result
 
 
 async def get_reputation_via_api(username: str) -> float | None:

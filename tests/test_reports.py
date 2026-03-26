@@ -291,6 +291,21 @@ async def test_submit_report_low_reputation_rejected(client):
 
 
 @pytest.mark.usefixtures("seeded_db")
+async def test_submit_report_high_reputation_allowed(client):
+    """Reporter with reputation > 25 is allowed through."""
+    with (
+        patch("project.api.routes.reports.fetch_posting_keys", new_callable=AsyncMock, return_value=["STM7abc123"]),
+        patch("project.api.routes.reports.verify_hive_signature", return_value=True),
+        patch("project.api.routes.reports.get_reputation_via_api", new_callable=AsyncMock, return_value=73.54),
+    ):
+        resp = await client.post(
+            "/api/posts/alice/test-post-one/report",
+            json={"username": "highrep", "reason": "Wrong category", "signature": "1f" + "ab" * 64},
+        )
+    assert resp.status_code == 201
+
+
+@pytest.mark.usefixtures("seeded_db")
 async def test_submit_report_reputation_none_allowed(client):
     """When reputation API returns None, report is allowed (fail-open)."""
     with (

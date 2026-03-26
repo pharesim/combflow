@@ -321,24 +321,23 @@ class TestGetReputationsViaApi:
         assert get_reputations_via_api([]) == {}
 
     def test_returns_scores(self):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "result": [
-                {"name": "alice", "reputation": 1_000_000_000},
-                {"name": "bob", "reputation": 500_000_000_000_000},
-            ]
+        # bridge.get_profile returns pre-computed scores, one call per author
+        responses = {
+            "alice": MagicMock(json=MagicMock(return_value={"result": {"reputation": 30.5}})),
+            "bob": MagicMock(json=MagicMock(return_value={"result": {"reputation": 65.2}})),
         }
-        with patch("project.hafsql.requests.post", return_value=mock_resp):
+        def side_effect(*args, **kwargs):
+            account = kwargs.get("json", args[1] if len(args) > 1 else {}).get("params", {}).get("account")
+            return responses[account]
+        with patch("project.hafsql.requests.post", side_effect=side_effect):
             result = get_reputations_via_api(["alice", "bob"])
-        assert "alice" in result
-        assert "bob" in result
+        assert result["alice"] == 30.5
+        assert result["bob"] == 65.2
         assert result["bob"] > result["alice"]
 
     def test_failover_to_second_node(self):
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "result": [{"name": "alice", "reputation": 1_000_000_000}]
-        }
+        mock_resp.json.return_value = {"result": {"reputation": 45.0}}
         call_count = [0]
         def side_effect(*args, **kwargs):
             call_count[0] += 1
@@ -347,7 +346,7 @@ class TestGetReputationsViaApi:
             return mock_resp
         with patch("project.hafsql.requests.post", side_effect=side_effect):
             result = get_reputations_via_api(["alice"])
-        assert "alice" in result
+        assert result["alice"] == 45.0
 
     def test_all_nodes_fail_returns_empty(self):
         with patch("project.hafsql.requests.post", side_effect=Exception("all down")):
