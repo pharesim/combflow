@@ -269,12 +269,8 @@ async function loadMore() {
   state.loadingMore = true;
   document.getElementById('loading-more').style.display = 'block';
 
-  const { url, sentiments } = buildFilterUrl(PAGE_SIZE, state.currentOffset);
-  const fetchUrl = state.lastCursor ? url + `&cursor=${encodeURIComponent(state.lastCursor)}` : url;
-
   try {
-    const res = await fetch(fetchUrl);
-    const data = await res.json();
+    const { data, sentiments } = await browseFetch(PAGE_SIZE, state.currentOffset, state.lastCursor);
     let newPosts = data.posts || [];
     const serverCount = newPosts.length;
     if (sentiments.length > 1) {

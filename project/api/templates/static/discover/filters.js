@@ -266,41 +266,86 @@ function applyCurationFilters(posts) {
   return filtered;
 }
 
-// ── Build filter URL (reads from Alpine store) ──
-function buildFilterUrl(limit, offset) {
+// ── Gather current filter params (shared by GET and POST paths) ──
+function _gatherFilterParams(limit, offset) {
   const f = Alpine.store('filters');
   const cats = Array.from(f.categories);
   const sentiments = Array.from(f.sentiments);
   const langs = Array.from(f.languages);
-  let url = `/api/browse?limit=${limit}&offset=${offset}`;
-  cats.forEach(c => url += `&category=${encodeURIComponent(c)}`);
-  langs.forEach(l => url += `&language=${encodeURIComponent(l)}`);
-  if (state.authorFilterUser) {
-    url += `&authors=${encodeURIComponent(state.authorFilterUser)}`;
-  } else if (state.followingFilterActive && state.followedUsers.size > 0) {
-    state.followedUsers.forEach(u => url += `&authors=${encodeURIComponent(u)}`);
-  } else if (state.myCommunitiesActive && state.userCommunities && state.userCommunities.length > 0) {
-    state.userCommunities.forEach(c => url += `&communities=${encodeURIComponent(c.id)}`);
-  } else if (state.activeCommunityFilter) {
-    url += `&community=${encodeURIComponent(state.activeCommunityFilter)}`;
-  }
-  // Sentiment filter (exclude nsfw pseudo-sentiment from the server param)
   const realSentiments = sentiments.filter(s => s !== 'nsfw');
-  if (realSentiments.length === 1) url += `&sentiment=${encodeURIComponent(realSentiments[0])}`;
-  // NSFW mode: hide (default) / show / filter
   const nsfwMode = getNsfwMode();
-  if (nsfwMode === 'show' || nsfwMode === 'filter') url += '&include_nsfw=true';
-  if (nsfwMode === 'filter' && sentiments.includes('nsfw')) url += '&nsfw_only=true';
-  // Curation mode: server-side params
-  if (state.curationMode) {
-    if (state.curationMaxAge && state.curationMaxAge !== '7d') {
-      url += `&max_age=${encodeURIComponent(state.curationMaxAge)}`;
-    }
-    if (state.curationSort && state.curationSort !== 'newest') {
-      url += `&sort=${encodeURIComponent(state.curationSort)}`;
-    }
+
+  const params = { limit, offset };
+  if (cats.length) params.category = cats;
+  if (langs.length) params.language = langs;
+
+  // Author / community filters (mutually exclusive)
+  let authors = null;
+  if (state.authorFilterUser) {
+    authors = [state.authorFilterUser];
+  } else if (state.followingFilterActive && state.followedUsers.size > 0) {
+    authors = Array.from(state.followedUsers);
   }
-  return { url, sentiments: realSentiments };
+  if (authors) {
+    params.authors = authors;
+  } else if (state.myCommunitiesActive && state.userCommunities && state.userCommunities.length > 0) {
+    params.communities = state.userCommunities.map(c => c.id);
+  } else if (state.activeCommunityFilter) {
+    params.community = state.activeCommunityFilter;
+  }
+
+  if (realSentiments.length === 1) params.sentiment = realSentiments[0];
+  if (nsfwMode === 'show' || nsfwMode === 'filter') params.include_nsfw = true;
+  if (nsfwMode === 'filter' && sentiments.includes('nsfw')) params.nsfw_only = true;
+
+  if (state.curationMode) {
+    if (state.curationMaxAge && state.curationMaxAge !== '7d') params.max_age = state.curationMaxAge;
+    if (state.curationSort && state.curationSort !== 'newest') params.sort = state.curationSort;
+  }
+
+  return { params, sentiments: realSentiments };
+}
+
+// ── Build filter URL (reads from Alpine store) ──
+function buildFilterUrl(limit, offset) {
+  const { params, sentiments } = _gatherFilterParams(limit, offset);
+  let url = `/api/browse?limit=${params.limit}&offset=${params.offset}`;
+  (params.category || []).forEach(c => url += `&category=${encodeURIComponent(c)}`);
+  (params.language || []).forEach(l => url += `&language=${encodeURIComponent(l)}`);
+  (params.authors || []).forEach(u => url += `&authors=${encodeURIComponent(u)}`);
+  (params.communities || []).forEach(c => url += `&communities=${encodeURIComponent(c)}`);
+  if (params.community) url += `&community=${encodeURIComponent(params.community)}`;
+  if (params.sentiment) url += `&sentiment=${encodeURIComponent(params.sentiment)}`;
+  if (params.include_nsfw) url += '&include_nsfw=true';
+  if (params.nsfw_only) url += '&nsfw_only=true';
+  if (params.max_age) url += `&max_age=${encodeURIComponent(params.max_age)}`;
+  if (params.sort) url += `&sort=${encodeURIComponent(params.sort)}`;
+  return { url, sentiments };
+}
+
+// ── Fetch browse results, using POST when authors list is large ──
+async function browseFetch(limit, offset, cursor, signal) {
+  const { params, sentiments } = _gatherFilterParams(limit, offset);
+  const usePost = params.authors && params.authors.length > 50;
+
+  let data;
+  if (usePost) {
+    const body = Object.assign({}, params);
+    if (cursor) body.cursor = cursor;
+    const res = await fetch('/api/browse', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+      signal,
+    });
+    data = await res.json();
+  } else {
+    const { url } = buildFilterUrl(limit, offset);
+    const fetchUrl = cursor ? url + `&cursor=${encodeURIComponent(cursor)}` : url;
+    const res = await fetch(fetchUrl, { signal });
+    data = await res.json();
+  }
+  return { data, sentiments };
 }
 
 // ── Filters ──
@@ -401,11 +446,8 @@ async function applyFilters() {
   state.noMorePosts = false;
   state.lastCursor = null;
 
-  const { url, sentiments } = buildFilterUrl(PAGE_SIZE, 0);
-
   try {
-    const res = await fetch(url, {signal: fetchAbort.signal});
-    const data = await res.json();
+    const { data, sentiments } = await browseFetch(PAGE_SIZE, 0, null, fetchAbort.signal);
     state.posts = data.posts || [];
     state.filteredTotalCount = data.total || 0;
     const serverCount = state.posts.length;

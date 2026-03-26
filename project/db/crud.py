@@ -422,30 +422,24 @@ async def browse_posts(
         params["off"] = offset
 
     if languages:
-        lang_placeholders = ", ".join(f":lang_{i}" for i in range(len(languages)))
         conditions.append(
-            f"EXISTS (SELECT 1 FROM post_language pl_f "
-            f"WHERE pl_f.post_id = p.id AND pl_f.language IN ({lang_placeholders}))"
+            "EXISTS (SELECT 1 FROM post_language pl_f "
+            "WHERE pl_f.post_id = p.id AND pl_f.language = ANY(CAST(:languages AS text[])))"
         )
-        for i, lang in enumerate(languages):
-            params[f"lang_{i}"] = lang
+        params["languages"] = languages
     if sentiment:
         conditions.append("p.sentiment = :sent")
         params["sent"] = sentiment
     if communities:
-        comm_placeholders = ", ".join(f":comm_{i}" for i in range(len(communities)))
-        conditions.append(f"p.community_id IN ({comm_placeholders})")
-        for i, cid in enumerate(communities):
-            params[f"comm_{i}"] = cid
+        conditions.append("p.community_id = ANY(CAST(:communities AS text[]))")
+        params["communities"] = communities
     elif community:
         conditions.append("p.community_id = :community")
         params["community"] = community
 
     if authors:
-        author_placeholders = ", ".join(f":author_{i}" for i in range(len(authors)))
-        conditions.append(f"p.author IN ({author_placeholders})")
-        for i, a in enumerate(authors):
-            params[f"author_{i}"] = a
+        conditions.append("p.author = ANY(CAST(:authors AS text[]))")
+        params["authors"] = authors
 
     cat_join = ""
     if categories:

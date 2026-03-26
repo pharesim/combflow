@@ -8,6 +8,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -265,6 +266,45 @@ async def browse_posts(
         limit=limit, offset=offset, cursor=cursor,
         include_nsfw=include_nsfw, nsfw_only=nsfw_only,
         max_age=max_age, sort=sort,
+    )
+    return {"posts": result["posts"], "count": len(result["posts"]), "total": result["total"], "next_cursor": result["next_cursor"]}
+
+
+class BrowseRequest(BaseModel):
+    category: list[str] | None = None
+    language: list[str] | None = None
+    sentiment: str | None = None
+    community: str | None = None
+    communities: list[str] | None = None
+    authors: list[str] | None = None
+    include_nsfw: bool = False
+    nsfw_only: bool = False
+    max_age: str | None = Field(default=None, pattern=r"^\d+[hd]$")
+    sort: str | None = Field(default=None, pattern=r"^(newest|oldest)$")
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0, le=10000)
+    cursor: str | None = None
+
+
+@router.post("/api/browse", tags=["discovery"], summary="Browse posts with filters (POST)")
+async def browse_posts_post(
+    body: BrowseRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    category = body.category[:50] if body.category else None
+    language = body.language[:100] if body.language else None
+    communities = body.communities[:200] if body.communities else None
+    authors = body.authors[:3000] if body.authors else None
+
+    result = await crud.browse_posts(
+        db, categories=category, languages=language,
+        sentiment=body.sentiment,
+        community=None if communities else body.community,
+        communities=communities,
+        authors=authors,
+        limit=body.limit, offset=body.offset, cursor=body.cursor,
+        include_nsfw=body.include_nsfw, nsfw_only=body.nsfw_only,
+        max_age=body.max_age, sort=body.sort,
     )
     return {"posts": result["posts"], "count": len(result["posts"]), "total": result["total"], "next_cursor": result["next_cursor"]}
 

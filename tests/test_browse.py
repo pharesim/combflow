@@ -627,3 +627,52 @@ async def test_browse_sort_oldest_cursor_pagination(client, seeded_db, db_sessio
     # Page 2 posts should be newer than page 1 posts (ascending order).
     if data2["posts"]:
         assert data1["posts"][-1]["created"] <= data2["posts"][0]["created"]
+
+
+# ── POST /api/browse ──────────────────────────────────────────────────────
+
+
+async def test_post_browse_returns_posts(client, seeded_db):
+    """POST /api/browse returns same shape as GET."""
+    resp = await client.post("/api/browse", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "posts" in data
+    assert "count" in data
+    assert "total" in data
+    assert "next_cursor" in data
+    assert data["count"] == len(data["posts"])
+    assert data["count"] >= 3
+
+
+async def test_post_browse_filter_by_authors(client, seeded_db):
+    """POST /api/browse filters by authors in JSON body."""
+    resp = await client.post("/api/browse", json={"authors": ["alice"]})
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 1
+    for post in posts:
+        assert post["author"] == "alice"
+
+
+async def test_post_browse_filter_by_category(client, seeded_db):
+    """POST /api/browse filters by category in JSON body."""
+    leaf = seeded_db["leaf_name"]
+    resp = await client.post("/api/browse", json={"category": [leaf]})
+    assert resp.status_code == 200
+    posts = resp.json()["posts"]
+    assert len(posts) >= 1
+    for post in posts:
+        assert leaf in post["categories"]
+
+
+async def test_post_browse_validates_max_age(client, seeded_db):
+    """POST /api/browse validates max_age pattern."""
+    resp = await client.post("/api/browse", json={"max_age": "abc"})
+    assert resp.status_code == 422
+
+
+async def test_post_browse_validates_sort(client, seeded_db):
+    """POST /api/browse validates sort pattern."""
+    resp = await client.post("/api/browse", json={"sort": "random"})
+    assert resp.status_code == 422
