@@ -48,7 +48,7 @@ Preferred-Languages: en
 }
 
 http://{$CADDY_UI_OLD:old.invalid} {
-	redir http://{$CADDY_UI}{uri} permanent
+	redir https://{$CADDY_UI}{uri} permanent
 }
 
 http://{$CADDY_API:combflow.lvh.me} {
