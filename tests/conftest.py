@@ -20,6 +20,21 @@ from project.api.deps import get_db
 from project.categories import CATEGORY_TREE
 from project import cache
 
+
+def pytest_collection_modifyitems(items):
+    """Use a session-scoped event loop for all async tests.
+
+    Prevents asyncpg 'Event loop is closed' errors caused by stale connections
+    from a previous test's event loop being GC'd during a later test.
+    """
+    session_marker = pytest.mark.asyncio(loop_scope="session")
+    for item in items:
+        if item.get_closest_marker("asyncio"):
+            item.own_markers = [
+                m for m in item.own_markers if m.name != "asyncio"
+            ]
+            item.add_marker(session_marker)
+
 _PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
 
@@ -78,6 +93,7 @@ async def setup_db(_apply_migrations):
             await conn.execute(text("TRUNCATE " + ", ".join(tables) + " CASCADE"))
     yield
     cache.clear()
+    await _test_engine.dispose()
 
 
 @pytest.fixture
