@@ -87,24 +87,26 @@ def _backfill_thread(
     while not stop_event.is_set():
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute(
-                """
-                SELECT c.author, c.permlink, c.title, c.body, c.created,
-                       c.json_metadata, c.parent_permlink,
-                       r.reputation
-                FROM hafsql.comments c
-                LEFT JOIN hafsql.reputations r ON c.author = r.account_name
-                WHERE c.parent_author = ''
-                  AND c.deleted = false
-                  AND LENGTH(c.body) >= 80
-                  AND c.created < %s
-                ORDER BY c.created DESC
-                LIMIT %s
-                """,
-                (cursor_dt, _CATCHUP_BATCH if catching_up else _BACKFILL_BATCH),
-            )
-            rows = cur.fetchall()
-            cur.close()
+            try:
+                cur.execute(
+                    """
+                    SELECT c.author, c.permlink, c.title, c.body, c.created,
+                           c.json_metadata, c.parent_permlink,
+                           r.reputation
+                    FROM hafsql.comments c
+                    LEFT JOIN hafsql.reputations r ON c.author = r.account_name
+                    WHERE c.parent_author = ''
+                      AND c.deleted = false
+                      AND LENGTH(c.body) >= 80
+                      AND c.created < %s
+                    ORDER BY c.created DESC
+                    LIMIT %s
+                    """,
+                    (cursor_dt, _CATCHUP_BATCH if catching_up else _BACKFILL_BATCH),
+                )
+                rows = cur.fetchall()
+            finally:
+                cur.close()
             retries = 0
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
             delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)

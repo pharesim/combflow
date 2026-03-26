@@ -303,7 +303,7 @@ async def test_og_post_fallback_returns_none(client):
 async def test_og_post_fallback_raises_exception(client):
     """When Hive API raises, OG tags use defaults."""
     with patch("project.api.routes.ui.get_post_metadata") as mock_get:
-        mock_get.side_effect = Exception("network error")
+        mock_get.side_effect = OSError("network error")
         resp = await client.get("/@alice/my-great-post")
     assert resp.status_code == 200
     assert _OG_DEFAULT_TITLE in resp.text

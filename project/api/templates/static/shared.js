@@ -64,6 +64,22 @@ function isRead(key) {
   return getReadSet().has(key);
 }
 
+// ── Relative time ──
+function relativeTime(dateStr) {
+  const s = String(dateStr);
+  const d = new Date(s.endsWith('Z') || s.includes('+') ? s : s + 'Z');
+  const diff = Math.max(0, Date.now() - d.getTime());
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return days + 'd ago';
+  const months = Math.floor(days / 30);
+  return months + 'mo ago';
+}
+
 // ── Validation helpers ──
 const VALID_SENTIMENTS = new Set(['positive', 'negative', 'neutral']);
 function safeSentiment(s) {

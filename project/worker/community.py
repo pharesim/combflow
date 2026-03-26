@@ -1,4 +1,5 @@
 """Community → category resolution for the Hive worker."""
+import collections
 import logging
 import re
 import threading
@@ -27,8 +28,10 @@ def _strip_hive_words(text: str) -> str:
 
 # community_id -> (category_slug | None, community_name, score)
 _cache_lock = threading.Lock()
-_community_cache: dict[str, tuple[str | None, str, float]] = {}
+_community_cache: collections.OrderedDict[str, tuple[str | None, str, float]] = collections.OrderedDict()
 _persisted_communities: set[str] = set()
+_MAX_COMMUNITY_CACHE = 50_000
+_EVICT_BATCH = 5_000
 
 
 def _extract_community_id(parent_permlink: str | None) -> str | None:
@@ -77,6 +80,10 @@ def _resolve_community(
 
     with _cache_lock:
         _community_cache[community_id] = result
+        if len(_community_cache) > _MAX_COMMUNITY_CACHE:
+            for _ in range(_EVICT_BATCH):
+                evicted_id, _ = _community_cache.popitem(last=False)
+                _persisted_communities.discard(evicted_id)
     logger.info("community %s resolved: category=%s name=%r score=%.3f",
                 community_id, result[0], result[1], result[2])
     return result

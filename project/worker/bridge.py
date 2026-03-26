@@ -60,10 +60,10 @@ def _set_cursor(db, key: str, block_num: int) -> None:
     db.run(_do())
 
 
-def _get_distinct_authors(db) -> list[str]:
+def _get_distinct_authors(db, limit: int = 10_000, offset: int = 0) -> list[str]:
     async def _do():
         async with AsyncSessionLocal() as session:
-            return await crud.get_distinct_authors(session)
+            return await crud.get_distinct_authors(session, limit=limit, offset=offset)
     return db.run(_do())
 
 

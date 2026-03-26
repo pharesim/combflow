@@ -77,8 +77,8 @@ async def _fetch_post_og(author: str, permlink: str) -> dict:
         if meta["image"]:
             og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
         return og
-    except Exception:
-        logger.debug("OG fetch failed for %s/%s", author, permlink, exc_info=True)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logger.debug("OG fetch failed for %s/%s: %s", author, permlink, exc)
         return {}
 
 

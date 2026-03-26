@@ -537,10 +537,13 @@ async def get_overview_stats(session: AsyncSession) -> dict:
 # ── Blacklist sweep ──────────────────────────────────────────────────────────
 
 @retry_transient
-async def get_distinct_authors(session: AsyncSession) -> list[str]:
-    """Return all distinct authors that have posts in the DB."""
+async def get_distinct_authors(
+    session: AsyncSession, limit: int = 10_000, offset: int = 0
+) -> list[str]:
+    """Return distinct authors that have posts in the DB, paginated."""
     rows = await session.execute(
-        text("SELECT DISTINCT author FROM posts")
+        text("SELECT DISTINCT author FROM posts ORDER BY author LIMIT :lim OFFSET :off"),
+        {"lim": limit, "off": offset},
     )
     return [r[0] for r in rows.fetchall()]
 

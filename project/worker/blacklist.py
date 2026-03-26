@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 # In-memory cache: author -> (is_blacklisted, timestamp)
 _cache: dict[str, tuple[bool, float]] = {}
+_cache_lock = threading.Lock()
 _CACHE_TTL = 3600 * 6  # 6 hours
+_MAX_CACHE = 100_000
 _TIMEOUT = 5  # seconds
 _SWEEP_INTERVAL = 86400  # 24 hours between sweeps
 _SWEEP_RATE_LIMIT = 0.5  # seconds between API calls during sweep
@@ -31,7 +33,13 @@ def is_blacklisted(author: str) -> bool:
             body = resp.read().decode("utf-8", errors="replace")
         # API returns a JSON array of blacklist entries. Empty array = not blacklisted.
         blacklisted = body.strip() not in ("[]", "")
-        _cache[author] = (blacklisted, now)
+        with _cache_lock:
+            _cache[author] = (blacklisted, now)
+            if len(_cache) > _MAX_CACHE:
+                # Drop oldest entries by timestamp.
+                oldest = sorted(_cache, key=lambda k: _cache[k][1])
+                for k in oldest[:len(_cache) - _MAX_CACHE]:
+                    del _cache[k]
         if blacklisted:
             logger.info("BLACKLIST author %s is blacklisted: %s", author, body.strip()[:200])
         return blacklisted
@@ -58,7 +66,21 @@ def sweep_thread(db, stop_event: threading.Event) -> None:
 
     while not stop_event.is_set():
         try:
-            authors = _get_distinct_authors(db)
+            # Prune expired cache entries before sweep.
+            with _cache_lock:
+                now = time.monotonic()
+                expired = [k for k, (_, ts) in _cache.items() if now - ts >= _CACHE_TTL]
+                for k in expired:
+                    del _cache[k]
+
+            authors: list[str] = []
+            offset = 0
+            while True:
+                batch = _get_distinct_authors(db, limit=10_000, offset=offset)
+                if not batch:
+                    break
+                authors.extend(batch)
+                offset += len(batch)
             logger.info("BLACKLIST sweep: checking %d authors", len(authors))
             removed = 0
             for author in authors:
