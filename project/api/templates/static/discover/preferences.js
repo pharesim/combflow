@@ -444,16 +444,21 @@ async function saveSettings() {
         // Merge with existing on-chain prefs
         const existing = postingMeta.combflow || {};
         postingMeta.combflow = { ...existing, ...filterPrefs, ...votePrefs };
-        const ops = [['account_update2', {
-          account: auth.username,
-          json_metadata: '',
-          posting_json_metadata: JSON.stringify(postingMeta),
-          extensions: [],
-        }]];
-        window.hive_keychain.requestBroadcast(auth.username, ops, 'posting', (response) => {
-          if (response.success) showToast('Preferences saved on-chain', 'success');
-          else showToast('Could not save preferences', 'error');
-        });
+        // Skip broadcast if on-chain prefs haven't changed
+        if (JSON.stringify(postingMeta.combflow) !== JSON.stringify(existing)) {
+          const ops = [['account_update2', {
+            account: auth.username,
+            json_metadata: '',
+            posting_json_metadata: JSON.stringify(postingMeta),
+            extensions: [],
+          }]];
+          window.hive_keychain.requestBroadcast(auth.username, ops, 'posting', (response) => {
+            if (response.success) showToast('Preferences saved on-chain', 'success');
+            else showToast('Could not save preferences', 'error');
+          });
+        } else {
+          showToast('Settings saved', 'success');
+        }
       }
     } catch(e) {
       showToast('Could not save preferences', 'error');
