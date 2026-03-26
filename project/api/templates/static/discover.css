@@ -611,23 +611,23 @@ body{overflow-x:hidden}
 .notif-msg{flex:1;min-width:0;font-size:13px;color:var(--text);line-height:1.5}
 .notif-time{font-size:11px;color:var(--text-dim);flex-shrink:0;white-space:nowrap;margin-left:6px}
 .notif-empty{padding:32px 16px;text-align:center;color:var(--text-dim);font-size:13px}
-@media(max-width:768px){.notif-dropdown{width:calc(100vw - 32px);right:-60px}}
+@media(max-width:768px){.notif-dropdown{position:fixed;left:16px;right:16px;width:auto;top:56px}}
 
 /* ── Hive content layout classes ── */
-.modal-body .pull-left,
-.modal-body .pull-right {
+.rendered-body .pull-left,
+.rendered-body .pull-right {
   width: 50%;
   display: inline-block;
   vertical-align: top;
   box-sizing: border-box;
 }
-.modal-body .pull-left { float: left; padding-right: 8px; }
-.modal-body .pull-right { float: right; padding-left: 8px; }
-.modal-body .text-justify { text-align: justify; overflow: hidden; }
+.rendered-body .pull-left { float: left; padding-right: 8px; }
+.rendered-body .pull-right { float: right; padding-left: 8px; }
+.rendered-body .text-justify { text-align: justify; overflow: hidden; }
 
 @media (max-width: 767px) {
-  .modal-body .pull-left,
-  .modal-body .pull-right {
+  .rendered-body .pull-left,
+  .rendered-body .pull-right {
     width: 100%;
     float: none;
     display: block;

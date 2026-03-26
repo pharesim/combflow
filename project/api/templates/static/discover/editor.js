@@ -335,6 +335,20 @@ function showEditorTab(tab) {
   const toolbar = document.getElementById('editor-toolbar');
   if (tab === 'preview') {
     preview.innerHTML = renderHiveBody(textarea.value || '');
+    // Show worldmappin mini-map if location tag present
+    const wmMatch = (textarea.value || '').match(/\[\/\/\]:#\s*\(!worldmappin\s+([\d.-]+)\s+lat\s+([\d.-]+)\s+long\s*(.*?)\s*d3scr\)/);
+    if (wmMatch) {
+      const lat = parseFloat(wmMatch[1]), lng = parseFloat(wmMatch[2]), desc = wmMatch[3].trim() || 'Location';
+      const mapDiv = document.createElement('div');
+      mapDiv.id = 'editor-preview-map';
+      mapDiv.style.cssText = 'height:200px;border-radius:8px;margin:12px 0;z-index:0';
+      preview.appendChild(mapDiv);
+      _loadLeaflet().then(() => {
+        const map = L.map('editor-preview-map', { scrollWheelZoom: false, dragging: false, zoomControl: false, attributionControl: false }).setView([lat, lng], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+        L.marker([lat, lng]).addTo(map).bindPopup(desc).openPopup();
+      });
+    }
     preview.style.display = '';
     textarea.style.display = 'none';
     toolbar.style.display = 'none';
