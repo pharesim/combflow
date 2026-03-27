@@ -7,7 +7,7 @@ http://{$CADDY_UI:honeycomb.lvh.me} {
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB
-			roll_keep 3
+			roll_keep 30
 		}
 	}
 	header {
@@ -58,7 +58,7 @@ http://{$CADDY_API:combflow.lvh.me} {
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB
-			roll_keep 3
+			roll_keep 30
 		}
 	}
 	header {
