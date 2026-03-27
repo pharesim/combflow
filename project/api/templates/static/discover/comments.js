@@ -49,7 +49,7 @@ function renderComment(comment, depth) {
 
   return '<div class="comment">' +
     '<div class="comment-head">' +
-      '<a class="comment-author" href="https://peakd.com/@' + encodeURIComponent(comment.author) + '" target="_blank" rel="noopener noreferrer">@' + esc(comment.author) + '</a>' +
+      '<a class="comment-author clickable-author" href="/@' + encodeURIComponent(comment.author) + '">@' + esc(comment.author) + '</a>' +
       (rep ? '<span class="comment-rep">' + esc(rep) + '</span>' : '') +
       voteBtn +
       replyBtn +

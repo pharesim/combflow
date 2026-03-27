@@ -53,8 +53,8 @@ function normalizeMarkdown(md) {
     return fenced[lineNum] ? m : '';
   });
   // @mentions → links
-  md = md.replace(/(^|[\s(])@([a-z0-9][a-z0-9.-]{1,15})(?=[\s,.;:!?)}\]]|$)/gim,
-    '$1[@$2](https://peakd.com/@$2)');
+  md = md.replace(/(^|[\s(])@([a-z0-9][a-z0-9.-]{1,15})(?=[\s,.;:!?)}\]']|$)/gim,
+    '$1[@$2](/@$2)');
   // Bare image URLs with [Source] suffix
   md = md.replace(/(https?:\/\/[^\s<>"\[\]]+\.(?:jpe?g|png|gif|webp|svg)(?:\?[^\s<>"\[\]]*)?)\[(?:Source|source)\]\(([^)]+)\)/gim,
     '![]($1)');
