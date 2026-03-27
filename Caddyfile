@@ -1,6 +1,9 @@
 {
 	auto_https off
 	http_port 8080
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 http://{$CADDY_UI:honeycomb.lvh.me} {
