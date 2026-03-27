@@ -9,8 +9,9 @@ Base = declarative_base()
 post_category = Table(
     "post_category",
     Base.metadata,
-    Column("post_id", Integer, ForeignKey("posts.id")),
-    Column("category_id", Integer, ForeignKey("categories.id")),
+    Column("post_id", Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False),
+    Column("category_id", Integer, ForeignKey("categories.id"), nullable=False),
+    UniqueConstraint("post_id", "category_id", name="uq_post_category"),
 )
 
 post_language = Table(
@@ -46,7 +47,7 @@ class Category(Base):
     __tablename__ = "categories"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True)
+    name = Column(String, unique=True, nullable=False)
     parent_id = Column(Integer, ForeignKey("categories.id"), index=True)
     parent = relationship("Category", remote_side=[id], backref="children")
     posts = relationship("Post", secondary=post_category, back_populates="categories")

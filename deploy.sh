@@ -4,7 +4,6 @@ set -e
 COMMAND=$1
 PROJECT_NAME="combflow"
 COMPOSE="docker-compose"
-APP_CONTAINER="combflow_combflow-app_1"
 
 usage() {
     echo "Usage: $0 [command]"
@@ -36,8 +35,12 @@ check_dependencies() {
 
 up() {
     echo "Starting ${PROJECT_NAME}..."
-    # Remove stale containers to avoid ContainerConfig KeyError.
-    docker rm -f ${APP_CONTAINER} 2>/dev/null || true
+    # Remove stale app container to avoid ContainerConfig KeyError (Compose v1+v2 compat)
+    local cid
+    cid=$($COMPOSE ps -q combflow-app 2>/dev/null || echo "")
+    if [ -n "$cid" ]; then
+        docker rm -f "$cid" 2>/dev/null || true
+    fi
     $COMPOSE up -d --build
     echo
     SITE="${CADDY_UI:-honeycomb.lvh.me:80}"

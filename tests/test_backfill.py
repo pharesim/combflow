@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 
 import psycopg2
 import psycopg2.extras
+import pytest
 
 from project.worker.backfill import _backfill_thread
 
@@ -203,3 +204,72 @@ class TestBackfillThread:
         stop.set()
         mock_connect.side_effect = Exception("connection failed")
         _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_cursor_saved_after_processing(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """Cursor should be saved AFTER batch processing, not before."""
+        call_order = []
+        mock_classify.side_effect = lambda *a, **kw: call_order.append("classify")
+        mock_set_cursor.side_effect = lambda *a, **kw: call_order.append("set_cursor")
+
+        mock_connect.return_value = _mock_conn([[_row()], []])
+        stop = threading.Event()
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+
+        assert "classify" in call_order
+        assert "set_cursor" in call_order
+        # set_cursor must come after classify
+        assert call_order.index("classify") < call_order.index("set_cursor")
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_non_datetime_created_breaks_loop(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """If created is not a datetime, the batch should be skipped (break)."""
+        bad_row = _row()
+        bad_row["created"] = "not-a-datetime"
+        mock_connect.return_value = _mock_conn([[bad_row]])
+        stop = threading.Event()
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+        # classify should not be called because we break on non-datetime
+        mock_classify.assert_not_called()
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.time.sleep")
+    def test_non_transient_error_raises_after_retries(
+        self, mock_sleep, mock_get_cursor, mock_dsn, mock_connect,
+    ):
+        """Non-transient query errors should raise after 3 retries."""
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchall.side_effect = TypeError("schema mismatch")
+        mock_conn.cursor.return_value = mock_cur
+        mock_connect.return_value = mock_conn
+
+        stop = MagicMock()
+        stop.is_set.return_value = False
+        stop.wait.return_value = False  # Don't actually wait
+        with pytest.raises(TypeError, match="schema mismatch"):
+            _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)

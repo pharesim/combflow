@@ -308,6 +308,9 @@ body{overflow-x:hidden}
 .comment-toggle:hover{color:var(--text-bright);background:var(--card)}
 .comment-permalink{text-decoration:none;opacity:.5;font-size:.85em}
 .comment-permalink:hover{opacity:1}
+.comment-continue{padding:6px 0 4px 16px}
+.comment-continue a{color:var(--hive-red);font-size:12px;text-decoration:none}
+.comment-continue a:hover{text-decoration:underline}
 
 /* ── Comment navigation ─── */
 .comment-nav{display:flex;gap:12px;padding:8px 12px;margin-bottom:12px;background:var(--card);border-radius:8px;font-size:13px}
@@ -476,6 +479,13 @@ body{overflow-x:hidden}
   #sort-select{display:none}
 }
 
+/* Short viewports (landscape phones / widescreen mobile): unstick filters so
+   they scroll away and leave room for content */
+@media(max-height:500px){
+  .filters-bar{position:static}
+  .filters{position:static;max-height:none}
+}
+
 /* ── Video embeds (click-to-play) ── */
 .video-embed{position:relative;padding-bottom:56.25%;height:0;overflow:hidden;width:100%;max-width:100%;margin:16px 0;border-radius:12px}
 .video-embed iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none;border-radius:12px}
@@ -624,6 +634,11 @@ body{overflow-x:hidden}
 .rendered-body .pull-left { float: left; padding-right: 8px; }
 .rendered-body .pull-right { float: right; padding-left: 8px; }
 .rendered-body .text-justify { text-align: justify; overflow: hidden; }
+/* Nested .text-justify (common in malformed Hive bilingual posts) must not
+   create a new BFC — otherwise pull-right sizes against the inner wrapper
+   instead of the shared column container. display:contents removes the box
+   while keeping text-align inherited from the parent. */
+.rendered-body .text-justify .text-justify { display: contents; }
 
 @media (max-width: 767px) {
   .rendered-body .pull-left,

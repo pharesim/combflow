@@ -1,8 +1,10 @@
 """Lightweight in-process TTL cache for near-static data."""
+import asyncio
 import functools
 import time
 
 _store: dict[str, tuple[float, object]] = {}  # key -> (expires_at, value)
+_locks: dict[str, asyncio.Lock] = {}
 
 
 def get(key: str) -> object | None:
@@ -31,12 +33,19 @@ def cached_response(key: str, ttl: int):
             result = get(key)
             if result is not None:
                 return result
-            result = await func(*args, **kwargs)
-            put(key, result, ttl=ttl)
-            return result
+            if key not in _locks:
+                _locks[key] = asyncio.Lock()
+            async with _locks[key]:
+                result = get(key)  # Double-check after lock
+                if result is not None:
+                    return result
+                result = await func(*args, **kwargs)
+                put(key, result, ttl=ttl)
+                return result
         return wrapper
     return decorator
 
 
 def clear() -> None:
     _store.clear()
+    _locks.clear()

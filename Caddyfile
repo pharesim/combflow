@@ -52,6 +52,9 @@ http://{$CADDY_UI_OLD:old.invalid} {
 }
 
 http://{$CADDY_API:combflow.lvh.me} {
+	request_body {
+		max_size 1MB
+	}
 	log {
 		output file /var/log/caddy/access.log {
 			roll_size 100MiB

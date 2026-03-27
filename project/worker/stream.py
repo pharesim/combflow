@@ -51,7 +51,8 @@ def _process_batch(
         if reps:
             hafsql_available = True
         else:
-            logger.warning("Both HAFSQL and Hive API unreachable — skipping rep check")
+            logger.warning("Both HAFSQL and Hive API unreachable — skipping batch")
+            return 0
 
     processed = 0
     for op in batch:
@@ -63,9 +64,7 @@ def _process_batch(
         elif hafsql_available:
             rep = 25.0  # Hive default for new accounts with no votes
         else:
-            # HAFSQL unreachable — skip rep check, classify anyway.
-            rep = MIN_AUTHOR_REPUTATION
-            logger.debug("HAFSQL unavailable — skipping rep check for %s", author)
+            continue  # Should not reach here after fail-closed above
 
         if rep < MIN_AUTHOR_REPUTATION:
             continue
@@ -101,6 +100,7 @@ def _stream_range(
     batch: list[dict] = []
     batch_start = time.monotonic()
     last_activity = time.monotonic()
+    _activity_lock = threading.Lock()
 
     logger.info("%s streaming from block %d%s", label, start,
                 f" to {stop}" if stop else " (live)")
@@ -110,7 +110,9 @@ def _stream_range(
     if stop is None:  # live mode
         def _watchdog():
             while not watchdog_stop.is_set():
-                if time.monotonic() - last_activity > _STREAM_TIMEOUT:
+                with _activity_lock:
+                    elapsed = time.monotonic() - last_activity
+                if elapsed > _STREAM_TIMEOUT:
                     logger.error("Stream appears hung (%ds no activity) — forcing reconnect",
                                  _STREAM_TIMEOUT)
                     try:
@@ -137,7 +139,8 @@ def _stream_range(
 
     try:
         for op in blockchain.stream(opNames=["comment"], start=start, stop=stop):
-            last_activity = time.monotonic()
+            with _activity_lock:
+                last_activity = time.monotonic()
 
             if stop_event and stop_event.is_set():
                 logger.info("%s stopping due to shutdown signal", label)

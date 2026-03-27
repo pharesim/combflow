@@ -676,3 +676,38 @@ async def test_post_browse_validates_sort(client, seeded_db):
     """POST /api/browse validates sort pattern."""
     resp = await client.post("/api/browse", json={"sort": "random"})
     assert resp.status_code == 422
+
+
+# ── Sentiment validation (proposal 065) ──────────────────────────────────
+
+async def test_browse_invalid_sentiment_returns_422(client, seeded_db):
+    """Invalid sentiment value should return 422."""
+    resp = await client.get("/api/browse?sentiment=happy")
+    assert resp.status_code == 422
+
+
+async def test_browse_valid_sentiments(client, seeded_db):
+    """Valid sentiment values are accepted."""
+    for sentiment in ("positive", "negative", "neutral"):
+        resp = await client.get(f"/api/browse?sentiment={sentiment}")
+        assert resp.status_code == 200
+
+
+async def test_post_browse_invalid_sentiment_returns_422(client, seeded_db):
+    """POST /api/browse rejects invalid sentiment."""
+    resp = await client.post("/api/browse", json={"sentiment": "happy"})
+    assert resp.status_code == 422
+
+
+# ── Offset validation (proposal 065) ────────────────────────────────────
+
+async def test_browse_offset_exceeds_max_returns_422(client, seeded_db):
+    """Offset > 2000 should return 422."""
+    resp = await client.get("/api/browse?offset=2001")
+    assert resp.status_code == 422
+
+
+async def test_post_browse_offset_exceeds_max_returns_422(client, seeded_db):
+    """POST offset > 2000 should return 422."""
+    resp = await client.post("/api/browse", json={"offset": 2001})
+    assert resp.status_code == 422

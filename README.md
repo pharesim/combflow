@@ -163,7 +163,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — post-specific Open Graph meta tags on deep links (title, description, thumbnail fetched from Hive API) for rich previews on Discord, Twitter, Slack, etc. Author profile pages show `@username — HiveComb`.
 - **Misclassification reporting** — flag icon in post modal lets logged-in users report misclassified posts with a reason, signed via Hive Keychain (server verifies signature against on-chain posting keys, requires reputation > 25, rate-limited to 5 reports/minute)
-- **Security** — CSP headers, SRI hashes on CDN resources, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed iframe handling)
+- **Security** — CSP headers, SRI hashes on CDN resources, DOMPurify sanitization on all innerHTML, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed iframe handling), comment tree depth limit (10 levels), iframe sandbox on external content
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
 
 ---
@@ -302,20 +302,23 @@ DATABASE_URL="postgresql+asyncpg://combflow:change_me@${DB_IP}/combflow_test" \
 
 Tests use in-process fixtures with a real DB — they don't interfere with the running worker.
 
-290+ tests across 11 files:
+310+ tests across 13 files:
 
 | File | Tests | Coverage |
 |------|-------|----------|
 | `test_worker_utils.py` | 68 | Classification, sentiment, language detection, community resolution + boost + persistence, pipeline end-to-end, model loaders |
-| `test_browse.py` | 55 | Browse with all filter combinations, single + multi community filter, authors filter, max_age + sort filters, filter list truncation, pagination edge cases (including cursor + sort=oldest), communities endpoint, suggested communities, cache TTL |
-| `test_api.py` | 35 | Health, categories, HTML page routes, GZip middleware, OG meta tags (parametrized), 404s |
-| `test_hafsql.py` | 25 | Reputation conversion, community metadata parsing (parametrized error handling), post body lookup, connection pool, cursor lifecycle |
+| `test_browse.py` | 56 | Browse with all filter combinations, single + multi community filter, authors filter, max_age + sort filters, filter list truncation, pagination edge cases (including cursor + sort=oldest), communities endpoint, suggested communities, cache TTL |
+| `test_hafsql.py` | 38 | Reputation conversion, community metadata parsing (parametrized error handling), post body lookup, connection pool, cursor lifecycle |
+| `test_api.py` | 30 | Health, categories, HTML page routes, GZip middleware, OG meta tags (parametrized), 404s |
 | `test_crud.py` | 23 | Retry decorator, category tree, seed idempotency |
+| `test_reports.py` | 21 | Misclassification reporting, signature verification (parametrized), pagination, rate limiting |
 | `test_stream.py` | 17 | Stream timestamp parsing, batch processing (reputation, blacklist, HAFSQL fallback) |
-| `test_reports.py` | 14 | Misclassification reporting, signature verification (parametrized), pagination |
+| `test_hive_auth.py` | 13 | Base58 decode, posting key fetch with fallback, signature verification |
+| `test_backfill.py` | 11 | Backfill thread: filtering, catch-up phase, error handling, retry limits, stop signal |
+| `test_blacklist.py` | 9 | Blacklist API parsing, cache hit/eviction, sweep thread |
+| `test_cache.py` | 9 | TTL cache operations, cached_response decorator, thundering herd prevention |
 | `test_text.py` | 9 | Text cleaning utilities |
-| `test_cache.py` | 9 | TTL cache operations, cached_response decorator |
-| `test_backfill.py` | 8 | Backfill thread: filtering, catch-up phase, error handling, stop signal |
+| `test_worker_lifecycle.py` | 5 | DB close/dispose, signal handling, heartbeat file creation |
 | `test_posts.py` | 2 | Post detail, community_id handling |
 
 ---
@@ -324,7 +327,7 @@ Tests use in-process fixtures with a real DB — they don't interfere with the r
 
 Interactive docs: **http://localhost:8000/docs** (Swagger UI)
 
-CORS is open by default — any origin can call the API. To restrict access, set `CORS_ORIGINS` in `.env` (e.g. `["https://myapp.com"]`).
+CORS denies cross-origin by default (UI is same-origin via Caddy). To allow external callers, set `CORS_ORIGINS` in `.env` (e.g. `["https://myapp.com"]`).
 
 ### Public (no auth)
 

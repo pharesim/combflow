@@ -175,16 +175,26 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
         session.add(post)
         await session.flush()
 
-    # Add categories via raw SQL to avoid relationship lazy loading.
-    for name in data.get("categories", []):
-        cat = await upsert_category(session, name)
-        await session.execute(
-            text(
-                "INSERT INTO post_category (post_id, category_id) "
-                "VALUES (:pid, :cid) ON CONFLICT DO NOTHING"
-            ),
-            {"pid": post.id, "cid": cat.id},
+    # Add categories — batch fetch existing, upsert only missing.
+    cat_names = list(set(data.get("categories", [])))
+    if cat_names:
+        existing_cats = await session.execute(
+            text("SELECT id, name FROM categories WHERE name = ANY(:names)"),
+            {"names": cat_names},
         )
+        existing_map = {r[1]: r[0] for r in existing_cats.fetchall()}
+        for name in cat_names:
+            if name not in existing_map:
+                cat = await upsert_category(session, name)
+                existing_map[name] = cat.id
+        for cat_id in existing_map.values():
+            await session.execute(
+                text(
+                    "INSERT INTO post_category (post_id, category_id) "
+                    "VALUES (:pid, :cid) ON CONFLICT DO NOTHING"
+                ),
+                {"pid": post.id, "cid": cat_id},
+            )
 
     # Add languages via junction table.
     for lang in data.get("languages", []):

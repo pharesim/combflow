@@ -59,10 +59,18 @@ let filterTimer = null;
 
 // Hive RPC nodes with automatic fallback
 const HIVE_NODES = ['https://api.hive.blog', 'https://techcoderx.com', 'https://api.openhive.network'];
-const _nodePenalties = new Map(); // node -> failure count
+const _nodePenalties = new Map(); // node -> { count, ts }
+const _PENALTY_DECAY_MS = 5 * 60 * 1000; // 5 min half-life
 
 function _sortedNodes() {
-  return [...HIVE_NODES].sort((a, b) => (_nodePenalties.get(a) || 0) - (_nodePenalties.get(b) || 0));
+  const now = Date.now();
+  return [...HIVE_NODES].sort((a, b) => {
+    const pa = _nodePenalties.get(a);
+    const pb = _nodePenalties.get(b);
+    const wa = pa ? pa.count * Math.pow(0.5, (now - pa.ts) / _PENALTY_DECAY_MS) : 0;
+    const wb = pb ? pb.count * Math.pow(0.5, (now - pb.ts) / _PENALTY_DECAY_MS) : 0;
+    return wa - wb;
+  });
 }
 
 async function hiveRpc(method, params) {
@@ -77,12 +85,12 @@ async function hiveRpc(method, params) {
         signal: controller.signal
       });
       clearTimeout(timer);
-      if (!res.ok) { _nodePenalties.set(node, (_nodePenalties.get(node) || 0) + 1); continue; }
+      if (!res.ok) { const p = _nodePenalties.get(node); _nodePenalties.set(node, { count: (p ? p.count : 0) + 1, ts: Date.now() }); continue; }
       const data = await res.json();
       if ('result' in data) { _nodePenalties.delete(node); return data.result; }
-      _nodePenalties.set(node, (_nodePenalties.get(node) || 0) + 1);
+      { const p = _nodePenalties.get(node); _nodePenalties.set(node, { count: (p ? p.count : 0) + 1, ts: Date.now() }); }
     } catch(e) {
-      _nodePenalties.set(node, (_nodePenalties.get(node) || 0) + 1);
+      const p = _nodePenalties.get(node); _nodePenalties.set(node, { count: (p ? p.count : 0) + 1, ts: Date.now() });
     }
   }
   return null;

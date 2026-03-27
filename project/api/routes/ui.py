@@ -235,7 +235,7 @@ async def browse_posts(
     db: AsyncSession = Depends(get_db),
     category: list[str] | None = Query(default=None),
     language: list[str] | None = Query(default=None),
-    sentiment: str | None = Query(default=None),
+    sentiment: str | None = Query(default=None, pattern=r"^(positive|negative|neutral)$"),
     community: str | None = Query(default=None, description="Filter by Hive community ID (e.g. hive-174578)"),
     communities: list[str] | None = Query(default=None, description="Filter by multiple community IDs; overrides community"),
     authors: list[str] | None = Query(default=None, description="Filter by author usernames"),
@@ -244,7 +244,7 @@ async def browse_posts(
     max_age: str | None = Query(default=None, description="Max post age, e.g. '6h', '1d', '7d'", pattern=r"^\d+[hd]$"),
     sort: str | None = Query(default=None, description="Sort order: 'newest' (default) or 'oldest'", pattern=r"^(newest|oldest)$"),
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0, le=10000),
+    offset: int = Query(default=0, ge=0, le=2000),
     cursor: str | None = Query(default=None, description="Opaque cursor from previous response for keyset pagination"),
 ):
     # Bound filter list lengths (proposal 033).
@@ -273,7 +273,7 @@ async def browse_posts(
 class BrowseRequest(BaseModel):
     category: list[str] | None = None
     language: list[str] | None = None
-    sentiment: str | None = None
+    sentiment: str | None = Field(default=None, pattern=r"^(positive|negative|neutral)$")
     community: str | None = None
     communities: list[str] | None = None
     authors: list[str] | None = None
@@ -282,7 +282,7 @@ class BrowseRequest(BaseModel):
     max_age: str | None = Field(default=None, pattern=r"^\d+[hd]$")
     sort: str | None = Field(default=None, pattern=r"^(newest|oldest)$")
     limit: int = Field(default=50, ge=1, le=200)
-    offset: int = Field(default=0, ge=0, le=10000)
+    offset: int = Field(default=0, ge=0, le=2000)
     cursor: str | None = None
 
 

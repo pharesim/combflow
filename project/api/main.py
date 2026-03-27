@@ -103,7 +103,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins or ["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=bool(settings.cors_origins),
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],

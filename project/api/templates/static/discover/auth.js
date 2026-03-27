@@ -23,7 +23,9 @@ function closeLogin() {
 
 function openSignup() {
   closeLogin();
-  document.getElementById('signup-iframe').src = 'https://hivedapps.com/';
+  const iframe = document.getElementById('signup-iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+  iframe.src = 'https://hivedapps.com/';
   Alpine.store('app').signupOpen = true;
 }
 function closeSignup() {

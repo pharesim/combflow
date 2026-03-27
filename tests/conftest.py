@@ -79,9 +79,21 @@ _ALL_TABLES = [
 
 
 @pytest.fixture(autouse=True)
+def _clear_global_state():
+    """Clear module-level caches between tests to prevent cross-test bleed."""
+    from project.worker.blacklist import _cache as blacklist_cache, _cache_lock as blacklist_lock
+    cache.clear()
+    with blacklist_lock:
+        blacklist_cache.clear()
+    yield
+    cache.clear()
+    with blacklist_lock:
+        blacklist_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 async def setup_db(_apply_migrations):
     """Truncate all tables before each test for isolation."""
-    cache.clear()
     async with _test_engine.begin() as conn:
         # Check which tables exist before truncating (post_reports requires migration 002).
         result = await conn.execute(text(
@@ -92,7 +104,6 @@ async def setup_db(_apply_migrations):
         if tables:
             await conn.execute(text("TRUNCATE " + ", ".join(tables) + " CASCADE"))
     yield
-    cache.clear()
     await _test_engine.dispose()
 
 

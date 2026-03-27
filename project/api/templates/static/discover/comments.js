@@ -3,6 +3,8 @@
 
 // Render a single comment + its children recursively as HTML string.
 // Called from x-html in the template via renderCommentsHtml().
+const MAX_COMMENT_DEPTH = 10;
+
 function renderComment(comment, depth) {
   const maxVisualDepth = 4;
   const flatClass = depth >= maxVisualDepth ? ' comment-children-depth4' : '';
@@ -11,17 +13,24 @@ function renderComment(comment, depth) {
 
   let childrenHtml = '';
   if (comment.children && comment.children.length > 0) {
-    const collapsed = comment.children.length > 5;
-    const toggleId = 'ct-' + comment.author + '-' + comment.permlink.slice(0, 12);
-    childrenHtml = '<div class="comment-children' + flatClass + '"' +
-      (collapsed ? ' id="' + esc(toggleId) + '" style="display:none"' : '') + '>';
-    comment.children.forEach(child => {
-      childrenHtml += renderComment(child, depth + 1);
-    });
-    childrenHtml += '</div>';
-    if (collapsed) {
-      childrenHtml = '<button type="button" class="comment-toggle" data-action="toggle-comment-children" data-toggle-id="' + esc(toggleId) + '">' +
-        comment.children.length + ' replies &#9660;</button>' + childrenHtml;
+    if (depth >= MAX_COMMENT_DEPTH) {
+      childrenHtml = '<div class="comment-continue">' +
+        '<a href="/@' + encodeURIComponent(comment.author) + '/' + encodeURIComponent(comment.permlink) + '" ' +
+        'data-action="navigate-post" data-author="' + esc(comment.author) + '" ' +
+        'data-permlink="' + esc(comment.permlink) + '">Continue thread (' + comment.children.length + ' more) \u2192</a></div>';
+    } else {
+      const collapsed = comment.children.length > 5;
+      const toggleId = 'ct-' + comment.author + '-' + comment.permlink.slice(0, 12);
+      childrenHtml = '<div class="comment-children' + flatClass + '"' +
+        (collapsed ? ' id="' + esc(toggleId) + '" style="display:none"' : '') + '>';
+      comment.children.forEach(child => {
+        childrenHtml += renderComment(child, depth + 1);
+      });
+      childrenHtml += '</div>';
+      if (collapsed) {
+        childrenHtml = '<button type="button" class="comment-toggle" data-action="toggle-comment-children" data-toggle-id="' + esc(toggleId) + '">' +
+          comment.children.length + ' replies &#9660;</button>' + childrenHtml;
+      }
     }
   }
 

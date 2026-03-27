@@ -81,12 +81,28 @@ class TestProcessBatch:
         mock_classify.assert_not_called()
 
     @patch("project.worker.stream._classify_and_save")
+    @patch("project.worker.stream.get_reputations_via_api")
     @patch("project.worker.stream.get_reputations")
     @patch("project.worker.stream.check_authors")
-    def test_hafsql_unavailable_still_classifies(self, mock_blacklist, mock_reps, mock_classify):
-        """When HAFSQL returns empty reps, authors should still be classified."""
+    def test_both_rep_sources_down_skips_batch(self, mock_blacklist, mock_reps, mock_api_reps, mock_classify):
+        """When both HAFSQL and Hive API return empty, batch is skipped (fail-closed)."""
         mock_blacklist.return_value = set()
         mock_reps.return_value = {}  # HAFSQL unreachable
+        mock_api_reps.return_value = {}  # API also unreachable
+        batch = [{"author": "alice", "permlink": "p1", "title": "T", "body": "B"}]
+        result = _process_batch(batch, "db", "emb", {}, 0.3, "pos", "neg", "TEST")
+        assert result == 0
+        mock_classify.assert_not_called()
+
+    @patch("project.worker.stream._classify_and_save")
+    @patch("project.worker.stream.get_reputations_via_api")
+    @patch("project.worker.stream.get_reputations")
+    @patch("project.worker.stream.check_authors")
+    def test_hafsql_down_api_fallback_classifies(self, mock_blacklist, mock_reps, mock_api_reps, mock_classify):
+        """When HAFSQL is down but API fallback works, posts are classified."""
+        mock_blacklist.return_value = set()
+        mock_reps.return_value = {}  # HAFSQL unreachable
+        mock_api_reps.return_value = {"alice": 50.0}  # API works
         batch = [{"author": "alice", "permlink": "p1", "title": "T", "body": "B"}]
         result = _process_batch(batch, "db", "emb", {}, 0.3, "pos", "neg", "TEST")
         assert result == 1

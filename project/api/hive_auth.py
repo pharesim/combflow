@@ -14,13 +14,10 @@ import httpx
 from ecdsa import SECP256k1, VerifyingKey
 from ecdsa.util import sigdecode_string
 
+from ..config import settings
+
 logger = logging.getLogger(__name__)
 
-_HIVE_API_NODES = [
-    "https://api.hive.blog",
-    "https://api.deathwing.me",
-    "https://api.openhive.network",
-]
 _TIMEOUT = 4.0
 
 _ALPHABET = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -63,7 +60,7 @@ async def fetch_posting_keys(username: str) -> list[str]:
         "id": 1,
     }
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        for node in _HIVE_API_NODES:
+        for node in settings.hive_api_nodes:
             try:
                 resp = await client.post(node, json=payload)
                 data = resp.json()
@@ -116,7 +113,8 @@ def verify_hive_signature(
         recovered_keys = VerifyingKey.from_public_key_recovery_with_digest(
             r_s, digest, SECP256k1, sigdecode=sigdecode_string
         )
-    except Exception:
+    except Exception as exc:
+        logger.debug("Signature recovery failed: %s", exc)
         return False
 
     if recid >= len(recovered_keys):
@@ -130,7 +128,8 @@ def verify_hive_signature(
             expected_bytes = _decode_pubkey(pubkey_str)
             if hmac.compare_digest(recovered_compressed, expected_bytes):
                 return True
-        except Exception:
+        except Exception as exc:
+            logger.debug("Pubkey decode failed for %s: %s", pubkey_str, exc)
             continue
 
     return False

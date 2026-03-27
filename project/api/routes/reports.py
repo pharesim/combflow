@@ -128,9 +128,9 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    post_author: str | None = Query(default=None),
-    post_permlink: str | None = Query(default=None),
-    reporter: str | None = Query(default=None),
+    post_author: str | None = Query(default=None, max_length=16, pattern=r"^[a-z0-9][a-z0-9.\-]{0,15}$"),
+    post_permlink: str | None = Query(default=None, max_length=256),
+    reporter: str | None = Query(default=None, max_length=16, pattern=r"^[a-z0-9][a-z0-9.\-]{0,15}$"),
 ):
     return await crud.list_post_reports(
         db,

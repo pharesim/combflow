@@ -50,12 +50,13 @@ async def test_get_post_not_found(client, seeded_db):
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
-async def test_cors_headers(client):
+async def test_cors_rejects_unknown_origin(client):
+    """With no configured CORS origins, unknown origins should not get allow-origin header."""
     resp = await client.options(
         "/health",
         headers={"Origin": "http://example.com", "Access-Control-Request-Method": "GET"},
     )
-    assert "access-control-allow-origin" in resp.headers
+    assert "access-control-allow-origin" not in resp.headers
 
 
 # ── OpenAPI ──────────────────────────────────────────────────────────────────

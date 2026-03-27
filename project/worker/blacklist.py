@@ -1,14 +1,16 @@
 """Check authors against the Global Blacklist API (blacklist.usehive.com)."""
+import json
 import logging
 import threading
 import time
+from collections import OrderedDict
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache: author -> (is_blacklisted, timestamp)
-_cache: dict[str, tuple[bool, float]] = {}
+# In-memory cache: author -> (is_blacklisted, timestamp). OrderedDict for FIFO eviction.
+_cache: OrderedDict[str, tuple[bool, float]] = OrderedDict()
 _cache_lock = threading.Lock()
 _CACHE_TTL = 3600 * 6  # 6 hours
 _MAX_CACHE = 100_000
@@ -32,14 +34,18 @@ def is_blacklisted(author: str) -> bool:
         with urlopen(req, timeout=_TIMEOUT) as resp:
             body = resp.read().decode("utf-8", errors="replace")
         # API returns a JSON array of blacklist entries. Empty array = not blacklisted.
-        blacklisted = body.strip() not in ("[]", "")
+        try:
+            data = json.loads(body)
+            blacklisted = isinstance(data, list) and len(data) > 0
+        except (json.JSONDecodeError, ValueError):
+            # API returned non-JSON (error page, etc.) — fail open
+            logger.warning("Blacklist API returned non-JSON for %s", author)
+            blacklisted = False
         with _cache_lock:
             _cache[author] = (blacklisted, now)
-            if len(_cache) > _MAX_CACHE:
-                # Drop oldest entries by timestamp.
-                oldest = sorted(_cache, key=lambda k: _cache[k][1])
-                for k in oldest[:len(_cache) - _MAX_CACHE]:
-                    del _cache[k]
+            _cache.move_to_end(author)
+            while len(_cache) > _MAX_CACHE:
+                _cache.popitem(last=False)
         if blacklisted:
             logger.info("BLACKLIST author %s is blacklisted: %s", author, body.strip()[:200])
         return blacklisted

@@ -326,24 +326,16 @@ async def test_submit_report_reputation_none_allowed(client):
 @pytest.mark.usefixtures("seeded_db")
 async def test_submit_report_rate_limit_exceeded(client):
     """6th report within 60s returns 429."""
-    with _report_mocks():
-        for i in range(5):
+    # Use fixed monotonic time to avoid flakiness.
+    with patch("project.api.routes.reports.time") as mock_time:
+        mock_time.monotonic.return_value = 1000.0
+        _reports_module._report_counts["ratelimited"] = [1000.0] * 5
+
+        with _report_mocks():
             resp = await client.post(
-                f"/api/posts/alice/test-post-one/report",
-                json={"username": f"user{i}", "reason": f"Wrong {i}", "signature": "1f" + "ab" * 64},
+                "/api/posts/alice/test-post-one/report",
+                json={"username": "ratelimited", "reason": "One more", "signature": "1f" + "ab" * 64},
             )
-            # Each is a different reporter on same post — may get 201 or 409
-            # We just need to use the same username to hit rate limit.
-        # Now use a single user that already has 5 entries.
-
-    # Fill rate limit for a single user.
-    _reports_module._report_counts["ratelimited"] = [time.monotonic() for _ in range(5)]
-
-    with _report_mocks():
-        resp = await client.post(
-            "/api/posts/alice/test-post-one/report",
-            json={"username": "ratelimited", "reason": "One more", "signature": "1f" + "ab" * 64},
-        )
     assert resp.status_code == 429
     assert resp.json()["detail"] == "Rate limit exceeded"
 
@@ -361,3 +353,27 @@ async def test_submit_report_rate_limit_different_users(client):
             json={"username": "fresh", "reason": "Wrong", "signature": "1f" + "ab" * 64},
         )
     assert resp.status_code == 201
+
+
+# ── Report filter validation (proposal 065) ──────────────────────────────
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_list_reports_invalid_reporter_pattern(client):
+    """Invalid reporter username pattern returns 422."""
+    resp = await client.get("/api/reports?reporter=INVALID!")
+    assert resp.status_code == 422
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_list_reports_invalid_post_author_pattern(client):
+    """Invalid post_author pattern returns 422."""
+    resp = await client.get("/api/reports?post_author=INVALID!")
+    assert resp.status_code == 422
+
+
+@pytest.mark.usefixtures("seeded_db")
+async def test_list_reports_valid_filters_accepted(client):
+    """Valid filter values are accepted."""
+    resp = await client.get("/api/reports?reporter=validuser&post_author=alice&post_permlink=test")
+    assert resp.status_code == 200

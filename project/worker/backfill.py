@@ -120,10 +120,12 @@ def _backfill_thread(
                 pass
             continue
         except Exception as exc:
-            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
             retries += 1
-            logger.warning("BACKFILL query error (retry %d, next in %ds): %s",
-                           retries, delay, exc)
+            if retries > 3:
+                logger.error("BACKFILL permanent error after %d retries: %s", retries, exc)
+                raise
+            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
+            logger.warning("BACKFILL error (retry %d): %s — waiting %.0fs", retries, exc, delay)
             stop_event.wait(delay)
             continue
 
@@ -137,14 +139,15 @@ def _backfill_thread(
             if not oldest.tzinfo:
                 oldest = oldest.replace(tzinfo=timezone.utc)
             cursor_dt = oldest
+        else:
+            # Skip batch if we can't extract a valid cursor
+            logger.warning("BACKFILL batch has non-datetime 'created': %r — skipping", oldest)
+            break
 
         # Check if we've reached the frontier (catch-up complete).
         if catching_up and frontier and cursor_dt <= frontier:
             catching_up = False
             logger.info("BACKFILL catch-up complete — switching to explore")
-
-        # Save cursor after every batch (including catch-up) to avoid re-processing on crash.
-        _set_cursor(db, _BACKFILL_CURSOR_KEY, int(cursor_dt.timestamp()))
 
         # Check which posts we already have.
         pairs = [(row["author"], row["permlink"]) for row in rows]
@@ -191,6 +194,9 @@ def _backfill_thread(
                 total += 1
             except Exception:
                 logger.exception("BACKFILL error on %s/%s", row["author"], row["permlink"])
+
+        # Save cursor AFTER batch processing to avoid data loss on crash.
+        _set_cursor(db, _BACKFILL_CURSOR_KEY, int(cursor_dt.timestamp()))
 
         phase = "CATCHUP" if catching_up else "BACKFILL"
         logger.info("%s cursor=%s total=%d batch=%d skipped=%d",

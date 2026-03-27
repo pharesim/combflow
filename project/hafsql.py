@@ -83,8 +83,8 @@ def shutdown():
     if _pool is not None and not _pool.closed:
         try:
             _pool.closeall()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("HAFSQL pool shutdown error: %s", exc)
         _pool = None
 
 
