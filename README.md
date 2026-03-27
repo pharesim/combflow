@@ -86,7 +86,7 @@ This builds the image, runs migrations, verifies tables, seeds the category tree
 | `hive_worker` | Streams + classifies + saves posts (2G memory limit) |
 | `caddy` | Reverse proxy on port 8080 (HTTP only, behind external nginx for TLS), domain routing, access logging, API→docs redirect (128M memory limit) |
 | `prerender` | Headless Chromium prerender for bot/crawler SSR — Caddy routes bot user-agents here for fully-rendered HTML (1G memory limit) |
-| `goaccess` | Usage stats dashboard at `CADDY_API/stats` — regenerates from Caddy access logs every 60s (1G memory limit) |
+| `goaccess` | Usage stats dashboard at `CADDY_API/stats` — regenerates from Caddy access logs every 60s (256M memory limit) |
 
 ### 3. Check
 
