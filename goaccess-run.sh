@@ -4,7 +4,8 @@ while true; do
   (zcat /var/log/caddy/access-*.log.gz 2>/dev/null; cat /var/log/caddy/access.log 2>/dev/null) | \
   awk '{
     ip="";ts="";m="";u="";H="";s="";b="";ua="-";v=""
-    if(match($0,/"remote_ip":"[^"]+"/))ip=substr($0,RSTART+13,RLENGTH-14)
+    if(match($0,/"client_ip":"[^"]+"/))ip=substr($0,RSTART+13,RLENGTH-14)
+    else if(match($0,/"remote_ip":"[^"]+"/))ip=substr($0,RSTART+13,RLENGTH-14)
     if(match($0,/"ts":[0-9]+/))ts=substr($0,RSTART+5,RLENGTH-5)
     if(match($0,/"method":"[^"]+"/))m=substr($0,RSTART+10,RLENGTH-11)
     if(match($0,/"uri":"[^"]+"/))u=substr($0,RSTART+7,RLENGTH-8)
