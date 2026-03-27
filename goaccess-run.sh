@@ -3,7 +3,7 @@ mkdir -p /var/www/goaccess
 while true; do
   (zcat /var/log/caddy/access-*.log.gz 2>/dev/null; cat /var/log/caddy/access.log 2>/dev/null) | \
   awk '{
-    ip="";ts="";m="";u="";H="";s="";b="";ua="-";v=""
+    ip="";ts="";m="";u="";H="";s="";b="";ua="-";v="";ref="-"
     if(match($0,/"client_ip":"[^"]+"/))ip=substr($0,RSTART+13,RLENGTH-14)
     else if(match($0,/"remote_ip":"[^"]+"/))ip=substr($0,RSTART+13,RLENGTH-14)
     if(match($0,/"ts":[0-9]+/))ts=substr($0,RSTART+5,RLENGTH-5)
@@ -14,12 +14,13 @@ while true; do
     if(match($0,/"size":[0-9]+/))b=substr($0,RSTART+7,RLENGTH-7)
     if(match($0,/"User-Agent":\["[^"]+"/))ua=substr($0,RSTART+15,RLENGTH-16)
     if(match($0,/"host":"[^"]+"/))v=substr($0,RSTART+8,RLENGTH-9)
-    if(ip!=""&&ts!=""&&u!="/stats"&&$0!~/Accept-Charset/)printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n",ip,ts,m,u,H,s,b,ua,v
+    if(match($0,/"Referer":\["[^"]+"/))ref=substr($0,RSTART+12,RLENGTH-13)
+    if(ip!=""&&ts!=""&&u!="/stats"&&$0!~/Accept-Charset/)printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n",ip,ts,m,u,H,s,b,ref,ua,v
   }' | \
   goaccess - \
     -o /var/www/goaccess/report.html \
     --datetime-format=%s \
-    --log-format='%h|%x|%m|%U|%H|%s|%b|%u|%v' \
+    --log-format='%h|%x|%m|%U|%H|%s|%b|%R|%u|%v' \
     --ignore-crawlers \
     --ignore-status=404 \
     2>/dev/null
