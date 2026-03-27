@@ -31,10 +31,31 @@ const server = prerender({
     '--disable-translate',
     '--mute-audio',
     '--no-first-run',
-    '--safebrowsing-disable-auto-update'
+    '--safebrowsing-disable-auto-update',
+    '--disk-cache-dir=/tmp/chrome-cache'
   ],
   pageLoadTimeout: 20000,
   waitAfterLastRequest: 1000
+});
+
+// Block images, CSS, fonts, and media — prerender only needs the rendered DOM
+const BLOCKED_TYPES = new Set(['Stylesheet', 'Image', 'Font', 'Media']);
+server.use({
+  tabCreated: function(req, res, next) {
+    const tab = req.prerender.tab;
+    tab.Fetch.enable({
+      patterns: Array.from(BLOCKED_TYPES, resourceType => ({
+        resourceType, requestStage: 'Request'
+      }))
+    }).then(() => {
+      tab.Fetch.requestPaused(({ requestId }) => {
+        tab.Fetch.failRequest({ requestId, errorReason: 'Aborted' }).catch(() => {});
+      });
+    }).catch(err => {
+      console.warn('request interception setup failed:', err.message);
+    });
+    next();
+  }
 });
 
 server.use({
