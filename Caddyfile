@@ -33,7 +33,7 @@ Preferred-Languages: en
 		not path /static/*
 	}
 	handle @bot {
-		rewrite * /{scheme}://{host}{path}
+		rewrite * /https://{host}{path}
 		reverse_proxy prerender:3000
 	}
 	handle /static/* {

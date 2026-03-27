@@ -23,6 +23,7 @@ const server = prerender({
   extraChromeFlags: [
     '--no-sandbox',
     '--disable-dev-shm-usage',
+    '--ignore-certificate-errors',
     '--disable-extensions',
     '--disable-background-networking',
     '--disable-default-apps',
@@ -51,6 +52,12 @@ server.use({
   },
   beforeSend: function(req, res, next) {
     if (req.prerender.statusCode === 200 && req.prerender.content) {
+      // Skip caching empty shell pages (no meaningful content rendered)
+      if (/<body>\s*<\/body>/i.test(req.prerender.content)) {
+        console.warn('skipping cache for empty page: ' + req.prerender.url);
+        next();
+        return;
+      }
       const file = cachePath(req.prerender.url);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       const tagged = '<!-- ' + req.prerender.url + ' -->\n' + req.prerender.content;
