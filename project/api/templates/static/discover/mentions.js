@@ -19,6 +19,13 @@ function _getMentionDropdown() {
     _mentionDropdown = document.createElement('div');
     _mentionDropdown.className = 'mention-dropdown';
     _mentionDropdown.style.display = 'none';
+    // Prevent overscroll from bubbling to parent (which would close the dropdown)
+    _mentionDropdown.addEventListener('wheel', e => {
+      const el = _mentionDropdown;
+      const atTop = el.scrollTop === 0 && e.deltaY < 0;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight && e.deltaY > 0;
+      if (atTop || atBottom) e.preventDefault();
+    }, { passive: false });
     document.body.appendChild(_mentionDropdown);
   }
   return _mentionDropdown;
@@ -36,17 +43,61 @@ function _extractMentionPrefix(textarea) {
   return { prefix: match[1].toLowerCase(), atIdx };
 }
 
+function _getCaretCoords(textarea, charIdx) {
+  const mirror = document.createElement('div');
+  const style = getComputedStyle(textarea);
+  for (const prop of ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
+    'wordSpacing','textIndent','padding','paddingTop','paddingRight','paddingBottom',
+    'paddingLeft','borderWidth','boxSizing','whiteSpace','wordWrap','overflowWrap','tabSize']) {
+    mirror.style[prop] = style[prop];
+  }
+  mirror.style.position = 'absolute';
+  mirror.style.left = '-9999px';
+  mirror.style.top = '-9999px';
+  mirror.style.width = textarea.clientWidth + 'px';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.wordWrap = 'break-word';
+
+  const text = textarea.value.substring(0, charIdx);
+  mirror.textContent = text;
+  const marker = document.createElement('span');
+  marker.textContent = '|';
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+
+  const coords = { top: marker.offsetTop - textarea.scrollTop, left: marker.offsetLeft };
+  document.body.removeChild(mirror);
+  return coords;
+}
+
 function _positionDropdown(textarea) {
   const dd = _getMentionDropdown();
+  const coords = _getCaretCoords(textarea, _mentionStart);
   const rect = textarea.getBoundingClientRect();
-  // Position below the textarea (simple approach — cursor positioning in textareas is complex)
-  const top = rect.bottom + window.scrollY + 4;
-  const left = rect.left + window.scrollX;
+  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 20;
+  const ddWidth = Math.min(rect.width, 280);
+
+  let top = rect.top + window.scrollY + coords.top + lineHeight + 4;
+  let left = rect.left + window.scrollX + coords.left;
+
+  // Clamp left so dropdown doesn't overflow right edge
+  const maxLeft = window.innerWidth + window.scrollX - ddWidth - 8;
+  if (left > maxLeft) left = maxLeft;
+  if (left < 8) left = 8;
+
   dd.style.position = 'absolute';
-  dd.style.top = top + 'px';
-  dd.style.left = left + 'px';
-  dd.style.width = Math.min(rect.width, 280) + 'px';
+  dd.style.width = ddWidth + 'px';
   dd.style.zIndex = '10001';
+  dd.style.left = left + 'px';
+
+  // If dropdown would go below viewport, show above cursor instead
+  dd.style.top = top + 'px';
+  dd.style.display = '';
+  const ddRect = dd.getBoundingClientRect();
+  if (ddRect.bottom > window.innerHeight) {
+    top = rect.top + window.scrollY + coords.top - dd.offsetHeight - 4;
+    dd.style.top = top + 'px';
+  }
 }
 
 function _renderMentionResults(results) {
@@ -57,7 +108,16 @@ function _renderMentionResults(results) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'mention-item' + (i === _mentionSelectedIdx ? ' selected' : '');
-    btn.textContent = '@' + name;
+    const img = document.createElement('img');
+    img.src = `https://images.hive.blog/u/${name}/avatar/small`;
+    img.className = 'mention-avatar';
+    img.width = 24;
+    img.height = 24;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.onerror = function() { this.style.display = 'none'; };
+    btn.appendChild(img);
+    btn.appendChild(document.createTextNode(name));
     btn.dataset.username = name;
     btn.addEventListener('mousedown', e => {
       e.preventDefault(); // prevent textarea blur
@@ -122,8 +182,8 @@ function handleMentionInput(textarea) {
     if (_mentionTarget !== textarea) return;
     const current = _extractMentionPrefix(textarea);
     if (!current || current.prefix !== extracted.prefix) return;
-    _positionDropdown(textarea);
     _renderMentionResults(results);
+    _positionDropdown(textarea);
   }, MENTION_DEBOUNCE);
 }
 
@@ -161,9 +221,16 @@ function handleMentionKeydown(textarea, e) {
   return false;
 }
 
-// Close dropdown when clicking outside
-document.addEventListener('click', e => {
-  if (_mentionDropdown && !_mentionDropdown.contains(e.target)) {
+// Close dropdown when clicking outside, scrolling outside, or resizing
+document.addEventListener('mousedown', e => {
+  if (_mentionDropdown && _mentionDropdown.style.display !== 'none' && !_mentionDropdown.contains(e.target)) {
     closeMentionDropdown();
   }
+});
+window.addEventListener('resize', () => {
+  if (_mentionDropdown && _mentionDropdown.style.display !== 'none') closeMentionDropdown();
+});
+document.addEventListener('scroll', e => {
+  if (_mentionDropdown && _mentionDropdown.style.display !== 'none' &&
+      !_mentionDropdown.contains(e.target)) closeMentionDropdown();
 }, true);
