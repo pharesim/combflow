@@ -418,7 +418,16 @@ document.addEventListener('keydown', e => {
   }
   if (action === 'stop-propagation') e.stopPropagation();
   if (action === 'editor-tags-input') handleTagKey(e);
+  if (action === 'editor-body-input') handleMentionKeydown(el, e);
 });
+
+// ── @-mention support for dynamic comment textareas ──
+document.addEventListener('input', e => {
+  if (e.target.classList.contains('comment-textarea')) handleMentionInput(e.target);
+}, true);
+document.addEventListener('keydown', e => {
+  if (e.target.classList.contains('comment-textarea')) handleMentionKeydown(e.target, e);
+}, true);
 
 function handleCurationAgeChange(slider) {
   const step = Number(slider.value);
@@ -440,7 +449,7 @@ document.addEventListener('input', e => {
       document.getElementById('settings-vote-max-val').textContent = el.value + '%'; updateVoteEstimate(); break;
     case 'editor-title-input': updateEditorTitleCount(); autoSaveDraft(); break;
     case 'editor-desc-input': updateEditorDescCount(); autoSaveDraft(); break;
-    case 'editor-body-input': autoSaveDraft(); break;
+    case 'editor-body-input': autoSaveDraft(); handleMentionInput(el); break;
     case 'editor-tags-input': showTagSuggestions(); break;
     case 'report-reason-input': updateReportCount(); break;
     case 'location-desc-input': _locationAutoFilled = !el.value.trim(); break;
