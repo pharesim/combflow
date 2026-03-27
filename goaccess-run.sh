@@ -16,11 +16,17 @@ while true; do
     if(ip!=""&&ts!=""&&u!="/stats"&&$0!~/Accept-Charset/)printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n",ip,ts,m,u,H,s,b,ua,v
   }' | \
   goaccess - \
+    --no-global-config \
     -o /var/www/goaccess/report.html \
     --datetime-format=%s \
     --log-format='%h|%x|%m|%U|%H|%s|%b|%u|%v' \
     --ignore-crawlers \
     --ignore-status=404 \
+    --http-method \
+    --http-protocol \
+    --real-os \
+    --ignore-panel=REFERRERS \
+    --ignore-panel=KEYPHRASES \
     2>/dev/null
   sleep 60
 done
