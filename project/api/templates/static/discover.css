@@ -479,12 +479,9 @@ body{overflow-x:hidden}
   #sort-select{display:none}
 }
 
-/* Short viewports (landscape phones / widescreen mobile): unstick filters so
-   they scroll away and leave room for content */
-@media(max-height:500px){
-  .filters-bar{position:static}
-  .filters{position:static;max-height:none}
-}
+/* Unstick filter bar when viewport too short for content (JS-driven) */
+.filters-bar.viewport-short{position:static}
+.filters.viewport-short{position:static;max-height:none}
 
 /* ── Video embeds (click-to-play) ── */
 .video-embed{position:relative;padding-bottom:56.25%;height:0;overflow:hidden;width:100%;max-width:100%;margin:16px 0;border-radius:12px}

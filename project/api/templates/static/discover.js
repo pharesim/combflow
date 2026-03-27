@@ -188,6 +188,7 @@ async function init() {
   }
   // Enable Alpine filter effect now that chips exist and preferences are applied
   enableFilterEffect();
+  checkFilterBarFit();
   setupInfiniteScroll();
 
   // Editor image paste/drop/pick listeners
@@ -259,6 +260,22 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ── Unstick filter bar when viewport too short for 2.5 hexes of content ──
+function checkFilterBarFit() {
+  const header = document.querySelector('.header');
+  const bar = document.getElementById('filters-bar');
+  if (!header || !bar) return;
+  const { h } = hexMetrics();
+  const filtersEl = document.querySelector('.filters');
+  const headerH = header.offsetHeight;
+  const barH = bar.offsetHeight;
+  const filtersH = bar.classList.contains('expanded') && filtersEl ? filtersEl.offsetHeight : 0;
+  const remaining = window.innerHeight - headerH - barH - filtersH;
+  const unstick = remaining < h * 2.5;
+  bar.classList.toggle('viewport-short', unstick);
+  if (filtersEl) filtersEl.classList.toggle('viewport-short', unstick);
+}
+
 // ── Resize handler ──
 let resizeTimer;
 window.addEventListener('resize', () => {
@@ -266,6 +283,7 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => {
     Alpine.store('app').layoutMode = getEffectiveLayout();
     syncHexPositions(state.posts.length);
+    checkFilterBarFit();
   }, 200);
 });
 
