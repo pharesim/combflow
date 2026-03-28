@@ -291,17 +291,13 @@
          @keydown.space.prevent="openModal(p)">
         <div class="hex-border" :style="'background:' + getPostMeta(p).borderColor"></div>
         <div class="hex-inner" :class="{ 'no-img': !getPostMeta(p).thumb }">
-          <template x-if="getPostMeta(p).thumb">
-            <div class="hex-img"
-                 :data-thumb="safeCssUrl(getPostMeta(p).thumb)"
-                 x-init="$nextTick(() => observeThumb($el))"></div>
-          </template>
-          <template x-if="!getPostMeta(p).thumb">
-            <div class="hex-placeholder"><img class="no-thumb-avatar" loading="lazy"
-                 :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
-                 :alt="'@' + p.author"
-                 @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))"></div>
-          </template>
+          <div class="hex-placeholder"><img class="no-thumb-avatar" loading="lazy"
+               :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
+               :alt="'@' + p.author"
+               @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))"></div>
+          <div class="hex-img"
+               :data-thumb="safeCssUrl(getPostMeta(p).thumb)"
+               x-effect="void getPostMeta(p).thumb; $nextTick(() => observeThumb($el))"></div>
           <div class="hex-overlay">
             <div class="hex-title" x-text="(getPostMeta(p).title || '').slice(0, 40)"></div>
             <div class="hex-author"><span class="clickable-author"
@@ -333,20 +329,16 @@
        @keydown.enter.prevent="openModal(p)"
        @keydown.space.prevent="openModal(p)"
        :style="'border-top-color:' + getPostMeta(p).borderColor + ';border-top-width:3px'">
-      <template x-if="getPostMeta(p).thumb">
-        <div class="post-card-thumb"
+      <div class="post-card-thumb" :class="{ 'no-thumb': !getPostMeta(p).thumb }"
+           :style="!getPostMeta(p).thumb ? 'background:linear-gradient(135deg,' + getPostMeta(p).borderColor + '22 0%,var(--bg2) 60%)' : ''">
+        <img class="no-thumb-avatar"
+             :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
+             :alt="'@' + p.author"
+             @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))">
+        <div class="card-thumb-img"
              :data-thumb="safeCssUrl(getPostMeta(p).thumb)"
-             x-init="$nextTick(() => observeThumb($el))"></div>
-      </template>
-      <template x-if="!getPostMeta(p).thumb">
-        <div class="post-card-thumb no-thumb"
-             :style="'background:linear-gradient(135deg,' + getPostMeta(p).borderColor + '22 0%,var(--bg2) 60%)'">
-          <img class="no-thumb-avatar"
-               :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
-               :alt="'@' + p.author"
-               @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))">
-        </div>
-      </template>
+             x-effect="void getPostMeta(p).thumb; $nextTick(() => observeThumb($el))"></div>
+      </div>
       <div class="post-card-body">
         <div class="post-card-title" x-text="getPostMeta(p).title"></div>
         <div class="post-card-author">
@@ -398,19 +390,15 @@
        @keydown.enter.prevent="openModal(p)"
        @keydown.space.prevent="openModal(p)"
        :style="'border-left-color:' + getPostMeta(p).borderColor">
-      <template x-if="getPostMeta(p).thumb">
-        <div class="list-thumb"
+      <div class="list-thumb">
+        <img class="no-thumb-avatar list-avatar" loading="lazy"
+             :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
+             :alt="'@' + p.author"
+             @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author.slice(0,2)}))">
+        <div class="list-thumb-img"
              :data-thumb="safeCssUrl(getPostMeta(p).thumb)"
-             x-init="$nextTick(() => observeThumb($el))"></div>
-      </template>
-      <template x-if="!getPostMeta(p).thumb">
-        <div class="list-thumb">
-          <img class="no-thumb-avatar list-avatar" loading="lazy"
-               :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
-               :alt="'@' + p.author"
-               @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author.slice(0,2)}))">
-        </div>
-      </template>
+             x-effect="void getPostMeta(p).thumb; $nextTick(() => observeThumb($el))"></div>
+      </div>
       <div class="list-content">
         <div class="list-title" x-text="getPostMeta(p).title"></div>
         <div class="list-meta">

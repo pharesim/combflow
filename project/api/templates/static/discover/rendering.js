@@ -186,15 +186,14 @@ async function fetchMeta(posts) {
     return !cached || !cached.thumbnail;
   });
   const chunks = [];
-  for (let i = 0; i < need.length; i += 5) chunks.push(need.slice(i, i + 5));
+  for (let i = 0; i < need.length; i += 10) chunks.push(need.slice(i, i + 10));
 
-  const CONCURRENCY = 2;
+  const CONCURRENCY = 6;
   let ci = 0;
   async function runNext() {
     if (ci >= chunks.length) return;
     const chunk = chunks[ci++];
     await Promise.all(chunk.map(p => fetchSingleMeta(p)));
-    await new Promise(r => setTimeout(r, 200));
     return runNext();
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));

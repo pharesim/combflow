@@ -224,7 +224,6 @@ document.addEventListener('alpine:init', () => {
   });
 });
 
-const PROXY_RE = /^https?:\/\/images\.hive\.blog\/\d+x\d+\//;
 const thumbObserver = new IntersectionObserver((entries) => {
   entries.forEach(entry => {
     if (entry.isIntersecting) {
@@ -234,12 +233,6 @@ const thumbObserver = new IntersectionObserver((entries) => {
         delete el.dataset.thumb;
         const img = new Image();
         img.onload = () => { el.style.backgroundImage = `url('${safeCssUrl(url)}')`; };
-        img.onerror = () => {
-          const raw = url.replace(PROXY_RE, '');
-          if (raw !== url) {
-            el.style.backgroundImage = `url('${safeCssUrl(raw)}')`;
-          }
-        };
         img.src = url;
       }
       thumbObserver.unobserve(el);

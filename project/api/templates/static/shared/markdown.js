@@ -22,15 +22,6 @@ const ALLOWED_CSS_PROPS = new Set([
 ]);
 
 // Global delegated error handler for image proxy fallback.
-// onerror function properties don't survive innerHTML serialization,
-// so we use data-direct-src attributes + capture-phase listener instead.
-document.addEventListener('error', function(e) {
-  const img = e.target;
-  if (img.tagName === 'IMG' && img.dataset.directSrc) {
-    img.src = img.dataset.directSrc;
-    delete img.dataset.directSrc;
-  }
-}, true);
 
 // Raw-text HTML elements that break marked's parsing by swallowing all
 // subsequent content as literal text until their closing tag appears.
@@ -107,13 +98,6 @@ function sanitizeContent(html) {
 
 function proxyImages(div) {
   div.querySelectorAll('img').forEach(img => {
-    const src = img.getAttribute('src') || '';
-    if (src && !src.startsWith('data:')) {
-      img.dataset.directSrc = src;
-      if (!/images\.hive\.blog/.test(src)) {
-        img.src = 'https://images.hive.blog/768x0/' + src;
-      }
-    }
     img.removeAttribute('width');
     img.removeAttribute('height');
     img.loading = 'lazy';

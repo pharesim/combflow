@@ -47,12 +47,9 @@ function sentimentColor(score) {
   return `rgb(${r},${g},${b})`;
 }
 
-function thumbUrl(url, size = 256) {
+function thumbUrl(url) {
   if (!url || !url.startsWith('http')) return '';
-  // Strip existing hive image proxy prefix to avoid double-wrapping
-  const proxyRe = /^https?:\/\/images\.hive\.blog\/\d+x\d+\//;
-  const raw = url.replace(proxyRe, '');
-  return `https://images.hive.blog/${size}x0/${raw}`;
+  return url;
 }
 
 // ── Filter count badges (reads from Alpine store) ──
