@@ -219,6 +219,8 @@ function renderHiveBody(raw) {
   // Strip non-allowed HTML tags at string level before DOM parsing.
   html = html.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (m, tag) =>
     _ALLOWED_HTML.has(tag.toLowerCase()) ? m : '');
+  // Escape unclosed HTML tags (no closing >) so they render as text
+  html = html.replace(/<([a-z][a-z0-9]*\b[^>]*)(?=<|$)/gi, '&lt;$1');
   // Close unclosed <iframe> tags so they can't swallow subsequent content
   html = html.replace(/<iframe\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, '$&</iframe>');
   const clean = sanitizeContent(html);
