@@ -163,6 +163,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Cross-post URL support** — Hive-style prefixed URLs (`/community/@author/permlink`) redirect to canonical deep links
 - **Social previews** — post-specific Open Graph meta tags on deep links (title, description, thumbnail fetched from Hive API) for rich previews on Discord, Twitter, Slack, etc. Author profile pages show `@username — HiveComb`.
 - **Misclassification reporting** — flag icon in post modal lets logged-in users report misclassified posts with a reason, signed via Hive Keychain (server verifies signature against on-chain posting keys, requires reputation > 25, rate-limited to 5 reports/minute)
+- **Hive link rewriting** — links to other Hive frontends (peakd, ecency, hive.blog, etc.) in post bodies are rewritten to internal HiveComb equivalents: post links open in the modal, profile links navigate to the author page. Profile subpages (wallet, settings, etc.) and non-Hive links are left alone.
 - **Security** — CSP headers, SRI hashes on CDN resources, DOMPurify sanitization on all innerHTML, input validation, clickjacking protection, robust XSS-safe post rendering (raw-text tag stripping, unclosed HTML tag escaping, unclosed iframe handling), comment tree depth limit (10 levels), iframe sandbox on external content
 - **Accessibility** — WCAG AA: focus management, ARIA labels, keyboard navigation, colour contrast
 
@@ -434,7 +435,7 @@ combflow/combflow/
 │   │           ├── theme.js       # FOUC-free theme init (runs before first paint)
 │   │           ├── shared/      # shared modules
 │   │           │   ├── keychain.js  # Keychain broadcasting (vote, comment, post, follow, mute, subscribe)
-│   │           │   └── markdown.js  # Hive markdown rendering, sanitization, video embeds
+│   │           │   └── markdown.js  # Hive markdown rendering, sanitization, video embeds, Hive frontend link rewriting
 │   │           └── discover/    # 13 focused JS modules
 │   │               ├── state.js, filters.js, rendering.js, voting.js,
 │   │               ├── social.js, comments.js, modal.js, auth.js, report.js,

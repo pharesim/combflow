@@ -386,7 +386,7 @@ document.addEventListener('click', e => {
     case 'comment-preview': toggleCommentPreview(el.dataset.formId); break;
     case 'close-reply-form': closeReplyForm(); break;
     case 'submit-comment': submitComment(el.dataset.parentAuthor, el.dataset.parentPermlink, el.dataset.formId); break;
-    case 'navigate-post': e.preventDefault(); closeModal(); openModal({author: el.dataset.author, permlink: el.dataset.permlink}); break;
+    case 'navigate-post': e.preventDefault(); closeModal(true); openModal({author: el.dataset.author, permlink: el.dataset.permlink}); break;
     case 'filter-community': e.preventDefault(); e.stopPropagation(); filterByCommunity(el.dataset.community); break;
     case 'clear-author-filter': clearAuthorFilter(); scheduleFilter(); break;
     case 'unmute-user': handleUnmuteUser(el.dataset.user); break;

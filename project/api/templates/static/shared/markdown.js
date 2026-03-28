@@ -180,6 +180,54 @@ function embedVideos(div) {
   });
 }
 
+const _HIVE_DOMAINS = new Set([
+  'ecency.com', 'hive.blog', 'peakd.com', 'travelfeed.io', 'dapplr.in',
+  'leofinance.io', 'inleo.io', 'proofofbrain.io', 'stemgeeks.net',
+  'hiveblockexplorer.com', 'proofofbrain.blog', 'weedcash.network',
+  'liketu.com', 'bilpcoin.com', 'inji.com'
+]);
+
+const _HIVE_SECTIONS = new Set([
+  'wallet', 'feed', 'followers', 'following', 'points', 'communities',
+  'posts', 'blog', 'comments', 'replies', 'settings', 'engine',
+  'permissions', 'referrals', 'payout', 'activities', 'spk', 'trail',
+  'transfers', 'notifications'
+]);
+
+const _HIVE_POST_PATH_RE = /^\/(?:[a-z0-9-]+\/)?@([a-z][a-z0-9._-]{2,15})\/([\w-]+)\/?$/i;
+const _HIVE_PROFILE_PATH_RE = /^\/@([a-z][a-z0-9._-]{2,15})\/?$/i;
+
+function rewriteHiveLinks(div) {
+  for (const a of div.querySelectorAll('a[href]')) {
+    let url;
+    try { url = new URL(a.href); } catch { continue; }
+    const domain = url.hostname.replace(/^www\./, '');
+    if (!_HIVE_DOMAINS.has(domain)) continue;
+
+    const path = url.pathname;
+
+    const pm = path.match(_HIVE_POST_PATH_RE);
+    if (pm) {
+      const [, author, permlink] = pm;
+      if (_HIVE_SECTIONS.has(permlink.toLowerCase())) continue;
+      a.href = `/@${author}/${permlink}`;
+      a.setAttribute('data-action', 'navigate-post');
+      a.setAttribute('data-author', author);
+      a.setAttribute('data-permlink', permlink);
+      a.removeAttribute('target');
+      a.removeAttribute('rel');
+      continue;
+    }
+
+    const am = path.match(_HIVE_PROFILE_PATH_RE);
+    if (am) {
+      a.href = `/@${am[1]}`;
+      a.removeAttribute('target');
+      a.removeAttribute('rel');
+    }
+  }
+}
+
 function sandboxIframes(div) {
   div.querySelectorAll('iframe').forEach(iframe => {
     iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
@@ -229,6 +277,7 @@ function renderHiveBody(raw) {
   sandboxIframes(div);
   sanitizeStyles(div);
   proxyImages(div);
+  rewriteHiveLinks(div);
   embedVideos(div);
   return div.innerHTML;
 }
