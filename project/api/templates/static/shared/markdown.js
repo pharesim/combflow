@@ -194,7 +194,7 @@ const _HIVE_SECTIONS = new Set([
   'transfers', 'notifications'
 ]);
 
-const _HIVE_POST_PATH_RE = /^\/(?:[a-z0-9-]+\/)?@([a-z][a-z0-9._-]{2,15})\/([\w-]+)\/?$/i;
+const _HIVE_POST_PATH_RE = /^\/(?:[a-z0-9-]+\/)*@([a-z][a-z0-9._-]{2,15})\/([\w-]+)\/?$/i;
 const _HIVE_PROFILE_PATH_RE = /^\/@([a-z][a-z0-9._-]{2,15})\/?$/i;
 
 function rewriteHiveLinks(div) {

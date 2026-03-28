@@ -36,8 +36,16 @@ Preferred-Languages: en
 		not path /static/*
 	}
 	handle @bot {
+		log_skip
 		rewrite * /https://{host}{path}
 		reverse_proxy prerender:3000
+	}
+	@prerender_internal {
+		header User-Agent *Prerender*
+	}
+	handle @prerender_internal {
+		log_skip
+		reverse_proxy combflow-app:8000
 	}
 	handle /static/* {
 		header Cache-Control "public, max-age=86400, immutable"
