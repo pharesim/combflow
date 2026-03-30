@@ -296,6 +296,10 @@ document.addEventListener('visibilitychange', () => {
   } else {
     pollNewPosts();
     startLiveUpdates();
+    if (Alpine.store('app').currentUser) {
+      startNotifPolling();
+      if (Alpine.store('app').notifOpen) fetchNotifications();
+    }
   }
 });
 
