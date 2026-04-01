@@ -29,6 +29,7 @@ services:
     build: .
     command: >
       sh -c "alembic upgrade head &&
+             python alembic/backfill_006.py &&
              python alembic/verify_migration.py &&
              uvicorn project.api.main:app --host 0.0.0.0 --port 8000"
     restart: unless-stopped
