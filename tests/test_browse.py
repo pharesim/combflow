@@ -124,8 +124,8 @@ async def test_browse_filtered_total(client, seeded_db, filter_qs):
     assert filtered_total < all_total
 
 
-async def test_browse_cursor_total_consistent(client, seeded_db):
-    """total on cursor page reflects full filtered count, not just remaining rows."""
+async def test_browse_cursor_total_is_null(client, seeded_db):
+    """total on cursor page is null (UI retains the count from page 1)."""
     resp1 = await client.get("/api/browse?limit=2")
     data1 = resp1.json()
     assert data1["next_cursor"] is not None
@@ -133,7 +133,7 @@ async def test_browse_cursor_total_consistent(client, seeded_db):
 
     resp2 = await client.get(f"/api/browse?limit=2&cursor={data1['next_cursor']}")
     data2 = resp2.json()
-    assert data2["total"] >= data2["count"]
+    assert data2["total"] is None
 
 
 async def test_browse_empty_db(client):

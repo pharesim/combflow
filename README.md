@@ -154,7 +154,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Lazy thumbnails** — loaded on-demand as posts enter the viewport; avatar stays visible underneath until thumbnail loads (no flash); direct image URLs with high-concurrency metadata fetch (6 workers, 60 simultaneous RPC calls)
 - **Sentiment borders** — each hex has a coloured border from red (negative) to green (positive)
 - **Layout toggle** — switch between hex grid and card view (auto-selects cards on mobile)
-- **Live polling** — visibility-aware, only polls when the tab is active; scales fetch limit based on time away (up to 200 posts on return)
+- **Live polling** — visibility-aware, only polls when the tab is active; scales fetch limit based on time away (up to 200 posts on return); notification count and open panel also refreshed on tab return
 - **Toast notifications** — non-blocking feedback for saves, errors, etc.
 - **Author profile URLs** — `/@username` shows posts filtered by that author; also triggered by clicking any username
 

@@ -393,9 +393,14 @@ async def browse_posts(
     if sort and sort in ("newest", "oldest"):
         sort_order = sort
 
-    conditions = [
-        "EXISTS (SELECT 1 FROM post_category WHERE post_id = p.id)",
-    ]
+    conditions = []
+    has_category_join = bool(categories)
+    if not has_category_join:
+        # Only needed when there's no category JOIN (the JOIN itself guarantees
+        # the post has at least one category row).
+        conditions.append(
+            "EXISTS (SELECT 1 FROM post_category WHERE post_id = p.id)",
+        )
     if nsfw_only:
         conditions.append("p.is_nsfw = true")
     elif not include_nsfw:
@@ -470,25 +475,49 @@ async def browse_posts(
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     # Filtered total count — cached with 30s TTL, keyed by filter combination.
-    count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors, include_nsfw, nsfw_only, max_age=max_age)
-    total = _cache.get(count_key)
-    if total is None:
-        count_conditions = [c for c in conditions if ":cursor_created" not in c]
-        count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
-        count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
-        count_rows = await session.execute(
-            text(f"SELECT COUNT(DISTINCT p.id) FROM posts p {cat_join} {count_where}"),
-            count_params,
-        )
-        total = count_rows.scalar()
-        _cache.put(count_key, total, ttl=30)
+    # Skip entirely on cursor pages (UI already has the count from page 1).
+    if use_cursor:
+        total = None
+    else:
+        count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors, include_nsfw, nsfw_only, max_age=max_age)
+        total = _cache.get(count_key)
+        if total is None:
+            # Check if any dimension filters are active.
+            has_filters = any([categories, languages, sentiment, community, communities, authors, max_age])
+            if not has_filters and not include_nsfw and not nsfw_only:
+                # Unfiltered base case: use pg_class.reltuples (O(1) approximate).
+                # Falls back to COUNT(*) if reltuples is -1 (never analyzed).
+                approx_row = await session.execute(
+                    text("SELECT CAST(reltuples AS bigint) FROM pg_class WHERE relname = 'posts'")
+                )
+                total = approx_row.scalar()
+                if total is None or total < 0:
+                    count_conditions = [c for c in conditions if ":cursor_created" not in c]
+                    count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
+                    count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
+                    fallback = await session.execute(
+                        text(f"SELECT COUNT(*) FROM posts p {count_where}"),
+                        count_params,
+                    )
+                    total = fallback.scalar()
+            else:
+                count_conditions = [c for c in conditions if ":cursor_created" not in c]
+                count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
+                count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
+                count_fn = "COUNT(DISTINCT p.id)" if has_category_join else "COUNT(*)"
+                count_rows = await session.execute(
+                    text(f"SELECT {count_fn} FROM posts p {cat_join} {count_where}"),
+                    count_params,
+                )
+                total = count_rows.scalar()
+            _cache.put(count_key, total, ttl=30)
 
     offset_clause = "" if use_cursor else "OFFSET :off"
 
     rows = await session.execute(
         text(
             f"""
-            SELECT DISTINCT p.id, p.author, p.permlink, p.created,
+            SELECT {"DISTINCT " if has_category_join else ""}p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
                    p.primary_language, p.is_nsfw, cm.community_name
             FROM posts p
