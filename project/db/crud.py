@@ -105,6 +105,16 @@ async def get_category_tree(session: AsyncSession) -> list[dict]:
     return list(parents.values())
 
 
+async def _get_cached_category_tree(session: AsyncSession) -> list[dict]:
+    """Category tree with 86400s in-process cache (changes only on deploy)."""
+    cached = _cache.get("category_tree_internal")
+    if cached is not None:
+        return cached
+    tree = await get_category_tree(session)
+    _cache.put("category_tree_internal", tree, ttl=86400)
+    return tree
+
+
 # ── Posts ─────────────────────────────────────────────────────────────────────
 
 @retry_transient
@@ -159,6 +169,7 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
         )
     )
     post = existing.scalars().first()
+    is_new = post is None
     if post:
         post.sentiment = data.get("sentiment")
         post.sentiment_score = data.get("sentiment_score")
@@ -186,6 +197,18 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
         session.add(post)
 
     await session.commit()
+
+    # Increment community post_count for new inserts only.
+    if is_new and post.community_id:
+        await session.execute(
+            text(
+                "UPDATE community_mappings SET post_count = post_count + 1 "
+                "WHERE community_id = :cid"
+            ),
+            {"cid": post.community_id},
+        )
+        await session.commit()
+
     logger.info("saved post permlink=%s langs=%s sentiment=%s categories=%s",
                 data["permlink"], data.get("languages", []), data.get("sentiment"),
                 data.get("categories", []))
@@ -300,7 +323,7 @@ async def _attach_categories_and_languages(
     session: AsyncSession, posts: list[dict], post_ids: list[int]
 ) -> list[dict]:
     """Resolve category IDs to names via in-memory tree, attach languages from row."""
-    tree = await get_category_tree(session)
+    tree = await _get_cached_category_tree(session)
     id_to_name: dict[int, str] = {}
     for parent in tree:
         id_to_name[parent["id"]] = parent["name"]
@@ -318,7 +341,7 @@ async def _attach_categories_and_languages(
 
 async def _resolve_category_ids(session: AsyncSession, names: list[str]) -> list[int]:
     """Map category names to IDs, expanding parents to all children."""
-    tree = await get_category_tree(session)
+    tree = await _get_cached_category_tree(session)
     name_to_id: dict[str, int] = {}
     parent_children: dict[int, list[int]] = {}
     parent_ids: set[int] = set()
@@ -485,7 +508,7 @@ async def browse_posts(
                     count_params,
                 )
                 total = count_rows.scalar()
-            _cache.put(count_key, total, ttl=30)
+            _cache.put(count_key, total, ttl=300)
 
     offset_clause = "" if use_cursor else "OFFSET :off"
 
@@ -538,15 +561,33 @@ async def get_available_languages(session: AsyncSession) -> list[dict]:
 
 @retry_transient
 async def get_overview_stats(session: AsyncSession) -> dict:
-    """Get overview statistics."""
+    """Get overview statistics using fast approximations."""
+    # O(1) approximate row count from pg_class (autovacuum keeps this fresh).
     row = await session.execute(
-        text(
-            "SELECT "
-            "(SELECT COUNT(*) FROM posts) AS total_posts, "
-            "(SELECT COUNT(DISTINCT lang) FROM posts, unnest(language_codes) AS lang) AS languages"
-        )
+        text("SELECT CAST(reltuples AS bigint) FROM pg_class WHERE relname = 'posts'")
     )
-    return dict(row.mappings().first())
+    total = row.scalar()
+    if total is None or total < 0:
+        # Fallback: reltuples is -1 when never analyzed (e.g. test DB).
+        fallback = await session.execute(text("SELECT COUNT(*) FROM posts"))
+        total = fallback.scalar() or 0
+
+    # Language count from cached languages list (avoids full table scan).
+    langs = _cache.get("languages")
+    if langs is not None:
+        lang_count = len(langs.get("languages", []))
+    else:
+        # Fallback: fast distinct count if languages cache cold.
+        lang_row = await session.execute(
+            text(
+                "SELECT COUNT(DISTINCT unnest) FROM ("
+                "  SELECT unnest(language_codes) FROM posts WHERE language_codes != '{}'"
+                ") t"
+            )
+        )
+        lang_count = lang_row.scalar() or 0
+
+    return {"total_posts": total, "languages": lang_count}
 
 
 # ── Blacklist sweep ──────────────────────────────────────────────────────────
@@ -566,11 +607,35 @@ async def get_distinct_authors(
 @retry_transient
 async def delete_posts_by_author(session: AsyncSession, author: str) -> int:
     """Delete all posts for a blacklisted author. Returns count deleted."""
+    # Collect community post counts before deleting (for post_count decrement).
+    comm_rows = await session.execute(
+        text(
+            "SELECT community_id, COUNT(*) AS cnt FROM posts "
+            "WHERE author = :author AND community_id IS NOT NULL "
+            "GROUP BY community_id"
+        ),
+        {"author": author},
+    )
+    comm_counts = comm_rows.fetchall()
+
     result = await session.execute(
         text("DELETE FROM posts WHERE author = :author"),
         {"author": author},
     )
     await session.commit()
+
+    # Decrement community post_counts.
+    for cid, cnt in comm_counts:
+        await session.execute(
+            text(
+                "UPDATE community_mappings SET post_count = post_count - :cnt "
+                "WHERE community_id = :cid"
+            ),
+            {"cid": cid, "cnt": cnt},
+        )
+    if comm_counts:
+        await session.commit()
+
     return result.rowcount
 
 
@@ -582,14 +647,12 @@ async def get_available_communities(session: AsyncSession) -> list[dict]:
     """Get communities that have posts, with post counts and display names."""
     rows = await session.execute(
         text(
-            "SELECT p.community_id AS id, "
-            "       COALESCE(cm.community_name, p.community_id) AS name, "
-            "       cm.category_slug AS category, "
-            "       COUNT(*) AS post_count "
-            "FROM posts p "
-            "LEFT JOIN community_mappings cm ON cm.community_id = p.community_id "
-            "WHERE p.community_id IS NOT NULL "
-            "GROUP BY p.community_id, cm.community_name, cm.category_slug "
+            "SELECT community_id AS id, "
+            "       community_name AS name, "
+            "       category_slug AS category, "
+            "       post_count "
+            "FROM community_mappings "
+            "WHERE post_count > 0 "
             "ORDER BY post_count DESC"
         )
     )
@@ -629,33 +692,23 @@ async def get_suggested_communities(
 ) -> list[dict]:
     """Get communities whose mapped category matches any of the given slugs.
 
-    Joins community_mappings with a post count from the posts table.
+    Reads directly from community_mappings (post_count denormalized).
     Returns up to 10 results sorted by post_count descending.
     """
     if not categories:
         return []
-    cat_placeholders = ", ".join(f":cat_{i}" for i in range(len(categories)))
-    params: dict = {f"cat_{i}": cat for i, cat in enumerate(categories)}
     rows = await session.execute(
         text(
-            f"""
-            SELECT cm.community_id AS id,
-                   cm.community_name AS name,
-                   cm.category_slug AS category,
-                   COALESCE(pc.cnt, 0) AS post_count
-            FROM community_mappings cm
-            LEFT JOIN (
-                SELECT community_id, COUNT(*) AS cnt
-                FROM posts
-                WHERE community_id IS NOT NULL
-                GROUP BY community_id
-            ) pc ON pc.community_id = cm.community_id
-            WHERE cm.category_slug IN ({cat_placeholders})
-            ORDER BY post_count DESC
-            LIMIT 10
-            """
+            "SELECT community_id AS id, "
+            "       community_name AS name, "
+            "       category_slug AS category, "
+            "       post_count "
+            "FROM community_mappings "
+            "WHERE category_slug = ANY(CAST(:cats AS text[])) "
+            "ORDER BY post_count DESC "
+            "LIMIT 10"
         ),
-        params,
+        {"cats": categories},
     )
     return [dict(r) for r in rows.mappings()]
 
@@ -748,7 +801,7 @@ async def list_post_reports(
     raw_rows = rows.mappings().fetchall()
 
     # Resolve category IDs to names via in-memory tree.
-    tree = await get_category_tree(session)
+    tree = await _get_cached_category_tree(session)
     id_to_name: dict[int, str] = {}
     for parent in tree:
         id_to_name[parent["id"]] = parent["name"]

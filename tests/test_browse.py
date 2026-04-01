@@ -198,6 +198,10 @@ async def test_communities_endpoint_empty(client):
 
 
 async def test_communities_endpoint_with_data(client, seeded_db, db_session):
+    # Ensure a community_mappings row exists (post_count denormalized).
+    await upsert_community_mapping(
+        db_session, "hive-174578", seeded_db["leaf_name"], "LeoFinance", 0.5,
+    )
     await _create_post(db_session,
         author="dave", permlink="comm-post-1",
         categories=[seeded_db["leaf_name"]], languages=["en"],

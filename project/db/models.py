@@ -69,6 +69,7 @@ class CommunityMapping(Base):
     category_slug = Column(String(100), nullable=True)
     community_name = Column(String(200), nullable=False, server_default="")
     score = Column(Float, nullable=False, server_default="0")
+    post_count = Column(Integer, nullable=False, server_default="0")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

@@ -339,7 +339,7 @@ async def suggested_communities(
 
 
 @router.get("/api/stats", tags=["discovery"], summary="Overview statistics")
-@cache.cached_response("overview_stats", ttl=30)
+@cache.cached_response("overview_stats", ttl=300)
 async def overview_stats(db: AsyncSession = Depends(get_db)):
     result = await crud.get_overview_stats(db)
     result["api_base_url"] = settings.api_base_url
