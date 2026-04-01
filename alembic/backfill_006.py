@@ -8,16 +8,24 @@ Called from Docker entrypoint after ``alembic upgrade head``.
 
 import os
 import sys
+from urllib.parse import urlparse
 
 import psycopg2
 
 BATCH = 50_000
 
 
-def get_sync_url() -> str:
-    """Convert asyncpg DATABASE_URL to psycopg2 format."""
+def connect_sync():
+    """Parse DATABASE_URL and connect via psycopg2 with keyword args."""
     url = os.environ["DATABASE_URL"]
-    return url.replace("+asyncpg", "")
+    p = urlparse(url.replace("+asyncpg", ""))
+    return psycopg2.connect(
+        host=p.hostname,
+        port=p.port or 5432,
+        dbname=p.path.lstrip("/"),
+        user=p.username,
+        password=p.password,
+    )
 
 
 def table_exists(cur, name: str) -> bool:
@@ -60,7 +68,7 @@ def backfill(conn, col: str, junction: str, agg_expr: str) -> None:
 
 
 def main() -> None:
-    conn = psycopg2.connect(get_sync_url())
+    conn = connect_sync()
     conn.autocommit = False  # we commit explicitly per batch
 
     cur = conn.cursor()
