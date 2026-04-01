@@ -2,7 +2,8 @@
 
 Denormalizes post counts onto community_mappings so
 get_available_communities avoids a GROUP BY over the full posts table.
-Backfills from current data.
+Backfills from current data using a single GROUP BY (not a correlated
+subquery, which would scan 7M+ posts per community).
 
 Revision ID: 007
 Revises: 006
@@ -20,13 +21,18 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         "ALTER TABLE community_mappings "
-        "ADD COLUMN post_count INTEGER NOT NULL DEFAULT 0"
+        "ADD COLUMN IF NOT EXISTS post_count INTEGER NOT NULL DEFAULT 0"
     )
     op.execute(
         "UPDATE community_mappings cm "
-        "SET post_count = COALESCE(("
-        "  SELECT COUNT(*) FROM posts p WHERE p.community_id = cm.community_id"
-        "), 0)"
+        "SET post_count = sub.cnt "
+        "FROM ("
+        "  SELECT community_id, COUNT(*) AS cnt "
+        "  FROM posts "
+        "  WHERE community_id IS NOT NULL "
+        "  GROUP BY community_id"
+        ") sub "
+        "WHERE cm.community_id = sub.community_id"
     )
 
 
