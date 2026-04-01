@@ -50,7 +50,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 3600s  # 1h — migration 006 backfills 7M+ rows; reduce after first deploy
+      start_period: 30s
     read_only: true
     tmpfs:
       - /tmp
