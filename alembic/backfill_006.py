@@ -8,23 +8,22 @@ Called from Docker entrypoint after ``alembic upgrade head``.
 
 import os
 import sys
-from urllib.parse import urlparse
 
 import psycopg2
+from sqlalchemy.engine import make_url
 
 BATCH = 50_000
 
 
 def connect_sync():
-    """Parse DATABASE_URL and connect via psycopg2 with keyword args."""
-    url = os.environ["DATABASE_URL"]
-    p = urlparse(url.replace("+asyncpg", ""))
+    """Parse DATABASE_URL via SQLAlchemy (handles special chars) and connect."""
+    u = make_url(os.environ["DATABASE_URL"])
     return psycopg2.connect(
-        host=p.hostname,
-        port=p.port or 5432,
-        dbname=p.path.lstrip("/"),
-        user=p.username,
-        password=p.password,
+        host=u.host,
+        port=u.port or 5432,
+        dbname=u.database,
+        user=u.username,
+        password=u.password,
     )
 
 
