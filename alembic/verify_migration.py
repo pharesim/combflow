@@ -14,8 +14,6 @@ from project.db.session import engine
 _REQUIRED_TABLES = [
     "posts",
     "categories",
-    "post_category",
-    "post_language",
     "category_centroids",
     "stream_cursors",
     "post_reports",

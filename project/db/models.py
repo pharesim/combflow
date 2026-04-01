@@ -1,26 +1,11 @@
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, ForeignKey, Integer, String,
-    Table, UniqueConstraint, func,
+    UniqueConstraint, func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
-
-post_category = Table(
-    "post_category",
-    Base.metadata,
-    Column("post_id", Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False),
-    Column("category_id", Integer, ForeignKey("categories.id"), nullable=False),
-    UniqueConstraint("post_id", "category_id", name="uq_post_category"),
-)
-
-post_language = Table(
-    "post_language",
-    Base.metadata,
-    Column("post_id", Integer, ForeignKey("posts.id")),
-    Column("language", String(10), nullable=False),
-    UniqueConstraint("post_id", "language", name="uq_post_language"),
-)
 
 
 class Post(Base):
@@ -36,7 +21,8 @@ class Post(Base):
     primary_language = Column(String(10), nullable=True, index=True)
     is_nsfw = Column(Boolean, nullable=False, server_default="false")
     classified_at = Column(DateTime(timezone=True), server_default=func.now())
-    categories = relationship("Category", secondary=post_category, back_populates="posts")
+    category_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
+    language_codes = Column(ARRAY(String), nullable=False, server_default="{}")
 
     __table_args__ = (
         UniqueConstraint("author", "permlink", name="uq_author_permlink"),
@@ -50,7 +36,6 @@ class Category(Base):
     name = Column(String, unique=True, nullable=False)
     parent_id = Column(Integer, ForeignKey("categories.id"), index=True)
     parent = relationship("Category", remote_side=[id], backref="children")
-    posts = relationship("Post", secondary=post_category, back_populates="categories")
 
 
 class StreamCursor(Base):

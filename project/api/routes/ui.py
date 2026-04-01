@@ -170,7 +170,7 @@ async def sitemap_xml(db: AsyncSession = Depends(get_db)):
     # Recent posts (last 1000)
     result = await db.execute(text(
         "SELECT p.author, p.permlink, p.created FROM posts p "
-        "WHERE EXISTS (SELECT 1 FROM post_category WHERE post_id = p.id) "
+        "WHERE p.category_ids != '{}' "
         "ORDER BY p.created DESC LIMIT 1000"
     ))
     for row in result:

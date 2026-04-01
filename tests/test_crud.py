@@ -366,29 +366,21 @@ async def test_delete_posts_by_author_nonexistent(setup_db):
 
 
 async def test_delete_posts_by_author_cascades_associations(seeded_db):
-    """Deleting an author's posts also removes post_category and post_language rows."""
+    """Deleting an author's posts removes the rows entirely (array columns go with them)."""
     from sqlalchemy import text as sql_text
     from project.db.crud import delete_posts_by_author
 
-    # Get alice's post ID before deletion.
     async with _TestSession() as session:
         row = await session.execute(
-            sql_text("SELECT id FROM posts WHERE author = 'alice'")
+            sql_text("SELECT COUNT(*) FROM posts WHERE author = 'alice'")
         )
-        alice_id = row.scalar()
-        assert alice_id is not None
+        assert row.scalar() > 0
 
     async with _TestSession() as session:
         await delete_posts_by_author(session, "alice")
 
     async with _TestSession() as session:
-        cats = await session.execute(
-            sql_text("SELECT COUNT(*) FROM post_category WHERE post_id = :pid"),
-            {"pid": alice_id},
+        remaining = await session.execute(
+            sql_text("SELECT COUNT(*) FROM posts WHERE author = 'alice'")
         )
-        assert cats.scalar() == 0
-        langs = await session.execute(
-            sql_text("SELECT COUNT(*) FROM post_language WHERE post_id = :pid"),
-            {"pid": alice_id},
-        )
-        assert langs.scalar() == 0
+        assert remaining.scalar() == 0

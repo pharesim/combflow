@@ -134,6 +134,23 @@ async def existing_author_permlinks(
 
 @retry_transient
 async def create_post(session: AsyncSession, data: dict) -> Post:
+    # Resolve category names to IDs — batch fetch existing, upsert only missing.
+    cat_names = list(set(data.get("categories", [])))
+    cat_ids: list[int] = []
+    if cat_names:
+        existing_cats = await session.execute(
+            text("SELECT id, name FROM categories WHERE name = ANY(:names)"),
+            {"names": cat_names},
+        )
+        existing_map = {r[1]: r[0] for r in existing_cats.fetchall()}
+        for name in cat_names:
+            if name not in existing_map:
+                cat = await upsert_category(session, name)
+                existing_map[name] = cat.id
+        cat_ids = list(existing_map.values())
+
+    lang_codes = data.get("languages", [])
+
     # Check for existing post (upsert on author+permlink).
     existing = await session.execute(
         select(Post).where(
@@ -151,16 +168,8 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
             post.primary_language = data["primary_language"]
         if "is_nsfw" in data:
             post.is_nsfw = data["is_nsfw"]
-        # Clear old categories and languages.
-        await session.execute(
-            text("DELETE FROM post_category WHERE post_id = :pid"),
-            {"pid": post.id},
-        )
-        await session.execute(
-            text("DELETE FROM post_language WHERE post_id = :pid"),
-            {"pid": post.id},
-        )
-        await session.flush()
+        post.category_ids = cat_ids
+        post.language_codes = lang_codes
     else:
         post = Post(
             author=data["author"],
@@ -171,40 +180,10 @@ async def create_post(session: AsyncSession, data: dict) -> Post:
             community_id=data.get("community_id"),
             primary_language=data.get("primary_language"),
             is_nsfw=data.get("is_nsfw", False),
+            category_ids=cat_ids,
+            language_codes=lang_codes,
         )
         session.add(post)
-        await session.flush()
-
-    # Add categories — batch fetch existing, upsert only missing.
-    cat_names = list(set(data.get("categories", [])))
-    if cat_names:
-        existing_cats = await session.execute(
-            text("SELECT id, name FROM categories WHERE name = ANY(:names)"),
-            {"names": cat_names},
-        )
-        existing_map = {r[1]: r[0] for r in existing_cats.fetchall()}
-        for name in cat_names:
-            if name not in existing_map:
-                cat = await upsert_category(session, name)
-                existing_map[name] = cat.id
-        for cat_id in existing_map.values():
-            await session.execute(
-                text(
-                    "INSERT INTO post_category (post_id, category_id) "
-                    "VALUES (:pid, :cid) ON CONFLICT DO NOTHING"
-                ),
-                {"pid": post.id, "cid": cat_id},
-            )
-
-    # Add languages via junction table.
-    for lang in data.get("languages", []):
-        await session.execute(
-            text(
-                "INSERT INTO post_language (post_id, language) "
-                "VALUES (:pid, :lang) ON CONFLICT DO NOTHING"
-            ),
-            {"pid": post.id, "lang": lang},
-        )
 
     await session.commit()
     logger.info("saved post permlink=%s langs=%s sentiment=%s categories=%s",
@@ -223,7 +202,8 @@ async def get_post_by_permlink(
             """
             SELECT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   p.primary_language, p.is_nsfw, cm.community_name
+                   p.primary_language, p.is_nsfw, cm.community_name,
+                   p.category_ids, p.language_codes
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
             WHERE p.author = :author AND p.permlink = :pl
@@ -319,32 +299,45 @@ async def set_cursor(session: AsyncSession, key: str, block_num: int) -> None:
 async def _attach_categories_and_languages(
     session: AsyncSession, posts: list[dict], post_ids: list[int]
 ) -> list[dict]:
-    """Batch-fetch categories and languages for a list of posts (avoids N+1)."""
-    cats = await session.execute(
-        text(
-            "SELECT pc.post_id, c.name FROM categories c "
-            "JOIN post_category pc ON c.id = pc.category_id "
-            "WHERE pc.post_id = ANY(:ids)"
-        ),
-        {"ids": post_ids},
-    )
-    cat_map: dict[int, list[str]] = {}
-    for row in cats.fetchall():
-        cat_map.setdefault(row[0], []).append(row[1])
-
-    langs = await session.execute(
-        text("SELECT post_id, language FROM post_language WHERE post_id = ANY(:ids)"),
-        {"ids": post_ids},
-    )
-    lang_map: dict[int, list[str]] = {}
-    for row in langs.fetchall():
-        lang_map.setdefault(row[0], []).append(row[1])
+    """Resolve category IDs to names via in-memory tree, attach languages from row."""
+    tree = await get_category_tree(session)
+    id_to_name: dict[int, str] = {}
+    for parent in tree:
+        id_to_name[parent["id"]] = parent["name"]
+        for child in parent.get("children", []):
+            id_to_name[child["id"]] = child["name"]
 
     for post in posts:
-        post["categories"] = cat_map.get(post["id"], [])
-        post["languages"] = lang_map.get(post["id"], [])
+        post["categories"] = [
+            id_to_name[cid] for cid in post.get("category_ids", []) if cid in id_to_name
+        ]
+        post["languages"] = post.get("language_codes", [])
 
     return posts
+
+
+async def _resolve_category_ids(session: AsyncSession, names: list[str]) -> list[int]:
+    """Map category names to IDs, expanding parents to all children."""
+    tree = await get_category_tree(session)
+    name_to_id: dict[str, int] = {}
+    parent_children: dict[int, list[int]] = {}
+    parent_ids: set[int] = set()
+    for parent in tree:
+        name_to_id[parent["name"]] = parent["id"]
+        parent_ids.add(parent["id"])
+        parent_children[parent["id"]] = [c["id"] for c in parent.get("children", [])]
+        for child in parent.get("children", []):
+            name_to_id[child["name"]] = child["id"]
+    ids: set[int] = set()
+    for name in names:
+        cid = name_to_id.get(name)
+        if cid is None:
+            continue
+        if cid in parent_ids:
+            ids.update(parent_children.get(cid, []))
+        else:
+            ids.add(cid)
+    return list(ids)
 
 
 # ── Browse & discovery ────────────────────────────────────────────────────────
@@ -393,14 +386,7 @@ async def browse_posts(
     if sort and sort in ("newest", "oldest"):
         sort_order = sort
 
-    conditions = []
-    has_category_join = bool(categories)
-    if not has_category_join:
-        # Only needed when there's no category JOIN (the JOIN itself guarantees
-        # the post has at least one category row).
-        conditions.append(
-            "EXISTS (SELECT 1 FROM post_category WHERE post_id = p.id)",
-        )
+    conditions = ["p.category_ids != '{}'"]
     if nsfw_only:
         conditions.append("p.is_nsfw = true")
     elif not include_nsfw:
@@ -437,10 +423,7 @@ async def browse_posts(
         params["off"] = offset
 
     if languages:
-        conditions.append(
-            "EXISTS (SELECT 1 FROM post_language pl_f "
-            "WHERE pl_f.post_id = p.id AND pl_f.language = ANY(CAST(:languages AS text[])))"
-        )
+        conditions.append("p.language_codes && CAST(:languages AS text[])")
         params["languages"] = languages
     if sentiment:
         conditions.append("p.sentiment = :sent")
@@ -456,21 +439,14 @@ async def browse_posts(
         conditions.append("p.author = ANY(CAST(:authors AS text[]))")
         params["authors"] = authors
 
-    cat_join = ""
     if categories:
-        cat_join = (
-            "JOIN post_category pc_f ON p.id = pc_f.post_id "
-            "JOIN categories c_f ON pc_f.category_id = c_f.id"
-        )
-        cat_conds = []
-        for i, cat in enumerate(categories):
-            cat_conds.append(f":cat_{i}")
-            params[f"cat_{i}"] = cat
-        cat_list = ", ".join(cat_conds)
-        conditions.append(
-            f"(c_f.name IN ({cat_list}) OR c_f.parent_id IN "
-            f"(SELECT id FROM categories WHERE name IN ({cat_list})))"
-        )
+        resolved_cat_ids = await _resolve_category_ids(session, categories)
+        if resolved_cat_ids:
+            conditions.append("p.category_ids && CAST(:cat_ids AS int[])")
+            params["cat_ids"] = resolved_cat_ids
+        else:
+            # No valid categories resolved — return empty result.
+            return {"posts": [], "next_cursor": None, "total": 0}
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -504,9 +480,8 @@ async def browse_posts(
                 count_conditions = [c for c in conditions if ":cursor_created" not in c]
                 count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
                 count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
-                count_fn = "COUNT(DISTINCT p.id)" if has_category_join else "COUNT(*)"
                 count_rows = await session.execute(
-                    text(f"SELECT {count_fn} FROM posts p {cat_join} {count_where}"),
+                    text(f"SELECT COUNT(*) FROM posts p {count_where}"),
                     count_params,
                 )
                 total = count_rows.scalar()
@@ -517,12 +492,12 @@ async def browse_posts(
     rows = await session.execute(
         text(
             f"""
-            SELECT {"DISTINCT " if has_category_join else ""}p.id, p.author, p.permlink, p.created,
+            SELECT p.id, p.author, p.permlink, p.created,
                    p.sentiment, p.sentiment_score, p.community_id,
-                   p.primary_language, p.is_nsfw, cm.community_name
+                   p.primary_language, p.is_nsfw, cm.community_name,
+                   p.category_ids, p.language_codes
             FROM posts p
             LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
-            {cat_join}
             {where}
             ORDER BY p.created {"ASC" if sort_order == "oldest" else "DESC"}, p.id {"ASC" if sort_order == "oldest" else "DESC"}
             LIMIT :lim {offset_clause}
@@ -552,9 +527,10 @@ async def get_available_languages(session: AsyncSession) -> list[dict]:
     """Get distinct languages with post counts."""
     rows = await session.execute(
         text(
-            "SELECT language, COUNT(DISTINCT post_id) AS count "
-            "FROM post_language "
-            "GROUP BY language ORDER BY count DESC"
+            "SELECT lang AS language, COUNT(*) AS count "
+            "FROM posts, unnest(language_codes) AS lang "
+            "WHERE language_codes != '{}' "
+            "GROUP BY lang ORDER BY count DESC"
         )
     )
     return [dict(r) for r in rows.mappings()]
@@ -567,7 +543,7 @@ async def get_overview_stats(session: AsyncSession) -> dict:
         text(
             "SELECT "
             "(SELECT COUNT(*) FROM posts) AS total_posts, "
-            "(SELECT COUNT(DISTINCT language) FROM post_language) AS languages"
+            "(SELECT COUNT(DISTINCT lang) FROM posts, unnest(language_codes) AS lang) AS languages"
         )
     )
     return dict(row.mappings().first())
@@ -589,23 +565,7 @@ async def get_distinct_authors(
 
 @retry_transient
 async def delete_posts_by_author(session: AsyncSession, author: str) -> int:
-    """Delete all posts (and associations) for a blacklisted author. Returns count deleted."""
-    rows = await session.execute(
-        text("SELECT id FROM posts WHERE author = :author"),
-        {"author": author},
-    )
-    post_ids = [r[0] for r in rows.fetchall()]
-    if not post_ids:
-        return 0
-
-    await session.execute(
-        text("DELETE FROM post_category WHERE post_id = ANY(:ids)"),
-        {"ids": post_ids},
-    )
-    await session.execute(
-        text("DELETE FROM post_language WHERE post_id = ANY(:ids)"),
-        {"ids": post_ids},
-    )
+    """Delete all posts for a blacklisted author. Returns count deleted."""
     result = await session.execute(
         text("DELETE FROM posts WHERE author = :author"),
         {"author": author},
@@ -774,7 +734,8 @@ async def list_post_reports(
         text(
             f"""
             SELECT r.id, r.reporter, r.reason, r.created_at,
-                   r.post_id, p.author AS post_author, p.permlink AS post_permlink
+                   r.post_id, p.author AS post_author, p.permlink AS post_permlink,
+                   p.category_ids
             FROM post_reports r
             JOIN posts p ON p.id = r.post_id
             {where}
@@ -786,23 +747,17 @@ async def list_post_reports(
     )
     raw_rows = rows.mappings().fetchall()
 
-    # Batch-fetch categories for all referenced posts.
-    post_ids = list({row["post_id"] for row in raw_rows})
-    pid_cat_map: dict[int, list[str]] = {}
-    if post_ids:
-        cat_rows = await session.execute(
-            text(
-                "SELECT pc.post_id, c.name FROM categories c "
-                "JOIN post_category pc ON c.id = pc.category_id "
-                "WHERE pc.post_id = ANY(:ids)"
-            ),
-            {"ids": post_ids},
-        )
-        for cr in cat_rows.fetchall():
-            pid_cat_map.setdefault(cr[0], []).append(cr[1])
+    # Resolve category IDs to names via in-memory tree.
+    tree = await get_category_tree(session)
+    id_to_name: dict[int, str] = {}
+    for parent in tree:
+        id_to_name[parent["id"]] = parent["name"]
+        for child in parent.get("children", []):
+            id_to_name[child["id"]] = child["name"]
 
     reports = []
     for row in raw_rows:
+        cat_names = [id_to_name[cid] for cid in (row["category_ids"] or []) if cid in id_to_name]
         reports.append({
             "id": row["id"],
             "reporter": row["reporter"],
@@ -811,7 +766,7 @@ async def list_post_reports(
             "post": {
                 "author": row["post_author"],
                 "permlink": row["post_permlink"],
-                "categories": pid_cat_map.get(row["post_id"], []),
+                "categories": cat_names,
             },
         })
 

@@ -1,2 +1,2 @@
-from .models import Base, Category, Post, StreamCursor, post_category
+from .models import Base, Category, Post, StreamCursor
 from .session import AsyncSessionLocal, engine

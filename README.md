@@ -205,8 +205,8 @@ The seed script (`scripts/seed_categories.py`) bootstraps the classification sys
 Posts can have multiple languages (common on Hive where authors write bilingual content):
 
 - **Detection**: `fasttext` (lid.176.ftz model) as primary detector, merged with `json_metadata` app-provided languages. The highest-confidence language is stored as `primary_language` on each post.
-- **Storage**: `post_language` junction table (many-to-many)
-- **Filtering**: browse endpoint accepts multiple language filters
+- **Storage**: denormalized `language_codes text[]` array column on `posts` (GIN-indexed)
+- **Filtering**: browse endpoint accepts multiple language filters (array overlap queries)
 - **Display**: all detected languages shown as tags in the discovery UI
 
 ---
@@ -243,10 +243,8 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 | Table | Purpose |
 |-------|---------|
-| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, is_nsfw, primary_language) |
+| `posts` | Hive posts (author, permlink, created, sentiment, sentiment_score, community_id, is_nsfw, primary_language, category_ids[], language_codes[]) |
 | `categories` | 2-level hierarchy (parent_id for nesting) |
-| `post_category` | Many-to-many: posts <-> categories |
-| `post_language` | Many-to-many: posts <-> languages |
 | `category_centroids` | 384-dim pgvector centroids + HNSW index |
 | `stream_cursors` | Per-worker last-processed block |
 | `community_mappings` | Auto-mapped community→category associations (worker-maintained) |
@@ -254,10 +252,8 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 ### Indexes
 
-- `ix_post_category_post_id_category_id` — composite on post_category
-- `ix_post_category_category_id` — category lookups
-- `ix_post_language_post_id` — post language lookups
-- `ix_post_language_language` — language filter queries
+- `ix_posts_category_ids` — GIN index on category_ids array (overlap queries)
+- `ix_posts_language_codes` — GIN index on language_codes array (overlap queries)
 - `ix_posts_community_id` — community filter queries
 - `ix_posts_primary_language` — language filter queries
 - `ix_community_mappings_category_slug` — community suggestion queries
@@ -269,7 +265,7 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 
 ### Migration
 
-Migrations `001_initial_schema.py` (base schema), `002_post_reports.py` (misclassification reports), and `003_schema_cleanup.py` (indexes on `posts.author` + `post_reports.reporter`, CASCADE DELETE on junction table FKs, nullable fixes). Verified by `alembic/verify_migration.py` on startup.
+Migrations `001_initial_schema.py` (base schema), `002_post_reports.py` (misclassification reports), `003_schema_cleanup.py` (indexes, CASCADE DELETE, nullable fixes), `004_schema_integrity.py`, `005_browse_performance.py` (partial indexes), and `006_denormalize_categories_languages.py` (denormalize category IDs and language codes onto posts, drop junction tables). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 

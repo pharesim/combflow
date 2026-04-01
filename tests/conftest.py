@@ -72,7 +72,7 @@ def _apply_migrations():
 
 
 _ALL_TABLES = [
-    "post_reports", "post_category", "post_language",
+    "post_reports",
     "stream_cursors", "category_centroids", "community_mappings",
     "posts", "categories",
 ]
