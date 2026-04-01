@@ -151,7 +151,7 @@ services:
     volumes:
       - prerender_cache:/cache
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ -o /dev/null || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/',r=>{process.exit(0)}).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
