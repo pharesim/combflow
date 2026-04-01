@@ -481,33 +481,44 @@ async def browse_posts(
         count_key = _browse_count_cache_key(categories, languages, sentiment, community, communities, authors, include_nsfw, nsfw_only, max_age=max_age)
         total = _cache.get(count_key)
         if total is None:
-            # Check if any dimension filters are active.
             has_filters = any([categories, languages, sentiment, community, communities, authors, max_age])
+            count_conditions = [c for c in conditions if ":cursor_created" not in c]
+            count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
+            count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
+
             if not has_filters and not include_nsfw and not nsfw_only:
                 # Unfiltered base case: use pg_class.reltuples (O(1) approximate).
-                # Falls back to COUNT(*) if reltuples is -1 (never analyzed).
                 approx_row = await session.execute(
                     text("SELECT CAST(reltuples AS bigint) FROM pg_class WHERE relname = 'posts'")
                 )
                 total = approx_row.scalar()
-                if total is None or total < 0:
-                    count_conditions = [c for c in conditions if ":cursor_created" not in c]
-                    count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
-                    count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
+                if total is None or total <= 0:
                     fallback = await session.execute(
                         text(f"SELECT COUNT(*) FROM posts p {count_where}"),
                         count_params,
                     )
                     total = fallback.scalar()
             else:
-                count_conditions = [c for c in conditions if ":cursor_created" not in c]
-                count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
-                count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
-                count_rows = await session.execute(
-                    text(f"SELECT COUNT(*) FROM posts p {count_where}"),
-                    count_params,
+                # Filtered: on large tables use planner estimate (O(1)) instead
+                # of exact COUNT(*) which scans millions of rows.
+                approx_row = await session.execute(
+                    text("SELECT CAST(reltuples AS bigint) FROM pg_class WHERE relname = 'posts'")
                 )
-                total = count_rows.scalar()
+                table_size = approx_row.scalar() or 0
+                if table_size > 500_000:
+                    explain_row = await session.execute(
+                        text(f"EXPLAIN SELECT 1 FROM posts p {count_where}"),
+                        count_params,
+                    )
+                    plan_line = explain_row.scalar() or ""
+                    m = re.search(r"rows=(\d+)", plan_line)
+                    total = int(m.group(1)) if m else 0
+                else:
+                    count_rows = await session.execute(
+                        text(f"SELECT COUNT(*) FROM posts p {count_where}"),
+                        count_params,
+                    )
+                    total = count_rows.scalar()
             _cache.put(count_key, total, ttl=300)
 
     offset_clause = "" if use_cursor else "OFFSET :off"
