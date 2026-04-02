@@ -451,16 +451,30 @@ async def browse_posts(
     if sentiment:
         conditions.append("p.sentiment = :sent")
         params["sent"] = sentiment
+    # Track lateral-join candidates separately from regular conditions.
+    # For 2–50 values, lateral join uses per-value index scans (fast);
+    # for >50 values, = ANY() lets PG pick incremental sort (also fast).
+    _LATERAL_THRESHOLD = 50
+    use_lateral = None  # None | "authors" | "communities"
+
     if communities:
-        conditions.append("p.community_id = ANY(CAST(:communities AS text[]))")
-        params["communities"] = communities
+        if 2 <= len(communities) <= _LATERAL_THRESHOLD:
+            use_lateral = "communities"
+            params["lateral_values"] = communities
+        else:
+            conditions.append("p.community_id = ANY(CAST(:communities AS text[]))")
+            params["communities"] = communities
     elif community:
         conditions.append("p.community_id = :community")
         params["community"] = community
 
     if authors:
-        conditions.append("p.author = ANY(CAST(:authors AS text[]))")
-        params["authors"] = authors
+        if not use_lateral and 2 <= len(authors) <= _LATERAL_THRESHOLD:
+            use_lateral = "authors"
+            params["lateral_values"] = authors
+        else:
+            conditions.append("p.author = ANY(CAST(:authors AS text[]))")
+            params["authors"] = authors
 
     if categories:
         resolved_cat_ids = await _resolve_category_ids(session, categories)
@@ -473,6 +487,16 @@ async def browse_posts(
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
+    # Count query always uses = ANY() (no ordering needed, bitmap scan is fine).
+    count_conditions = list(conditions)
+    count_params_extra: dict = {}
+    if use_lateral == "authors":
+        count_conditions.append("p.author = ANY(CAST(:authors AS text[]))")
+        count_params_extra["authors"] = params["lateral_values"]
+    elif use_lateral == "communities":
+        count_conditions.append("p.community_id = ANY(CAST(:communities AS text[]))")
+        count_params_extra["communities"] = params["lateral_values"]
+
     # Filtered total count — cached with 30s TTL, keyed by filter combination.
     # Skip entirely on cursor pages (UI already has the count from page 1).
     if use_cursor:
@@ -482,9 +506,10 @@ async def browse_posts(
         total = _cache.get(count_key)
         if total is None:
             has_filters = any([categories, languages, sentiment, community, communities, authors, max_age])
-            count_conditions = [c for c in conditions if ":cursor_created" not in c]
-            count_where = "WHERE " + " AND ".join(count_conditions) if count_conditions else ""
-            count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id")}
+            count_conds_no_cursor = [c for c in count_conditions if ":cursor_created" not in c]
+            count_where = "WHERE " + " AND ".join(count_conds_no_cursor) if count_conds_no_cursor else ""
+            count_params = {k: v for k, v in params.items() if k not in ("lim", "off", "cursor_created", "cursor_id", "lateral_values")}
+            count_params.update(count_params_extra)
 
             if not has_filters and not include_nsfw and not nsfw_only:
                 # Unfiltered base case: use pg_class.reltuples (O(1) approximate).
@@ -522,23 +547,57 @@ async def browse_posts(
             _cache.put(count_key, total, ttl=300)
 
     offset_clause = "" if use_cursor else "OFFSET :off"
+    order_dir = "ASC" if sort_order == "oldest" else "DESC"
 
-    rows = await session.execute(
-        text(
-            f"""
-            SELECT p.id, p.author, p.permlink, p.created,
-                   p.sentiment, p.sentiment_score, p.community_id,
-                   p.primary_language, p.is_nsfw, cm.community_name,
-                   p.category_ids, p.language_codes
-            FROM posts p
-            LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
-            {where}
-            ORDER BY p.created {"ASC" if sort_order == "oldest" else "DESC"}, p.id {"ASC" if sort_order == "oldest" else "DESC"}
-            LIMIT :lim {offset_clause}
-            """
-        ),
-        params,
-    )
+    if use_lateral:
+        # Lateral join: per-value index scan → merge top-N.
+        # Community name join is outside the final LIMIT (1 scan, not N).
+        if use_lateral == "authors":
+            lateral_col = "p.author"
+        else:
+            lateral_col = "p.community_id"
+        rows = await session.execute(
+            text(
+                f"""
+                SELECT sub2.*, cm.community_name
+                FROM (
+                    SELECT sub.*
+                    FROM unnest(CAST(:lateral_values AS text[])) AS _lv(val)
+                    CROSS JOIN LATERAL (
+                        SELECT p.id, p.author, p.permlink, p.created,
+                               p.sentiment, p.sentiment_score, p.community_id,
+                               p.primary_language, p.is_nsfw,
+                               p.category_ids, p.language_codes
+                        FROM posts p
+                        {where + " AND " if where else "WHERE "}{lateral_col} = _lv.val
+                        ORDER BY p.created {order_dir}, p.id {order_dir}
+                        LIMIT :lim
+                    ) sub
+                    ORDER BY sub.created {order_dir}, sub.id {order_dir}
+                    LIMIT :lim {offset_clause}
+                ) sub2
+                LEFT JOIN community_mappings cm ON cm.community_id = sub2.community_id
+                """
+            ),
+            {k: v for k, v in params.items() if k != "lateral_values" or True},
+        )
+    else:
+        rows = await session.execute(
+            text(
+                f"""
+                SELECT p.id, p.author, p.permlink, p.created,
+                       p.sentiment, p.sentiment_score, p.community_id,
+                       p.primary_language, p.is_nsfw, cm.community_name,
+                       p.category_ids, p.language_codes
+                FROM posts p
+                LEFT JOIN community_mappings cm ON cm.community_id = p.community_id
+                {where}
+                ORDER BY p.created {order_dir}, p.id {order_dir}
+                LIMIT :lim {offset_clause}
+                """
+            ),
+            params,
+        )
     posts = [dict(r) for r in rows.mappings()]
 
     if posts:
