@@ -59,14 +59,7 @@ async function handleUnmuteUser(username) {
     saveMutedUsers();
     showToast(`Unmuted @${username}`, 'success');
     renderMutedUsersList();
-    // Show/hide Users top-level tab based on content
-    const hasUsers = state.mutedUsers.size > 0 || state.followedUsers.size > 0;
-    document.getElementById('settings-main-tab-users').style.display = hasUsers ? '' : 'none';
-    if (!hasUsers && document.getElementById('settings-main-users').style.display !== 'none') {
-      document.querySelectorAll('.settings-main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'filters'));
-      document.querySelectorAll('.settings-main-panel').forEach(p => p.style.display = 'none');
-      document.getElementById('settings-main-filters').style.display = '';
-    }
+    updateFollowsTabVisibility();
   } catch(e) {
     showToast(e.message || 'Could not unmute user', 'error');
   }
@@ -129,15 +122,7 @@ async function handleUnfollowUser(username) {
     if (btn && btn.style.display !== 'none') { btn.textContent = `Follow @${username}`; btn.onclick = () => handleFollowUser(username); }
     // Re-render followed list in settings if open
     renderFollowedUsersList();
-    // Show/hide Users top-level tab based on content
-    const hasUsers = state.mutedUsers.size > 0 || state.followedUsers.size > 0;
-    document.getElementById('settings-main-tab-users').style.display = hasUsers ? '' : 'none';
-    document.getElementById('settings-main-tabs').style.display = hasUsers ? '' : 'none';
-    if (!hasUsers && document.getElementById('settings-main-users').style.display !== 'none') {
-      document.querySelectorAll('.settings-main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'filters'));
-      document.getElementById('settings-main-filters').style.display = '';
-      document.getElementById('settings-main-users').style.display = 'none';
-    }
+    updateFollowsTabVisibility();
   } catch(e) {
     showToast(e.message || 'Could not unfollow user', 'error');
   }

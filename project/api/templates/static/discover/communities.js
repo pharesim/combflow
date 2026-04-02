@@ -92,7 +92,7 @@ function renderSuggestions(suggestions) {
       if (!isMember) {
         btn.onclick = (e) => { e.stopPropagation(); handleJoinCommunity(s.id, s.name || s.id, btn); };
       } else {
-        btn.onclick = (e) => e.stopPropagation();
+        btn.onclick = (e) => { e.stopPropagation(); handleLeaveCommunity(s.id, s.name || s.id, btn); };
       }
       item.appendChild(btn);
     } else {
@@ -115,9 +115,9 @@ async function handleJoinCommunity(communityId, communityName, btn) {
     await subscribeCommunity(communityId);
     btn.classList.add('joined');
     btn.textContent = 'Joined';
-    btn.onclick = null;
+    btn.onclick = (e) => { e.stopPropagation(); handleLeaveCommunity(communityId, communityName, btn); };
     showToast('Joined ' + communityName + '!', 'success');
-    // Update sessionStorage cache
+    // Update local cache
     if (state.userCommunities) {
       state.userCommunities.push({ id: communityId, name: communityName, role: 'guest' });
       sessionStorage.setItem('honeycomb_user_communities', JSON.stringify(state.userCommunities));
@@ -125,6 +125,28 @@ async function handleJoinCommunity(communityId, communityName, btn) {
   } catch(e) {
     btn.textContent = 'Join';
     showToast(e.message || 'Could not join community', 'error');
+  }
+  btn.disabled = false;
+}
+
+async function handleLeaveCommunity(communityId, communityName, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Leaving...';
+  try {
+    await unsubscribeCommunity(communityId);
+    btn.classList.remove('joined');
+    btn.textContent = 'Join';
+    btn.onclick = (e) => { e.stopPropagation(); handleJoinCommunity(communityId, communityName, btn); };
+    showToast('Left ' + communityName, 'success');
+    // Update local cache
+    if (state.userCommunities) {
+      state.userCommunities = state.userCommunities.filter(c => c.id !== communityId);
+      sessionStorage.setItem('honeycomb_user_communities', JSON.stringify(state.userCommunities));
+    }
+  } catch(e) {
+    btn.textContent = 'Joined';
+    btn.classList.add('joined');
+    showToast(e.message || 'Could not leave community', 'error');
   }
   btn.disabled = false;
 }
@@ -245,7 +267,7 @@ function showCommunityIndicator() {
     if (!isMember) {
       btn.onclick = (e) => { e.stopPropagation(); handleJoinCommunity(communityId, communityName, btn); };
     } else {
-      btn.onclick = (e) => e.stopPropagation();
+      btn.onclick = (e) => { e.stopPropagation(); handleLeaveCommunity(communityId, communityName, btn); };
     }
     item.appendChild(btn);
   }
@@ -273,6 +295,62 @@ function clearAuthorFilter() {
   if (window.location.pathname.match(/^\/@[^/]+$/)) {
     history.pushState(null, '', '/');
   }
+}
+
+function updateFollowsTabVisibility() {
+  const hasCommunities = state.userCommunities && state.userCommunities.length > 0;
+  const hasFollowed = state.followedUsers.size > 0;
+  const hasMuted = state.mutedUsers.size > 0;
+  const hasSocial = hasCommunities || hasFollowed || hasMuted;
+  document.getElementById('settings-main-tab-users').style.display = hasSocial ? '' : 'none';
+  document.getElementById('settings-subtab-communities').style.display = hasCommunities ? '' : 'none';
+  document.getElementById('settings-subtab-followed').style.display = hasFollowed ? '' : 'none';
+  document.getElementById('settings-subtab-muted').style.display = hasMuted ? '' : 'none';
+  if (!hasSocial && document.getElementById('settings-main-users').style.display !== 'none') {
+    document.querySelectorAll('.settings-main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'filters'));
+    document.querySelectorAll('.settings-main-panel').forEach(p => p.style.display = 'none');
+    document.getElementById('settings-main-filters').style.display = '';
+  }
+}
+
+function renderCommunitiesList() {
+  const container = document.getElementById('settings-communities');
+  if (!container) return;
+  if (!state.userCommunities || state.userCommunities.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:13px">No communities joined.</p>';
+    return;
+  }
+  container.innerHTML = '';
+  state.userCommunities.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'followed-user-item';
+    const name = document.createElement('span');
+    name.className = 'followed-user-name';
+    name.textContent = c.name || c.id;
+    item.appendChild(name);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost followed-user-unfollow';
+    btn.textContent = 'Leave';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = 'Leaving...';
+      try {
+        await unsubscribeCommunity(c.id);
+        state.userCommunities = state.userCommunities.filter(uc => uc.id !== c.id);
+        sessionStorage.setItem('honeycomb_user_communities', JSON.stringify(state.userCommunities));
+        showToast('Left ' + (c.name || c.id), 'success');
+        renderCommunitiesList();
+        updateFollowsTabVisibility();
+      } catch(e) {
+        btn.disabled = false;
+        btn.textContent = 'Leave';
+        showToast(e.message || 'Could not leave community', 'error');
+      }
+    };
+    item.appendChild(btn);
+    container.appendChild(item);
+  });
 }
 
 function updateAuthorFilterBanner() {
@@ -396,7 +474,7 @@ async function showOnboardingSuggestions(reason) {
         if (!isMember) {
           btn.onclick = (e) => { e.stopPropagation(); handleJoinCommunity(c.id, c.name || c.id, btn); };
         } else {
-          btn.onclick = (e) => e.stopPropagation();
+          btn.onclick = (e) => { e.stopPropagation(); handleLeaveCommunity(c.id, c.name || c.id, btn); };
         }
         card.appendChild(btn);
       }

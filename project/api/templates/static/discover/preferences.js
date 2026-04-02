@@ -374,20 +374,28 @@ async function showSettingsModal() {
     updateVoteEstimate();
   }
 
-  // Render muted + followed users
+  // Render muted + followed users + communities
   renderMutedUsersList();
   renderFollowedUsersList();
+  renderCommunitiesList();
 
-  // Show/hide Users top-level tab; reset to Filters tab
-  const hasUsers = state.mutedUsers.size > 0 || state.followedUsers.size > 0;
-  document.getElementById('settings-main-tab-users').style.display = hasUsers ? '' : 'none';
+  // Show/hide Follows top-level tab; reset to Filters tab
+  const hasCommunities = state.userCommunities && state.userCommunities.length > 0;
+  const hasFollowed = state.followedUsers.size > 0;
+  const hasMuted = state.mutedUsers.size > 0;
+  const hasSocial = hasCommunities || hasFollowed || hasMuted;
+  document.getElementById('settings-main-tab-users').style.display = hasSocial ? '' : 'none';
   document.querySelectorAll('.settings-main-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'filters'));
   document.querySelectorAll('.settings-main-panel').forEach(p => p.style.display = 'none');
   document.getElementById('settings-main-filters').style.display = '';
-  // Reset user sub-tabs to muted
-  document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'muted'));
-  document.getElementById('settings-tab-muted').style.display = '';
-  document.getElementById('settings-tab-followed').style.display = 'none';
+  // Show/hide sub-tabs based on content, activate first visible
+  document.getElementById('settings-subtab-communities').style.display = hasCommunities ? '' : 'none';
+  document.getElementById('settings-subtab-followed').style.display = hasFollowed ? '' : 'none';
+  document.getElementById('settings-subtab-muted').style.display = hasMuted ? '' : 'none';
+  const firstTab = hasCommunities ? 'communities' : hasFollowed ? 'followed' : 'muted';
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === firstTab));
+  document.querySelectorAll('.settings-tab-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('settings-tab-' + firstTab).style.display = '';
 
   wireSettingsOnce();
 

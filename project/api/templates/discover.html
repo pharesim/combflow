@@ -448,8 +448,8 @@
     <p style="color:var(--text-dim);margin-bottom:20px">Choose your default filters to see the content you care about most.</p>
     <div class="settings-main-tabs" id="settings-main-tabs">
       <button type="button" class="settings-main-tab active" data-action="settings-main-tab" data-tab="filters">Filters</button>
+      <button type="button" class="settings-main-tab" data-action="settings-main-tab" data-tab="users" id="settings-main-tab-users" style="display:none">Social</button>
       <button type="button" class="settings-main-tab" data-action="settings-main-tab" data-tab="advanced">Advanced</button>
-      <button type="button" class="settings-main-tab" data-action="settings-main-tab" data-tab="users" id="settings-main-tab-users" style="display:none">Users</button>
     </div>
     <div class="settings-main-panel" id="settings-main-filters">
       <div class="settings-section">
@@ -516,14 +516,18 @@
     </div>
     <div class="settings-main-panel" id="settings-main-users" style="display:none">
       <div class="settings-tabs">
-        <button type="button" class="settings-tab active" data-action="settings-tab" data-tab="muted">Muted Users</button>
-        <button type="button" class="settings-tab" data-action="settings-tab" data-tab="followed">Followed Users</button>
+        <button type="button" class="settings-tab" data-action="settings-tab" data-tab="communities" id="settings-subtab-communities" style="display:none">Communities</button>
+        <button type="button" class="settings-tab" data-action="settings-tab" data-tab="followed" id="settings-subtab-followed" style="display:none">Following</button>
+        <button type="button" class="settings-tab" data-action="settings-tab" data-tab="muted" id="settings-subtab-muted" style="display:none">Muted</button>
       </div>
-      <div class="settings-tab-panel" id="settings-tab-muted">
-        <div id="settings-muted"></div>
+      <div class="settings-tab-panel" id="settings-tab-communities" style="display:none">
+        <div id="settings-communities"></div>
       </div>
       <div class="settings-tab-panel" id="settings-tab-followed" style="display:none">
         <div id="settings-followed"></div>
+      </div>
+      <div class="settings-tab-panel" id="settings-tab-muted" style="display:none">
+        <div id="settings-muted"></div>
       </div>
     </div>
   </div>
