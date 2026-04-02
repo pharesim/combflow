@@ -136,8 +136,9 @@ function toggleMyCommunities() {
     clearAuthorFilter();
     setFollowingActive(false);
     state.activeCommunityFilter = null;
-    updateSuggestionActiveState();
   }
+  syncCommunityChips();
+  updateSuggestionActiveState();
   scheduleFilter();
 }
 
@@ -157,8 +158,9 @@ function toggleFollowing() {
     clearAuthorFilter();
     setMyCommunitiesActive(false);
     state.activeCommunityFilter = null;
-    updateSuggestionActiveState();
   }
+  syncCommunityChips();
+  updateSuggestionActiveState();
   scheduleFilter();
 }
 
@@ -327,6 +329,7 @@ async function showOnboardingSuggestions(reason) {
       '<div class="onboarding-grid" id="onboarding-grid"><div class="spinner"></div></div>';
   }
   container.style.display = '';
+  Alpine.store('app').onboardingActive = true;
 
   try {
     const res = await fetch('/api/communities');
@@ -337,6 +340,19 @@ async function showOnboardingSuggestions(reason) {
     grid.innerHTML = '';
     const auth = getStoredAuth();
     const memberSet = getUserCommunitySet();
+
+    // Fetch descriptions for all communities in parallel
+    const descMap = {};
+    try {
+      const results = await Promise.allSettled(
+        communities.map(c => hiveRpc('bridge.get_community', { name: c.id }))
+      );
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value && r.value.about) {
+          descMap[communities[i].id] = r.value.about;
+        }
+      });
+    } catch(e) { /* descriptions are optional */ }
 
     communities.forEach(c => {
       const card = document.createElement('div');
@@ -351,6 +367,13 @@ async function showOnboardingSuggestions(reason) {
       name.className = 'onboarding-community-name';
       name.textContent = c.name || c.id;
       card.appendChild(name);
+
+      if (descMap[c.id]) {
+        const desc = document.createElement('div');
+        desc.className = 'onboarding-community-desc';
+        desc.textContent = descMap[c.id];
+        card.appendChild(desc);
+      }
 
       const count = document.createElement('div');
       count.className = 'onboarding-community-count';
@@ -389,6 +412,7 @@ async function showOnboardingSuggestions(reason) {
 function hideOnboarding() {
   const container = document.getElementById('onboarding-empty');
   if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+  Alpine.store('app').onboardingActive = false;
 }
 
 // ── Fetch user communities for editor ──

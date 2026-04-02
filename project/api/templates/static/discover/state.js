@@ -163,6 +163,7 @@ document.addEventListener('alpine:init', () => {
     hasDefaultFilters: false,
     filtersMatchDefault: true,
     hasActiveFilters: false,
+    onboardingActive: false,
   });
 
   // ── Filters store ──

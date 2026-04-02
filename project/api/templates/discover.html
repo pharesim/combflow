@@ -312,7 +312,7 @@
         </div>
       </a>
     </template>
-    <template x-if="$store.app.initialLoaded && $store.app.posts.length === 0">
+    <template x-if="$store.app.initialLoaded && $store.app.posts.length === 0 && !$store.app.onboardingActive">
       <div class="empty"><h3>No posts found</h3><p>Try adjusting your filters or wait for the worker to classify more posts.</p></div>
     </template>
   </div>
@@ -374,7 +374,7 @@
       </div>
     </a>
   </template>
-  <template x-if="$store.app.posts.length === 0">
+  <template x-if="$store.app.posts.length === 0 && !$store.app.onboardingActive">
     <div class="empty"><h3>No posts found</h3><p>Try adjusting your filters or wait for the worker to classify more posts.</p></div>
   </template>
 </div>
@@ -432,7 +432,7 @@
       </div>
     </a>
   </template>
-  <template x-if="$store.app.posts.length === 0">
+  <template x-if="$store.app.posts.length === 0 && !$store.app.onboardingActive">
     <div class="empty"><h3>No posts found</h3><p>Try adjusting your filters or wait for the worker to classify more posts.</p></div>
   </template>
 </div>
