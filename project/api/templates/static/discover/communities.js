@@ -300,6 +300,97 @@ function updateSuggestionActiveState() {
   });
 }
 
+// ── Onboarding: show top communities when user has none / no followed users ──
+function getEmptyFilterReason() {
+  if (state.myCommunitiesActive && (!state.userCommunities || state.userCommunities.length === 0)) {
+    return 'communities';
+  }
+  if (state.followingFilterActive && state.followedUsers.size === 0) {
+    return 'following';
+  }
+  return null;
+}
+
+async function showOnboardingSuggestions(reason) {
+  const container = document.getElementById('onboarding-empty');
+  if (!container) return;
+
+  if (reason === 'communities') {
+    container.innerHTML =
+      '<h3>No communities yet</h3>' +
+      '<p>Join communities to see their posts here.</p>' +
+      '<div class="onboarding-grid" id="onboarding-grid"><div class="spinner"></div></div>';
+  } else {
+    container.innerHTML =
+      '<h3>Not following anyone yet</h3>' +
+      '<p>Follow users from their posts to see them here. Meanwhile, discover some communities:</p>' +
+      '<div class="onboarding-grid" id="onboarding-grid"><div class="spinner"></div></div>';
+  }
+  container.style.display = '';
+
+  try {
+    const res = await fetch('/api/communities');
+    const data = await res.json();
+    const communities = (data.communities || []).slice(0, 24);
+    const grid = document.getElementById('onboarding-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const auth = getStoredAuth();
+    const memberSet = getUserCommunitySet();
+
+    communities.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'onboarding-community';
+      card.style.cursor = 'pointer';
+      card.onclick = () => {
+        hideOnboarding();
+        filterByCommunity(c.id);
+      };
+
+      const name = document.createElement('div');
+      name.className = 'onboarding-community-name';
+      name.textContent = c.name || c.id;
+      card.appendChild(name);
+
+      const count = document.createElement('div');
+      count.className = 'onboarding-community-count';
+      count.textContent = (c.post_count || 0).toLocaleString() + ' posts';
+      card.appendChild(count);
+
+      if (c.category) {
+        const cat = document.createElement('div');
+        cat.className = 'onboarding-community-cat';
+        cat.textContent = c.category;
+        card.appendChild(cat);
+      }
+
+      if (auth) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const isMember = memberSet.has(c.id);
+        btn.className = 'suggestion-action' + (isMember ? ' joined' : '');
+        btn.textContent = isMember ? 'Joined' : 'Join';
+        if (!isMember) {
+          btn.onclick = (e) => { e.stopPropagation(); handleJoinCommunity(c.id, c.name || c.id, btn); };
+        } else {
+          btn.onclick = (e) => e.stopPropagation();
+        }
+        card.appendChild(btn);
+      }
+
+      grid.appendChild(card);
+    });
+  } catch(e) {
+    const grid = document.getElementById('onboarding-grid');
+    if (grid) grid.innerHTML = '<p style="color:var(--text-dim)">Could not load communities.</p>';
+  }
+}
+
+function hideOnboarding() {
+  const container = document.getElementById('onboarding-empty');
+  if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+}
+
 // ── Fetch user communities for editor ──
 async function fetchUserCommunities(username) {
   const cached = sessionStorage.getItem('honeycomb_user_communities');

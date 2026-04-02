@@ -443,6 +443,19 @@ async function applyFilters() {
   state.noMorePosts = false;
   state.lastCursor = null;
 
+  // Show onboarding when My Communities / Following is active but list is empty
+  const emptyReason = getEmptyFilterReason();
+  if (emptyReason) {
+    state.posts = [];
+    state.filteredTotalCount = 0;
+    state.noMorePosts = true;
+    renderAll([], true);
+    updateResultsBar();
+    showOnboardingSuggestions(emptyReason);
+    return;
+  }
+  hideOnboarding();
+
   try {
     const { data, sentiments } = await browseFetch(PAGE_SIZE, 0, null, fetchAbort.signal);
     state.posts = data.posts || [];
