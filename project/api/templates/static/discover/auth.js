@@ -45,14 +45,15 @@ async function doLogin() {
     await loginWithKeychain(input);
     closeLogin();
     Alpine.store('app').currentUser = input;
-    fetchUserCommunities(input).then(list => { state.userCommunities = list; });
-    fetchMutedList(); // background fetch
-    fetchFollowedList(); // background fetch
+    const communitiesP = fetchUserCommunities(input).then(list => { state.userCommunities = list; });
+    const mutedP = fetchMutedList();
+    const followedP = fetchFollowedList();
     fetchUnreadCount();
     startNotifPolling();
     const prefs = await loadAndApplyPreferences();
     initCurationUI();
     if (isFirstLogin(prefs)) {
+      await Promise.allSettled([communitiesP, mutedP, followedP]);
       showSettingsModal();
     } else {
       const fl = Alpine.store('filters');
