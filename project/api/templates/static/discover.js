@@ -299,6 +299,8 @@ document.addEventListener('visibilitychange', () => {
     if (Alpine.store('app').currentUser) {
       startNotifPolling();
       if (Alpine.store('app').notifOpen) fetchNotifications();
+      _refreshUserCommunities(Alpine.store('app').currentUser);
+      fetchFollowedList();
     }
   }
 });

@@ -419,8 +419,15 @@ function hideOnboarding() {
 async function fetchUserCommunities(username) {
   const cached = sessionStorage.getItem('honeycomb_user_communities');
   if (cached) {
-    try { return JSON.parse(cached); } catch(e) {}
+    // Return cache immediately but refresh in background
+    const parsed = JSON.parse(cached);
+    _refreshUserCommunities(username);
+    return parsed;
   }
+  return await _refreshUserCommunities(username);
+}
+
+async function _refreshUserCommunities(username) {
   const result = await hiveRpc('bridge.list_all_subscriptions', { account: username });
   if (result) {
     const list = result.map(entry => ({
@@ -429,8 +436,8 @@ async function fetchUserCommunities(username) {
       role: entry[2],
     })).sort((a, b) => a.name.localeCompare(b.name));
     sessionStorage.setItem('honeycomb_user_communities', JSON.stringify(list));
+    state.userCommunities = list;
     return list;
-  } else {
-    return null;
   }
+  return null;
 }
