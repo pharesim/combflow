@@ -49,7 +49,7 @@ function sentimentColor(score) {
 
 function thumbUrl(url) {
   if (!url || !url.startsWith('http')) return '';
-  return url;
+  return proxyImg(url);
 }
 
 // ── Filter count badges (reads from Alpine store) ──

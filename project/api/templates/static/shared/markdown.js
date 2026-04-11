@@ -101,6 +101,8 @@ function proxyImages(div) {
     img.removeAttribute('width');
     img.removeAttribute('height');
     img.loading = 'lazy';
+    const src = img.getAttribute('src');
+    if (src) img.src = proxyImg(src);
   });
 }
 

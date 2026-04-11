@@ -26,11 +26,9 @@
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="stylesheet" href="/static/shared.css">
 <link rel="stylesheet" href="/static/discover.css">
-<link rel="preconnect" href="https://images.hive.blog">
 <link rel="preconnect" href="https://img.youtube.com">
 <link rel="preconnect" href="https://images.3speak.tv">
 <link rel="preconnect" href="https://files.peakd.com">
-<link rel="dns-prefetch" href="https://images.hive.blog">
 <link rel="dns-prefetch" href="https://img.youtube.com">
 <link rel="dns-prefetch" href="https://images.3speak.tv">
 <link rel="dns-prefetch" href="https://files.peakd.com">
@@ -71,7 +69,7 @@
           </div>
           <div class="auth-dropdown" @click.outside="$store.app.authDropdownOpen = false">
             <button type="button" class="auth-dropdown-toggle" @click="$store.app.authDropdownOpen = !$store.app.authDropdownOpen">
-              <img class="auth-avatar" :src="'https://images.hive.blog/u/' + encodeURIComponent($store.app.currentUser) + '/avatar/small'" alt="" width="22" height="22">
+              <img class="auth-avatar" :src="proxyImg('https://images.hive.blog/u/' + encodeURIComponent($store.app.currentUser) + '/avatar/small')" alt="" width="22" height="22">
               <span class="auth-username" x-text="'@' + $store.app.currentUser"></span>
               <span class="auth-caret">&#9660;</span>
             </button>
@@ -292,7 +290,7 @@
         <div class="hex-border" :style="'background:' + getPostMeta(p).borderColor"></div>
         <div class="hex-inner" :class="{ 'no-img': !getPostMeta(p).thumb }">
           <div class="hex-placeholder"><img class="no-thumb-avatar" loading="lazy"
-               :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
+               :src="proxyImg('https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar')"
                :alt="'@' + p.author"
                @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))"></div>
           <div class="hex-img"
@@ -332,7 +330,7 @@
       <div class="post-card-thumb" :class="{ 'no-thumb': !getPostMeta(p).thumb }"
            :style="!getPostMeta(p).thumb ? 'background:linear-gradient(135deg,' + getPostMeta(p).borderColor + '22 0%,var(--bg2) 60%)' : ''">
         <img class="no-thumb-avatar"
-             :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar'"
+             :src="proxyImg('https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar')"
              :alt="'@' + p.author"
              @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author}))">
         <div class="card-thumb-img"
@@ -343,7 +341,7 @@
         <div class="post-card-title" x-text="getPostMeta(p).title"></div>
         <div class="post-card-author">
           <img class="author-avatar" loading="lazy"
-               :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
+               :src="proxyImg('https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small')"
                alt="" width="24" height="24">
           <span class="clickable-author"
                 @click.prevent.stop="window.location.href='/@' + p.author"
@@ -392,7 +390,7 @@
        :style="'border-left-color:' + getPostMeta(p).borderColor">
       <div class="list-thumb">
         <img class="no-thumb-avatar list-avatar" loading="lazy"
-             :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
+             :src="proxyImg('https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small')"
              :alt="'@' + p.author"
              @error="$el.replaceWith(Object.assign(document.createElement('span'),{textContent:'@'+p.author.slice(0,2)}))">
         <div class="list-thumb-img"
@@ -403,7 +401,7 @@
         <div class="list-title" x-text="getPostMeta(p).title"></div>
         <div class="list-meta">
           <img class="author-avatar" loading="lazy"
-               :src="'https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small'"
+               :src="proxyImg('https://images.hive.blog/u/' + encodeURIComponent(p.author) + '/avatar/small')"
                alt="" width="20" height="20">
           <span class="clickable-author"
                 @click.prevent.stop="window.location.href='/@' + p.author"

@@ -109,7 +109,7 @@ function _renderMentionResults(results) {
     btn.type = 'button';
     btn.className = 'mention-item' + (i === _mentionSelectedIdx ? ' selected' : '');
     const img = document.createElement('img');
-    img.src = `https://images.hive.blog/u/${name}/avatar/small`;
+    img.src = proxyImg(`https://images.hive.blog/u/${name}/avatar/small`);
     img.className = 'mention-avatar';
     img.width = 24;
     img.height = 24;

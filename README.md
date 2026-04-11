@@ -151,7 +151,8 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Community browsing** — community badges on posts (clickable to filter), community filter chips in sidebar, community info in post modal with hivel.ink link
 - **Community discovery** — suggestions bar shows related communities when category filters are active; logged-in users can join/leave communities directly via Keychain
 - **My Communities filter** — logged-in users can toggle a "My Communities" filter to show only posts from communities they've joined on Hive
-- **Lazy thumbnails** — loaded on-demand as posts enter the viewport; avatar stays visible underneath until thumbnail loads (no flash); direct image URLs with high-concurrency metadata fetch (6 workers, 60 simultaneous RPC calls)
+- **Lazy thumbnails** — loaded on-demand as posts enter the viewport; avatar stays visible underneath until thumbnail loads (no flash); high-concurrency metadata fetch (6 workers, 60 simultaneous RPC calls)
+- **Privacy-preserving image proxy** — all user-facing images (avatars, thumbnails, post body images) are routed through a server-side proxy (`/api/imageproxy`) so external image hosts never see user IPs or browser fingerprints. Cloudflare edge-caches proxied images for performance. CSP restricts `img-src` to same-origin only.
 - **Sentiment borders** — each hex has a coloured border from red (negative) to green (positive)
 - **Layout toggle** — switch between hex grid and card view (auto-selects cards on mobile)
 - **Live polling** — visibility-aware, only polls when the tab is active; scales fetch limit based on time away (up to 200 posts on return); notification count and open panel also refreshed on tab return

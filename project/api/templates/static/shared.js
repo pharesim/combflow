@@ -88,8 +88,14 @@ function safeSentiment(s) {
 
 function safeCssUrl(url) {
   if (!url) return '';
-  if (!/^https?:\/\//i.test(url)) return '';
+  if (!/^https?:\/\//i.test(url) && !/^\/api\/imageproxy\?/i.test(url)) return '';
   return url.replace(/[')(\\]/g, encodeURIComponent);
+}
+
+function proxyImg(url) {
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) return url;
+  return '/api/imageproxy?url=' + encodeURIComponent(url);
 }
 
 // ── HTML escaping (safe for both content and attribute contexts) ──
@@ -101,7 +107,7 @@ function esc(s) {
 
 function avatarHtml(author, size) {
   size = size || 16;
-  return '<img class="author-avatar" src="https://images.hive.blog/u/' + encodeURIComponent(author) + '/avatar/small" alt="" width="' + size + '" height="' + size + '">';
+  return '<img class="author-avatar" src="' + proxyImg('https://images.hive.blog/u/' + encodeURIComponent(author) + '/avatar/small') + '" alt="" width="' + size + '" height="' + size + '">';
 }
 
 // ── Focus trap for modals ──

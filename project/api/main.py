@@ -4,6 +4,7 @@ import logging.config
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 import numpy as np
 from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
@@ -83,8 +84,16 @@ async def lifespan(app: FastAPI):
         app.state.centroids = {}
         logger.warning("No centroids — worker handles classification")
 
+    app.state.http_client = httpx.AsyncClient(
+        follow_redirects=True,
+        max_redirects=5,
+        timeout=httpx.Timeout(10.0),
+        headers={"User-Agent": "CombFlow/1.0"},
+    )
+
     logger.info("startup complete")
     yield
+    await app.state.http_client.aclose()
     hafsql_shutdown()
     await engine.dispose()
     logger.info("shutdown complete")
