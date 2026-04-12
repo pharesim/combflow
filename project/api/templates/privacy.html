@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — HiveComb</title>
+<meta name="description" content="Privacy Policy for HiveComb, a content discovery interface for the Hive blockchain.">
+<meta name="theme-color" content="#e31337">
+<link rel="canonical" href="{{SITE_URL}}/privacy">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="stylesheet" href="/static/shared.css">
+<link rel="stylesheet" href="/static/legal.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+
+<header class="header">
+  <a class="logo" href="/">HiveComb</a>
+  <nav class="nav-links">
+    <a href="/">Discover</a>
+  </nav>
+</header>
+
+<main class="legal-page">
+<h1>Privacy Policy</h1>
+<p class="legal-updated">Last updated: {{LEGAL_DATE}}</p>
+
+<section>
+<h2>1. Who We Are</h2>
+<p>HiveComb is a content discovery interface for the Hive blockchain. This service is operated by HiveComb Project Operations.</p>
+<p>For all data protection inquiries, including requests to exercise your GDPR rights, please contact our privacy team at: <strong>hivecomb@pharesim.me</strong></p>
+</section>
+
+<section>
+<h2>2. What HiveComb Does</h2>
+<p>HiveComb is a read-only discovery interface for the <a href="https://hive.io">Hive blockchain</a>. We index publicly available posts from the Hive blockchain, classify them by topic, language, and sentiment using automated methods, and present them in a browseable interface. Users may also create posts and comments that are broadcast directly to the Hive blockchain via the Hive Keychain browser extension.</p>
+</section>
+
+<section>
+<h2>3. Data We Process</h2>
+
+<h3>3.1 Blockchain Data (Public)</h3>
+<p>We index publicly available data from the Hive blockchain, including:</p>
+<ul>
+  <li>Post content (title, body, metadata, tags)</li>
+  <li>Author usernames (pseudonymous blockchain identifiers)</li>
+  <li>Community membership and community metadata</li>
+  <li>Author reputation scores (publicly computed on-chain)</li>
+</ul>
+<p>You have the right to object to the processing of your public blockchain data in our index. Upon request, we will remove your content from our discovery interface.</p>
+<p><strong>Legal basis:</strong> Legitimate interest (Art. 6(1)(f) GDPR) — this data is intentionally published to a public blockchain by its authors. We provide a discovery interface over already-public information.</p>
+
+<h3>3.2 Automated Classification</h3>
+<p>For each indexed post, we automatically compute:</p>
+<ul>
+  <li><strong>Topic categories</strong> (up to 3) — determined by embedding-based cosine similarity against category centroids</li>
+  <li><strong>Sentiment</strong> (positive / neutral / negative) — determined by embedding similarity to anchor phrases</li>
+  <li><strong>Language(s)</strong> — detected using a statistical language identification model</li>
+  <li><strong>NSFW flag</strong> — based on author-supplied tags</li>
+</ul>
+<p>This classification is applied per-post, not per-user. We do not build user profiles, perform behavioural tracking, or make personalised recommendations based on classification results. See section 9 for more detail on automated processing.</p>
+<p><strong>Legal basis:</strong> Legitimate interest (Art. 6(1)(f) GDPR) — classification enables content discovery, which is the core purpose of the service.</p>
+
+<h3>3.3 Misclassification Reports</h3>
+<p>Authenticated users may report posts they believe are incorrectly classified. When you submit a report, we store:</p>
+<ul>
+  <li>Your Hive username</li>
+  <li>The reason you provided (up to 1,000 characters)</li>
+  <li>A cryptographic signature (produced by Hive Keychain to verify your identity)</li>
+  <li>A timestamp</li>
+</ul>
+<p><strong>Legal basis:</strong> Legitimate interest (Art. 6(1)(f) GDPR) — to improve classification quality and process user feedback.</p>
+
+<h3>3.4 Server Access Logs</h3>
+<p>Our reverse proxy (Caddy) logs the following for each HTTP request:</p>
+<ul>
+  <li>IP address</li>
+  <li>Timestamp</li>
+  <li>Requested URL and HTTP method</li>
+  <li>HTTP status code and response size</li>
+  <li>Referer header</li>
+  <li>User-Agent string</li>
+</ul>
+<p>Access logs are stored in small, rotating log files (typically &lt;50 MB total). They are automatically overwritten as new logs arrive. We use GoAccess to generate aggregate traffic statistics from these logs — no individual tracking is performed.</p>
+<p><strong>Legal basis:</strong> Legitimate interest (Art. 6(1)(f) GDPR) — server security, abuse prevention, and capacity planning.</p>
+
+<h3>3.5 Cloudflare CDN</h3>
+<p>HiveComb uses <strong>Cloudflare</strong> (Cloudflare, Inc., USA) as a content delivery network and DDoS protection service. All traffic to HiveComb passes through Cloudflare's network before reaching our servers. This means Cloudflare processes:</p>
+<ul>
+  <li>Your IP address</li>
+  <li>HTTP request headers (User-Agent, Referer, etc.)</li>
+  <li>The content of your requests and our responses</li>
+</ul>
+<p>Cloudflare processes this data as a <strong>data processor</strong> on our behalf, subject to Cloudflare's <a href="https://www.cloudflare.com/privacypolicy/">Privacy Policy</a> and <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Data Processing Addendum</a>. Cloudflare may process data in the USA and other jurisdictions; transfers are covered by EU Standard Contractual Clauses.</p>
+<p>On the free tier we use, Cloudflare does not set cookies on our domain. Cloudflare's Network Error Logging (NEL) may collect error telemetry about failed requests.</p>
+<p><strong>Legal basis:</strong> Legitimate interest (Art. 6(1)(f) GDPR) — protection against DDoS attacks, performance optimisation, and availability.</p>
+
+<h3>3.6 Blacklist Lookups</h3>
+<p>When indexing posts, we check author usernames against the community-maintained Hive blacklist at <code>blacklist.usehive.com</code>. This involves sending the author's (already public) Hive username to that service. Blacklisted authors' posts are not indexed.</p>
+</section>
+
+<section>
+<h2>4. Data We Do NOT Collect</h2>
+<ul>
+  <li><strong>No cookies.</strong> We do not set any cookies, server-side sessions, or tracking identifiers.</li>
+  <li><strong>No analytics or tracking.</strong> We do not use Google Analytics, Meta Pixel, or any third-party analytics service.</li>
+  <li><strong>No email addresses or personal contact details.</strong></li>
+  <li><strong>No passwords or private keys.</strong> Authentication is handled entirely client-side by the Hive Keychain browser extension. No private keys ever reach our servers.</li>
+  <li><strong>No behavioural profiling.</strong> We do not track which posts you read, how long you spend on the site, or build user profiles.</li>
+</ul>
+</section>
+
+<section>
+<h2>5. Client-Side Storage (Your Browser)</h2>
+<p>HiveComb stores preferences in your browser's <strong>localStorage</strong> (persistent) and <strong>sessionStorage</strong> (cleared when you close the tab). This data never leaves your device unless you explicitly trigger an action (e.g. submitting a report).</p>
+
+<h3>localStorage (persists until you clear it)</h3>
+<table>
+  <thead><tr><th>Key</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>honeycomb_user</td><td>Your logged-in Hive username</td></tr>
+    <tr><td>honeycomb_read</td><td>Posts you've marked as read (up to 500, FIFO)</td></tr>
+    <tr><td>honeycomb_filterPrefs</td><td>Your saved filter preferences (categories, languages, sentiment)</td></tr>
+    <tr><td>combflow_layout</td><td>UI layout preference (hex / card / list)</td></tr>
+    <tr><td>theme</td><td>Dark / light mode preference</td></tr>
+    <tr><td>honeycomb_payoutType</td><td>Preferred post payout type</td></tr>
+    <tr><td>honeycomb_voteFloor</td><td>Voting mana floor setting</td></tr>
+    <tr><td>honeycomb_voteMaxWeight</td><td>Maximum vote weight setting</td></tr>
+    <tr><td>honeycomb_voteManual</td><td>Manual vs. auto voting preference</td></tr>
+    <tr><td>honeycomb_lastVoteWeight</td><td>Last used voting weight</td></tr>
+    <tr><td>honeycomb_curationMode</td><td>Curation mode toggle</td></tr>
+  </tbody>
+</table>
+
+<h3>sessionStorage (cleared when you close the tab)</h3>
+<table>
+  <thead><tr><th>Key</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>combflow_meta</td><td>Cached post metadata (title, image, description)</td></tr>
+    <tr><td>honeycomb_voted</td><td>Posts you've voted on in this session</td></tr>
+    <tr><td>honeycomb_user_communities</td><td>Your subscribed Hive communities</td></tr>
+  </tbody>
+</table>
+
+<p>You can clear all locally stored data at any time using your browser's developer tools or by clicking "Logout" (which removes <code>honeycomb_user</code>).</p>
+</section>
+
+<section>
+<h2>6. Third-Party Services</h2>
+<p>When you use HiveComb, your browser may make requests to the following third-party services:</p>
+<table>
+  <thead><tr><th>Service</th><th>Purpose</th><th>Data Sent</th></tr></thead>
+  <tbody>
+    <tr><td>Cloudflare</td><td>CDN, DDoS protection (all traffic)</td><td>IP address, all request/response data</td></tr>
+    <tr><td>cdn.jsdelivr.net</td><td>JavaScript libraries (Marked, DOMPurify)</td><td>Standard HTTP headers (IP, User-Agent)</td></tr>
+    <tr><td>unpkg.com</td><td>Leaflet map library</td><td>Standard HTTP headers</td></tr>
+    <tr><td>tile.openstreetmap.org</td><td>Map tiles (only if you use the map feature). Operated by the OpenStreetMap Foundation (UK).</td><td>IP address, tile coordinates (geographic area viewed)</td></tr>
+    <tr><td>nominatim.openstreetmap.org</td><td>Address search (only if you search a location). Operated by the OpenStreetMap Foundation (UK).</td><td>IP address, search query text</td></tr>
+    <tr><td>images.hive.blog</td><td>User avatars and post images (proxied)</td><td>Image URLs</td></tr>
+    <tr><td>Hive API nodes</td><td>Blockchain data (posts, profiles, communities)</td><td>Hive usernames, post identifiers</td></tr>
+    <tr><td>YouTube / 3Speak / Instagram</td><td>Embedded media (only if a post contains embeds)</td><td>Subject to those platforms' privacy policies</td></tr>
+  </tbody>
+</table>
+<p>We also operate a <strong>server-side image proxy</strong> (<code>/api/imageproxy</code>) to prevent your browser from connecting directly to arbitrary external image hosts when viewing post content.</p>
+</section>
+
+<section>
+<h2>7. Data Retention</h2>
+<ul>
+  <li><strong>Indexed posts:</strong> Retained indefinitely (mirrors the public blockchain).</li>
+  <li><strong>Classification metadata:</strong> Retained as long as the corresponding post is indexed.</li>
+  <li><strong>Misclassification reports:</strong> Retained indefinitely for classification improvement. You may request deletion (see section 8).</li>
+  <li><strong>Access logs:</strong> Small, rotating log files (typically &lt;50 MB total). Automatically overwritten as new logs arrive.</li>
+  <li><strong>Client-side data:</strong> Under your control — clear it via your browser at any time.</li>
+</ul>
+</section>
+
+<section>
+<h2>8. Your Rights Under GDPR</h2>
+<p>If you are in the European Economic Area (EEA), you have the following rights:</p>
+<ul>
+  <li><strong>Access</strong> — request a copy of the data we hold about you.</li>
+  <li><strong>Rectification</strong> — request correction of inaccurate data.</li>
+  <li><strong>Erasure</strong> — request deletion of your data (subject to limitations — see below).</li>
+  <li><strong>Restriction</strong> — request that we limit processing of your data.</li>
+  <li><strong>Object</strong> — object to processing based on legitimate interest.</li>
+  <li><strong>Portability</strong> — receive your data in a structured, machine-readable format.</li>
+</ul>
+
+<h3>Limitations Regarding Blockchain Data</h3>
+<p>Posts on the Hive blockchain are immutable and publicly accessible. We cannot delete or modify blockchain data. If you request erasure, we can:</p>
+<ul>
+  <li>Remove your posts from our index (they will no longer appear on HiveComb)</li>
+  <li>Delete any misclassification reports you submitted</li>
+  <li>Remove your username from our community mapping data</li>
+</ul>
+<p>However, the underlying blockchain data will remain accessible through other Hive interfaces and block explorers.</p>
+
+<p>To exercise your rights, contact us at <strong>hivecomb@pharesim.me</strong>. We will respond within 30 days.</p>
+</section>
+
+<section>
+<h2>9. Automated Processing and the EU AI Act</h2>
+<p>HiveComb uses automated methods to classify blockchain content. We believe in transparency about how this works:</p>
+
+<h3>What the system does</h3>
+<ul>
+  <li>Assigns topic categories, detects language, and estimates sentiment for each post using machine learning models (sentence-transformer embeddings and statistical language identification).</li>
+  <li>Maps Hive communities to topic categories based on community descriptions.</li>
+  <li>Checks authors against a community-maintained blacklist.</li>
+</ul>
+
+<h3>How classification affects content visibility</h3>
+<ul>
+  <li>Posts that receive at least one topic category appear in the main discovery interface.</li>
+  <li>Posts that do not meet the classification threshold are still stored but do not appear in browse results. They remain accessible via direct links.</li>
+  <li>Sentiment labels are displayed but do not affect ranking or visibility.</li>
+  <li>NSFW-tagged posts are hidden by default but can be shown via user preference.</li>
+</ul>
+
+<h3>What the system does NOT do</h3>
+<ul>
+  <li>Does not build user profiles or make per-user decisions.</li>
+  <li>Does not perform behavioural targeting or personalised recommendations.</li>
+  <li>Does not use classification to suppress, demote, or censor content based on viewpoint or sentiment.</li>
+  <li>Does not make decisions that produce legal or similarly significant effects on individuals.</li>
+</ul>
+
+<h3>Your right to object</h3>
+<p>If you believe your content has been incorrectly classified, you can submit a misclassification report through the HiveComb interface. If you wish to have your content removed from our index entirely, contact us at <strong>hivecomb@pharesim.me</strong>.</p>
+</section>
+
+<section>
+<h2>10. International Transfers</h2>
+<p>Our servers are located within the European Economic Area (EEA). All data processing is conducted in accordance with EEA data protection standards. Third-party CDN and API services listed in section 6 may process requests in various jurisdictions according to their own privacy policies.</p>
+</section>
+
+<section>
+<h2>11. Children</h2>
+<p>HiveComb is not directed at children under the age of 16. We do not knowingly process personal data of children. If you believe a child's data has been processed, contact us and we will take steps to remove it.</p>
+</section>
+
+<section>
+<h2>12. Changes to This Policy</h2>
+<p>We may update this privacy policy from time to time. Material changes will be indicated by updating the "Last updated" date at the top of this page. Continued use of HiveComb after changes constitutes acceptance of the updated policy.</p>
+</section>
+
+<section>
+<h2>13. Contact &amp; Supervisory Authority</h2>
+<p>Email: <strong>hivecomb@pharesim.me</strong></p>
+<p>You have the right to lodge a complaint with a data protection supervisory authority in the European Economic Area.</p>
+</section>
+
+</main>
+
+<footer class="legal-footer">
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Service</a>
+  <a href="/takedown">Notice &amp; Takedown</a>
+  <a href="/">Back to HiveComb</a>
+</footer>
+
+</body>
+</html>

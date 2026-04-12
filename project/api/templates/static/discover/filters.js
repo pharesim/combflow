@@ -1,6 +1,8 @@
 // ── Collapsible filter bar ──
 function toggleFiltersBar() {
-  document.getElementById('filters-bar').classList.toggle('expanded');
+  const bar = document.getElementById('filters-bar');
+  bar.classList.toggle('expanded');
+  bar.setAttribute('aria-expanded', bar.classList.contains('expanded'));
 }
 
 // ── Collapsible filter sections ──

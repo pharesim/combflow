@@ -27,8 +27,14 @@ function openSignup() {
   iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
   iframe.src = 'https://hivedapps.com/';
   Alpine.store('app').signupOpen = true;
+  requestAnimationFrame(() => {
+    const box = document.querySelector('#signup-overlay .signup-box');
+    if (box) trapFocus(box);
+  });
 }
 function closeSignup() {
+  const box = document.querySelector('#signup-overlay .signup-box');
+  if (box) releaseFocus(box);
   Alpine.store('app').signupOpen = false;
   document.getElementById('signup-iframe').src = 'about:blank';
 }

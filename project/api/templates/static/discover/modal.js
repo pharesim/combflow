@@ -273,10 +273,12 @@ function openLightbox(clickedImg) {
   // Force reflow so opacity transition fires
   overlay.offsetHeight;
   overlay.classList.add('active');
+  trapFocus(overlay);
 }
 
 function closeLightbox() {
   const overlay = document.getElementById('lightbox');
+  releaseFocus(overlay);
   overlay.classList.remove('active');
   setTimeout(() => { if (!overlay.classList.contains('active')) overlay.style.display = 'none'; }, 200);
 }

@@ -107,7 +107,7 @@ function esc(s) {
 
 function avatarHtml(author, size) {
   size = size || 16;
-  return '<img class="author-avatar" src="' + proxyImg('https://images.hive.blog/u/' + encodeURIComponent(author) + '/avatar/small') + '" alt="" width="' + size + '" height="' + size + '">';
+  return '<img class="author-avatar" src="' + proxyImg('https://images.hive.blog/u/' + encodeURIComponent(author) + '/avatar/small') + '" alt="@' + esc(author) + '" width="' + size + '" height="' + size + '">';
 }
 
 // ── Focus trap for modals ──

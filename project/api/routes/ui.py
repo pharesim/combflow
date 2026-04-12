@@ -25,7 +25,7 @@ router = APIRouter()
 _TEMPLATE_DIR = pathlib.Path(__file__).resolve().parent.parent / "templates"
 _TEMPLATES = {
     name: (_TEMPLATE_DIR / name).read_text()
-    for name in ["discover.html"]
+    for name in ["discover.html", "privacy.html", "terms.html", "takedown.html"]
 }
 
 # Default OG values — must match what's in discover.html.
@@ -34,6 +34,17 @@ _OG_DEFAULT_DESC = (
     "Discover and explore Hive blockchain posts by topic, language, and sentiment. "
     "Browse communities, filter by category, and find content that matches your interests."
 )
+
+
+def _render_legal(name: str) -> HTMLResponse:
+    """Return a legal page template with placeholders replaced."""
+    site_url = settings.site_url.rstrip("/") if settings.site_url else ""
+    html = (
+        _TEMPLATES[name]
+        .replace("{{SITE_URL}}", site_url)
+        .replace("{{LEGAL_DATE}}", "12 April 2026")
+    )
+    return HTMLResponse(html)
 
 
 def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse:
@@ -115,6 +126,23 @@ async def discover_author(request: Request, author: str):
 async def discover_post(request: Request, author: str, permlink: str):
     og = await _fetch_post_og(author, permlink)
     return _render("discover.html", request, og=og)
+
+
+# ── Legal pages ──────────────────────────────────────────────────────────────
+
+@router.get("/privacy", include_in_schema=False)
+async def privacy_page():
+    return _render_legal("privacy.html")
+
+
+@router.get("/terms", include_in_schema=False)
+async def terms_page():
+    return _render_legal("terms.html")
+
+
+@router.get("/takedown", include_in_schema=False)
+async def takedown_page():
+    return _render_legal("takedown.html")
 
 
 # ── SEO ──────────────────────────────────────────────────────────────────────

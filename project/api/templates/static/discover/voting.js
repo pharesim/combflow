@@ -44,8 +44,14 @@ function openVotePopup(author, permlink, btn) {
   document.getElementById('vote-weight-slider').value = lastWeight;
   document.getElementById('vote-weight-val').textContent = lastWeight + '%';
   Alpine.store('app').votePopupOpen = true;
+  requestAnimationFrame(() => {
+    const popup = document.querySelector('#vote-popup .vote-popup');
+    if (popup) trapFocus(popup);
+  });
 }
 function closeVotePopup() {
+  const popup = document.querySelector('#vote-popup .vote-popup');
+  if (popup) releaseFocus(popup);
   Alpine.store('app').votePopupOpen = false;
   if (_pendingManualVote) _pendingManualVote.btn.disabled = false;
   _pendingManualVote = null;

@@ -13,9 +13,15 @@ function openReport() {
   document.getElementById('report-submit-btn').disabled = false;
   _reportBusy = false;
   s.reportOpen = true;
+  requestAnimationFrame(() => {
+    const box = document.querySelector('.report-overlay .report-box');
+    if (box) trapFocus(box);
+  });
 }
 
 function closeReport() {
+  const box = document.querySelector('.report-overlay .report-box');
+  if (box) releaseFocus(box);
   Alpine.store('app').reportOpen = false;
   _reportPost = null;
 }
