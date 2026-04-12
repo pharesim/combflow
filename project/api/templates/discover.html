@@ -44,8 +44,6 @@
 </head>
 <body x-data>
 
-<a class="skip-link sr-only" href="#main-content">Skip to main content</a>
-
 <header class="header">
   <a class="logo" href="/"><h1 class="sr-only">HiveComb</h1>HiveComb</a>
   <nav class="nav-links">
@@ -300,10 +298,10 @@
                x-effect="void getPostMeta(p).thumb; $nextTick(() => observeThumb($el))"></div>
           <div class="hex-overlay">
             <div class="hex-title" x-text="(getPostMeta(p).title || '').slice(0, 40)"></div>
-            <div class="hex-author"><a class="clickable-author"
-                 :href="'/@' + p.author"
-                 @click.stop
-                 x-text="'@' + p.author"></a></div>
+            <div class="hex-author"><span class="clickable-author" role="link" tabindex="0"
+                 @click.prevent.stop="window.location.href='/@' + p.author"
+                 @keydown.enter.prevent.stop="window.location.href='/@' + p.author"
+                 x-text="'@' + p.author"></span></div>
             <template x-if="p.community_name">
               <button type="button" class="hex-community clickable" @click.prevent.stop="filterByCommunity(p.community_id)" x-text="p.community_name"></button>
             </template>
