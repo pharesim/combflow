@@ -247,6 +247,73 @@ document.getElementById('modal-body').addEventListener('click', function(e) {
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
+// ── Image lightbox ──
+const _lb = { images: [], index: 0, touchX: 0 };
+
+function _lbCollect(clickedImg) {
+  const container = clickedImg.closest('.rendered-body');
+  if (!container) return [clickedImg.src];
+  return Array.from(container.querySelectorAll('img')).filter(i => !i.closest('a')).map(i => i.src);
+}
+
+function _lbShow() {
+  document.getElementById('lightbox-img').src = _lb.images[_lb.index];
+  const n = _lb.images.length;
+  document.getElementById('lightbox-prev')[n > 1 ? 'removeAttribute' : 'setAttribute']('hidden', '');
+  document.getElementById('lightbox-next')[n > 1 ? 'removeAttribute' : 'setAttribute']('hidden', '');
+  document.getElementById('lightbox-counter').textContent = n > 1 ? (_lb.index + 1) + ' / ' + n : '';
+}
+
+function openLightbox(clickedImg) {
+  _lb.images = _lbCollect(clickedImg);
+  _lb.index = Math.max(0, _lb.images.indexOf(clickedImg.src));
+  const overlay = document.getElementById('lightbox');
+  overlay.style.display = 'flex';
+  _lbShow();
+  // Force reflow so opacity transition fires
+  overlay.offsetHeight;
+  overlay.classList.add('active');
+}
+
+function closeLightbox() {
+  const overlay = document.getElementById('lightbox');
+  overlay.classList.remove('active');
+  setTimeout(() => { if (!overlay.classList.contains('active')) overlay.style.display = 'none'; }, 200);
+}
+
+function lightboxPrev() { if (_lb.images.length > 1) { _lb.index = (_lb.index - 1 + _lb.images.length) % _lb.images.length; _lbShow(); } }
+function lightboxNext() { if (_lb.images.length > 1) { _lb.index = (_lb.index + 1) % _lb.images.length; _lbShow(); } }
+
+document.getElementById('lightbox').addEventListener('click', function(e) {
+  if (e.target.id === 'lightbox-img' || e.target.closest('.lightbox-nav')) return;
+  closeLightbox();
+});
+document.getElementById('lightbox-prev').addEventListener('click', lightboxPrev);
+document.getElementById('lightbox-next').addEventListener('click', lightboxNext);
+
+// Arrow keys
+document.addEventListener('keydown', function(e) {
+  if (!document.getElementById('lightbox').classList.contains('active')) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); lightboxNext(); }
+});
+
+// Touch swipe
+document.getElementById('lightbox').addEventListener('touchstart', function(e) { _lb.touchX = e.changedTouches[0].clientX; }, { passive: true });
+document.getElementById('lightbox').addEventListener('touchend', function(e) {
+  const dx = e.changedTouches[0].clientX - _lb.touchX;
+  if (Math.abs(dx) > 50) { dx < 0 ? lightboxNext() : lightboxPrev(); }
+}, { passive: true });
+
+// Delegate image clicks inside rendered bodies (post modal + comments)
+document.addEventListener('click', function(e) {
+  const img = e.target.closest('.rendered-body img');
+  if (!img) return;
+  if (img.closest('a')) return;
+  e.preventDefault();
+  openLightbox(img);
+});
+
 // ── Popstate (browser back/forward) ──
 window.addEventListener('popstate', e => {
   if (e.state && e.state.author) {

@@ -569,6 +569,14 @@
   </div>
 </div>
 
+<!-- Image lightbox -->
+<div class="lightbox-overlay" id="lightbox" style="display:none" role="dialog" aria-modal="true" aria-label="Image preview">
+  <button type="button" class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Previous image">&#8249;</button>
+  <img id="lightbox-img" alt="">
+  <button type="button" class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Next image">&#8250;</button>
+  <span class="lightbox-counter" id="lightbox-counter"></span>
+</div>
+
 <!-- Report misclassification popup -->
 <div class="report-overlay" role="dialog" aria-modal="true" aria-label="Report misclassification" x-show="$store.app.reportOpen" x-cloak @click.self="closeReport()">
   <div class="report-box">

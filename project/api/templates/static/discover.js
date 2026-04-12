@@ -246,6 +246,7 @@ async function init() {
 // ── Escape key handler ──
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (document.getElementById('lightbox').classList.contains('active')) { closeLightbox(); return; }
     const s = Alpine.store('app');
     if (s.reportOpen) closeReport();
     else if (s.notifOpen) { s.notifOpen = false; }
