@@ -110,7 +110,7 @@ function embedVideos(div) {
   const embeddedVideos = new Set();
   div.querySelectorAll('a').forEach(a => {
     const href = a.getAttribute('href') || '';
-    const ytMatch = href.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+    const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]+)/);
     if (ytMatch) {
       const videoKey = `yt:${ytMatch[1]}`;
       if (embeddedVideos.has(videoKey)) {
