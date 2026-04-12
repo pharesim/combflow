@@ -31,10 +31,10 @@ async def test_imageproxy_success(client):
     mock_response = MagicMock(spec=httpx.Response)
     mock_response.headers = {"content-type": "image/png"}
 
-    async def _astream_bytes():
+    async def _aiter_bytes():
         yield image_bytes
 
-    mock_response.astream_bytes = _astream_bytes
+    mock_response.aiter_bytes = _aiter_bytes
     mock_response.aclose = AsyncMock()
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
@@ -143,11 +143,11 @@ async def test_imageproxy_streaming_size_limit(client):
     mock_response = MagicMock(spec=httpx.Response)
     mock_response.headers = {"content-type": "image/jpeg"}
 
-    async def _astream_bytes():
+    async def _aiter_bytes():
         for _ in range(60):  # 60 MB total
             yield chunk
 
-    mock_response.astream_bytes = _astream_bytes
+    mock_response.aiter_bytes = _aiter_bytes
     mock_response.aclose = AsyncMock()
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)

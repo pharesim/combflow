@@ -112,7 +112,7 @@ function renderCommentForm(parentAuthor, parentPermlink, isTopLevel) {
   }
   const formId = isTopLevel ? 'comment-form-top' : 'comment-form-reply';
   return '<div class="comment-form" id="' + formId + '">' +
-    '<textarea class="comment-textarea" id="' + formId + '-textarea" placeholder="Write a comment..." maxlength="64000" rows="3"></textarea>' +
+    '<textarea class="comment-textarea" id="' + formId + '-textarea" aria-label="Write a comment" placeholder="Write a comment..." maxlength="64000" rows="3"></textarea>' +
     '<div class="comment-form-actions">' +
       '<button type="button" class="comment-preview-btn" data-action="comment-preview" data-form-id="' + formId + '">Preview</button>' +
       '<div style="flex:1"></div>' +

@@ -186,28 +186,28 @@
   </div>
 </div>
 <div class="filters" id="filters">
-  <div class="filter-section collapsed" id="filter-languages">
+  <div class="filter-section collapsed" id="filter-languages" role="group" aria-label="Languages">
     <button type="button" class="filter-header" aria-expanded="false" aria-controls="lang-chips" data-action="toggle-section" data-section="filter-languages">
       <span>Languages<span class="filter-count" id="count-languages"></span></span>
       <span class="filter-toggle" aria-hidden="true">&#9660;</span>
     </button>
     <div class="filter-body chip-wrap" id="lang-chips"></div>
   </div>
-  <div class="filter-section collapsed" id="filter-categories">
+  <div class="filter-section collapsed" id="filter-categories" role="group" aria-label="Categories">
     <button type="button" class="filter-header" aria-expanded="false" aria-controls="cat-chips" data-action="toggle-section" data-section="filter-categories">
       <span>Categories<span class="filter-count" id="count-categories"></span></span>
       <span class="filter-toggle" aria-hidden="true">&#9660;</span>
     </button>
     <div class="filter-body chip-wrap" id="cat-chips"></div>
   </div>
-  <div class="filter-section collapsed" id="filter-communities">
+  <div class="filter-section collapsed" id="filter-communities" role="group" aria-label="Communities">
     <button type="button" class="filter-header" aria-expanded="false" aria-controls="community-chips" data-action="toggle-section" data-section="filter-communities">
       <span>Communities<span class="filter-count" id="count-communities"></span></span>
       <span class="filter-toggle" aria-hidden="true">&#9660;</span>
     </button>
     <div class="filter-body chip-wrap" id="community-chips"></div>
   </div>
-  <div class="filter-section collapsed" id="filter-sentiment">
+  <div class="filter-section collapsed" id="filter-sentiment" role="group" aria-label="Sentiment">
     <button type="button" class="filter-header" aria-expanded="false" aria-controls="sentiment-chips" data-action="toggle-section" data-section="filter-sentiment">
       <span>Sentiment<span class="filter-count" id="count-sentiment"></span></span>
       <span class="filter-toggle" aria-hidden="true">&#9660;</span>
@@ -220,7 +220,7 @@
     </div>
   </div>
   <!-- Curation filters: collapsible, visible when curation mode enabled -->
-  <div class="filter-section collapsed" id="filter-curation" style="display:none">
+  <div class="filter-section collapsed" id="filter-curation" role="group" aria-label="Curation" style="display:none">
     <button type="button" class="filter-header" aria-expanded="false" aria-controls="curation-filters" data-action="toggle-section" data-section="filter-curation">
       <span>Curation</span>
       <span class="filter-toggle" aria-hidden="true">&#9660;</span>
@@ -364,7 +364,7 @@
           <button type="button" class="vote-btn"
                   :class="{ voted: !!state.votedPosts[p.author + '/' + p.permlink] }"
                   :data-vote-key="p.author + '/' + p.permlink"
-                  :aria-label="state.votedPosts[p.author + '/' + p.permlink] ? 'Voted' : 'Vote'"
+                  :aria-label="(state.votedPosts[p.author + '/' + p.permlink] ? 'Voted for ' : 'Upvote ') + p.title"
                   @click.prevent.stop="handleVote(p.author, p.permlink, $el)"
                   x-html="VOTE_SVG_18"></button>
           <span class="vote-count" :data-vote-key="p.author + '/' + p.permlink"
@@ -422,7 +422,7 @@
           <button type="button" class="vote-btn"
                   :class="{ voted: !!state.votedPosts[p.author + '/' + p.permlink] }"
                   :data-vote-key="p.author + '/' + p.permlink"
-                  :aria-label="state.votedPosts[p.author + '/' + p.permlink] ? 'Voted' : 'Vote'"
+                  :aria-label="(state.votedPosts[p.author + '/' + p.permlink] ? 'Voted for ' : 'Upvote ') + p.title"
                   @click.prevent.stop="handleVote(p.author, p.permlink, $el)"
                   x-html="VOTE_SVG_16"></button>
           <span class="vote-count" :data-vote-key="p.author + '/' + p.permlink"
