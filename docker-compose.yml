@@ -149,6 +149,7 @@ services:
     shm_size: '256m'
     environment:
       CACHE_ROOT_DIR: /cache
+      INTERNAL_RENDER_URL: http://caddy:8080
     volumes:
       - prerender_cache:/cache
     healthcheck:

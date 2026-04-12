@@ -32,7 +32,7 @@ Preferred-Languages: en
 	}
 	redir /docs / permanent
 	@bot {
-		header_regexp User-Agent (?i)(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|applebot|gptbot|claudebot|chatgpt-user|perplexitybot|bytespider|semrushbot|ahrefsbot|dotbot|petalbot|mj12bot)
+		header_regexp User-Agent (?i)(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|applebot|gptbot|claudebot|chatgpt-user|perplexitybot|bytespider)
 		not path /static/*
 	}
 	handle @bot {
@@ -56,6 +56,11 @@ Preferred-Languages: en
 		encode zstd gzip
 		reverse_proxy combflow-app:8000
 	}
+}
+
+# Internal prerender: Chromium fetches via Docker DNS → caddy:8080
+http://caddy {
+	reverse_proxy combflow-app:8000
 }
 
 http://{$CADDY_UI_OLD:old.invalid} {
