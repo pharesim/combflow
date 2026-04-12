@@ -16,13 +16,7 @@ _CHUNK_SIZE = 64 * 1024  # 64 KB
 
 @router.get(
     "/api/imageproxy",
-    summary="Proxy an external image",
-    tags=["images"],
-    responses={
-        400: {"description": "Missing or invalid URL"},
-        413: {"description": "Image exceeds 50 MB size limit"},
-        502: {"description": "Upstream error (non-image, timeout, connection failure)"},
-    },
+    include_in_schema=False,
 )
 async def imageproxy(
     request: Request,
