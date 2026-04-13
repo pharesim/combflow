@@ -24,13 +24,35 @@ async function init() {
       });
   }
 
+  // Pre-read cached filters so the initial browse already includes them
+  // (avoids a wasted unfiltered fetch followed by a second filtered fetch)
+  let _initBrowseUrl = `/api/browse?limit=${PAGE_SIZE}`;
+  const _sessionRaw = sessionStorage.getItem('honeycomb_sessionFilters');
+  const _prefsRaw = localStorage.getItem('honeycomb_filterPrefs');
+  const _initFilters = _sessionRaw ? JSON.parse(_sessionRaw) : (_prefsRaw ? JSON.parse(_prefsRaw) : null);
+  if (_initFilters) {
+    (_initFilters.categories || _initFilters.default_categories || []).forEach(c =>
+      _initBrowseUrl += `&category=${encodeURIComponent(c)}`);
+    (_initFilters.languages || _initFilters.default_languages || []).forEach(l =>
+      _initBrowseUrl += `&language=${encodeURIComponent(l)}`);
+    const _sent = _initFilters.sentiments || (_initFilters.default_sentiment ? [_initFilters.default_sentiment] : []);
+    const _realSent = _sent.filter(s => s !== 'nsfw');
+    if (_realSent.length === 1) _initBrowseUrl += `&sentiment=${encodeURIComponent(_realSent[0])}`;
+    if (_initFilters.community)
+      _initBrowseUrl += `&community=${encodeURIComponent(_initFilters.community)}`;
+    if (_sent.includes('nsfw') || localStorage.getItem('honeycomb_nsfwMode') === 'show')
+      _initBrowseUrl += '&include_nsfw=true';
+    if (_sent.includes('nsfw') && localStorage.getItem('honeycomb_nsfwMode') === 'filter')
+      _initBrowseUrl += '&nsfw_only=true';
+  }
+
   let statsRes, catsRes, langsRes, postsRes, communitiesRes;
   try {
     [statsRes, catsRes, langsRes, postsRes, communitiesRes] = await Promise.all([
       fetch('/api/stats').then(r=>r.json()),
       fetch('/categories').then(r=>r.json()),
       fetch('/api/languages').then(r=>r.json()),
-      fetch(`/api/browse?limit=${PAGE_SIZE}`).then(r=>r.json()),
+      fetch(_initBrowseUrl).then(r=>r.json()),
       fetch('/api/communities').then(r=>r.json()).catch(() => ({ communities: [] })),
     ]);
   } catch(e) {
@@ -188,14 +210,21 @@ async function init() {
   // Fetch suggestions based on active categories (from preferences or manual)
   scheduleSuggestions();
 
-  // If preferences or session filters activated filters, re-fetch with those filters
+  // If My Communities or Following is active, we must re-fetch (those depend on
+  // async user data not available during the initial browse). For category/language/
+  // sentiment filters, the initial browse already included them — use postsRes directly.
   const fStore = Alpine.store('filters');
-  if (fStore.categories.size > 0 || fStore.languages.size > 0 || fStore.sentiments.size > 0
-    || state.activeCommunityFilter || state.myCommunitiesActive || state.followingFilterActive) {
+  if (state.myCommunitiesActive || state.followingFilterActive) {
     await applyFilters();
   } else {
     const rawPosts = postsRes.posts || [];
+    // When initial browse had filters, postsRes.total is the filtered count
+    if (fStore.categories.size > 0 || fStore.languages.size > 0 || fStore.sentiments.size > 0
+      || state.activeCommunityFilter) {
+      state.filteredTotalCount = postsRes.total || 0;
+    }
     state.posts = filterMutedPosts(rawPosts);
+    state.posts = applyCurationFilters(state.posts);
     state.currentOffset = state.posts.length;
     state.lastCursor = postsRes.next_cursor || null;
     state.noMorePosts = rawPosts.length < PAGE_SIZE;
