@@ -33,7 +33,7 @@ Preferred-Languages: en
 	}
 	redir /docs / permanent
 	@bot {
-		header_regexp User-Agent (?i)(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|applebot|gptbot|claudebot|chatgpt-user|perplexitybot|bytespider)
+		header_regexp User-Agent (?i)(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|applebot|gptbot|claudebot|claudesearchbot|chatgpt-user|perplexitybot|bytespider)
 		not path /static/*
 	}
 	handle @bot {
