@@ -5,6 +5,25 @@ async function init() {
   loadFollowedUsers();
   showSkeletons();
 
+  // Deep-link: detect early and fire modal fetch in parallel with grid setup
+  const _deepPostMatch = window.location.pathname.match(/^\/@([^/]+)\/(.+)$/)
+    || window.location.pathname.match(/^\/[^@][^/]*\/@([^/]+)\/(.+)$/);
+  let _deepModalPromise = null;
+  if (_deepPostMatch) {
+    const [, _dlAuthor, _dlPermlink] = _deepPostMatch;
+    state.deepLinked = true;
+    _deepModalPromise = fetch(`/posts/${encodeURIComponent(_dlAuthor)}/${encodeURIComponent(_dlPermlink)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(postData => {
+        if (postData) openModal(postData, true);
+        return postData;
+      })
+      .catch(() => {
+        openModal({ author: _dlAuthor, permlink: _dlPermlink }, true);
+        return null;
+      });
+  }
+
   let statsRes, catsRes, langsRes, postsRes, communitiesRes;
   try {
     [statsRes, catsRes, langsRes, postsRes, communitiesRes] = await Promise.all([
@@ -205,21 +224,14 @@ async function init() {
     filterByAuthor(authorMatch[1]);
   }
 
-  // Open post from URL if present (e.g. /@author/permlink or /prefix/@author/permlink)
-  const postMatch = window.location.pathname.match(/^\/@([^/]+)\/(.+)$/)
-    || window.location.pathname.match(/^\/[^@][^/]*\/@([^/]+)\/(.+)$/);
-  if (postMatch) {
-    const [, author, permlink] = postMatch;
-    state.deepLinked = true;
-    // Fetch the post from our API so modal gets full classification data
-    try {
-      const postRes = await fetch(`/posts/${encodeURIComponent(author)}/${encodeURIComponent(permlink)}`);
-      if (postRes.ok) {
-        const postData = await postRes.json();
-        openModal(postData, true);
-        // Re-fetch browse anchored to this post using cursor-based pagination
-        const linkedTs = new Date(postData.created).getTime() / 1000 + 0.001;
-        const anchorCursor = `${linkedTs}_${postData.id + 1}`;
+  // Deep-link: modal was already opened early — now anchor the grid to that post
+  if (_deepModalPromise) {
+    const postData = await _deepModalPromise;
+    if (postData) {
+      const [, author, permlink] = _deepPostMatch;
+      const linkedTs = new Date(postData.created).getTime() / 1000 + 0.001;
+      const anchorCursor = `${linkedTs}_${postData.id + 1}`;
+      try {
         const anchorRes = await fetch(`/api/browse?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(anchorCursor)}`);
         const anchorData = await anchorRes.json();
         const anchorPosts = anchorData.posts || [];
@@ -233,12 +245,7 @@ async function init() {
         renderAll(state.posts, true);
         updateResultsBar();
         fetchMeta(state.posts);
-      } else {
-        // Post not in our DB — still try to open via Hive API
-        openModal({ author, permlink }, true);
-      }
-    } catch(e) {
-      openModal({ author, permlink }, true);
+      } catch(e) {}
     }
   }
 }
