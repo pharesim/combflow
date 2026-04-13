@@ -86,11 +86,39 @@ async function openModal(post, skipPush) {
   Alpine.store('app').modalOpen = true;
   trapFocus(modalEl.querySelector('.modal'));
 
+  // Pause background meta fetches so modal RPC gets full bandwidth
+  state.metaPaused = true;
+
   // Fetch comments in parallel with post body
   fetchComments(post.author, post.permlink);
 
-  const result = await hiveRpc('bridge.get_post', {author: post.author, permlink: post.permlink});
-  normalizeCrossPostKey(result);
+  // Reuse cached metadata if fetchSingleMeta already fetched body
+  const cacheKey = `${post.author}/${post.permlink}`;
+  const cached = state.metaCache[cacheKey];
+  let result;
+  if (cached && cached.body) {
+    // Build a result-like object from cached data
+    result = {
+      title: cached.title,
+      body: cached.body,
+      json_metadata: cached.json_metadata,
+      stats: { total_votes: cached.votes },
+      children: cached.children,
+      pending_payout_value: cached.payout != null ? cached.payout + ' HBD' : null,
+      cross_post_key: null,
+    };
+    // Parse cross_post_key from json_metadata
+    try {
+      const meta = typeof cached.json_metadata === 'string' ? JSON.parse(cached.json_metadata) : cached.json_metadata || {};
+      if (meta.cross_post_key) result.cross_post_key = meta.cross_post_key;
+      else if (meta.original_author && meta.original_permlink) result.cross_post_key = meta.original_author + '/' + meta.original_permlink;
+    } catch(e) {}
+  } else {
+    result = await hiveRpc('bridge.get_post', {author: post.author, permlink: post.permlink});
+    normalizeCrossPostKey(result);
+  }
+  // Resume background meta fetches now that modal content is loaded
+  resumeMeta();
   if (result) {
     document.getElementById('modal-title').textContent = result.title || post.permlink;
     document.getElementById('modal-body').innerHTML = renderHiveBody(result.body || '');
@@ -203,6 +231,7 @@ async function openModal(post, skipPush) {
 }
 
 function closeModal(skipPush) {
+  resumeMeta();
   const modalEl = document.getElementById('modal');
   releaseFocus(modalEl.querySelector('.modal'));
   Alpine.store('app').modalOpen = false;

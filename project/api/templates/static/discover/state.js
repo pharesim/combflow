@@ -43,6 +43,9 @@ const state = {
   curationMaxPayout: '',
   curationSort: 'newest',
   curationFilteredCount: 0,
+  // Meta fetch pause/resume (proposal 091)
+  metaPaused: false,
+  metaResumeCallbacks: [],
 };
 
 // Constants
@@ -52,6 +55,13 @@ const MANA_CACHE_TTL = 60000;
 const MUTED_KEY = 'honeycomb_muted';
 const FOLLOWED_KEY = 'honeycomb_followed';
 const PAGE_SIZE = 60;
+
+// Resume paused meta fetches
+function resumeMeta() {
+  state.metaPaused = false;
+  const cbs = state.metaResumeCallbacks.splice(0);
+  cbs.forEach(cb => cb());
+}
 
 // Transient (not semantic state)
 let fetchAbort = null;

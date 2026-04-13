@@ -155,6 +155,8 @@ async function fetchSingleMeta(p, retries = 2) {
       votes: (result.stats && result.stats.total_votes) || (result.active_votes || []).length,
       children: result.children || 0,
       payout: payout,
+      body: result.body || '',
+      json_metadata: result.json_metadata || null,
     });
     // Bump Alpine metaRev so reactive templates re-evaluate
     Alpine.store('app').metaRev++;
@@ -185,12 +187,22 @@ async function fetchMeta(posts) {
     const cached = state.metaCache[`${p.author}/${p.permlink}`];
     return !cached || !cached.thumbnail;
   });
+  // Prioritize viewport-visible posts (first ~12 posts cover visible hexes/cards)
+  const visibleCount = window.innerWidth <= 768 ? 6 : 12;
+  if (need.length > visibleCount) {
+    const visible = need.splice(0, visibleCount);
+    need.unshift(...visible);
+  }
   const chunks = [];
   for (let i = 0; i < need.length; i += 10) chunks.push(need.slice(i, i + 10));
 
   const CONCURRENCY = 6;
   let ci = 0;
   async function runNext() {
+    // Wait while paused (modal open) — register a callback to resume
+    if (state.metaPaused) {
+      await new Promise(resolve => { state.metaResumeCallbacks.push(resolve); });
+    }
     if (ci >= chunks.length) return;
     const chunk = chunks[ci++];
     await Promise.all(chunk.map(p => fetchSingleMeta(p)));
