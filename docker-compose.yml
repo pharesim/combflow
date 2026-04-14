@@ -169,7 +169,7 @@ services:
         max-file: "3"
 
   goaccess:
-    image: allinurl/goaccess:1.9.3
+    image: allinurl/goaccess:1.10.2
     restart: unless-stopped
     entrypoint: /bin/sh
     command: ["/scripts/goaccess-run.sh"]

@@ -54,7 +54,7 @@ def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse
     OG placeholders fall back to defaults when no overrides are provided.
     """
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
-    canonical_path = request.url.path
+    canonical_path = html_escape(request.url.path)
     default_image = f"{site_url}/static/og-image.png"
 
     og_type = html_escape(og["type"]) if og and "type" in og else "website"
