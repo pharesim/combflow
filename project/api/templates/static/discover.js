@@ -46,23 +46,25 @@ async function init() {
       _initBrowseUrl += '&nsfw_only=true';
   }
 
-  let statsRes, catsRes, langsRes, postsRes, communitiesRes;
+  // ── Phase 1: fetch browse + categories (fast), render posts immediately ──
+  // Languages and stats do full table scans on cold caches (rebuild / long idle)
+  // and can take 5-10s. Don't let them block hex rendering.
+  const statsP = fetch('/api/stats').then(r => r.json()).catch(() => ({}));
+  const langsP = fetch('/api/languages').then(r => r.json()).catch(() => ({ languages: [] }));
+  const communitiesP = fetch('/api/communities').then(r => r.json()).catch(() => ({ communities: [] }));
+
+  let catsRes, postsRes;
   try {
-    [statsRes, catsRes, langsRes, postsRes, communitiesRes] = await Promise.all([
-      fetch('/api/stats').then(r=>r.json()),
-      fetch('/categories').then(r=>r.json()),
-      fetch('/api/languages').then(r=>r.json()),
-      fetch(_initBrowseUrl).then(r=>r.json()),
-      fetch('/api/communities').then(r=>r.json()).catch(() => ({ communities: [] })),
+    [catsRes, postsRes] = await Promise.all([
+      fetch('/categories').then(r => r.json()),
+      fetch(_initBrowseUrl).then(r => r.json()),
     ]);
   } catch(e) {
     const s = Alpine.store('app');
     s.layoutMode = getEffectiveLayout();
     s.posts = [];
     s.initialLoaded = true;
-    // Show connection error in the active grid
     const target = document.getElementById(getEffectiveLayout() === 'card' ? 'card-grid' : 'hex-grid');
-    // Clear skeletons
     target.querySelectorAll('.skeleton').forEach(el => el.remove());
     const errDiv = document.createElement('div');
     errDiv.className = 'empty';
@@ -72,16 +74,11 @@ async function init() {
     return;
   }
 
-  state.totalPostCount = statsRes.total_posts || 0;
+  // Use browse response total as initial estimate (stats may still be loading)
+  state.totalPostCount = postsRes.total || 0;
   state.filteredTotalCount = state.totalPostCount;
 
-  if (statsRes.api_base_url) {
-    const apiLink = document.getElementById('footer-api-link');
-    if (apiLink) apiLink.href = statsRes.api_base_url + '/docs';
-  }
-
-  // Build category chips — one row per parent (as buttons for a11y)
-  // Also populate leaf category list for editor tag autocomplete
+  // Build category chips (fast — small table, needed for preferences)
   (catsRes.categories||[]).forEach(p => {
     (p.children||[]).forEach(ch => { _categoryLeafs.push(ch.name.toLowerCase().replace(/\s+/g, '-')); });
   });
@@ -109,46 +106,12 @@ async function init() {
     catWrap.appendChild(group);
   });
 
-  // Build language chips (as buttons for a11y)
-  const langWrap = document.getElementById('lang-chips');
-  (langsRes.languages||[]).slice(0, 40).forEach(l => {
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'chip';
-    el.dataset.lang = l.language;
-    el.setAttribute('aria-pressed', 'false');
-    el.textContent = l.language;
-    langWrap.appendChild(el);
-  });
-
-  state.communityList = (communitiesRes.communities || []).sort((a, b) => (b.post_count || 0) - (a.post_count || 0));
-
-  // Build community filter chips (top 100)
-  const comChipWrap = document.getElementById('community-chips');
-  state.communityList.slice(0, 100).forEach(c => {
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'chip';
-    el.dataset.communityId = c.id;
-    el.setAttribute('aria-pressed', 'false');
-    el.textContent = c.name || c.id;
-    comChipWrap.appendChild(el);
-  });
-  comChipWrap.addEventListener('click', e => {
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    // Only one community active at a time — toggle via filterByCommunity
-    filterByCommunity(chip.dataset.communityId);
-  });
-
-  // Wire up filter chip events via Alpine store
+  // Wire category + sentiment chip events (sentiment chips are in HTML)
   const f = Alpine.store('filters');
-
   catWrap.addEventListener('click', e => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
     if (chip.classList.contains('cat-parent')) {
-      // Toggle all children of this parent
       const children = catWrap.querySelectorAll(`.chip[data-parent="${chip.dataset.cat}"]`);
       const allActive = Array.from(children).every(c => f.categories.has(c.dataset.cat));
       children.forEach(c => {
@@ -159,17 +122,10 @@ async function init() {
       f.toggle('categories', chip.dataset.cat);
     }
   });
-
   document.getElementById('sentiment-chips').addEventListener('click', e => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
     f.toggle('sentiments', chip.dataset.sentiment);
-  });
-
-  langWrap.addEventListener('click', e => {
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    f.toggle('languages', chip.dataset.lang);
   });
 
   // Set initial toggle state
@@ -207,18 +163,12 @@ async function init() {
   applyNsfwMode(getNsfwMode());
   initCurationUI();
 
-  // Fetch suggestions based on active categories (from preferences or manual)
-  scheduleSuggestions();
-
-  // If My Communities or Following is active, we must re-fetch (those depend on
-  // async user data not available during the initial browse). For category/language/
-  // sentiment filters, the initial browse already included them — use postsRes directly.
+  // Render posts immediately — don't wait for languages/stats/communities
   const fStore = Alpine.store('filters');
   if (state.myCommunitiesActive || state.followingFilterActive) {
     await applyFilters();
   } else {
     const rawPosts = postsRes.posts || [];
-    // When initial browse had filters, postsRes.total is the filtered count
     if (fStore.categories.size > 0 || fStore.languages.size > 0 || fStore.sentiments.size > 0
       || state.activeCommunityFilter) {
       state.filteredTotalCount = postsRes.total || 0;
@@ -234,8 +184,61 @@ async function init() {
     updateResultsBar();
     fetchMeta(state.posts);
   }
-  // Enable Alpine filter effect now that chips exist and preferences are applied
   enableFilterEffect();
+
+  // ── Phase 2: build remaining filter UI when slow endpoints finish ──
+  Promise.all([statsP, langsP, communitiesP]).then(([statsRes, langsRes, communitiesRes]) => {
+    // Update total from stats (more accurate than browse estimate)
+    state.totalPostCount = statsRes.total_posts || state.totalPostCount;
+    if (!hasActiveFilters()) state.filteredTotalCount = state.totalPostCount;
+    updateResultsBar();
+    if (statsRes.api_base_url) {
+      const apiLink = document.getElementById('footer-api-link');
+      if (apiLink) apiLink.href = statsRes.api_base_url + '/docs';
+    }
+
+    // Build language chips
+    const langWrap = document.getElementById('lang-chips');
+    (langsRes.languages || []).slice(0, 40).forEach(l => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'chip';
+      el.dataset.lang = l.language;
+      el.setAttribute('aria-pressed', 'false');
+      el.textContent = l.language;
+      langWrap.appendChild(el);
+    });
+    langWrap.addEventListener('click', e => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      f.toggle('languages', chip.dataset.lang);
+    });
+
+    // Build community chips
+    state.communityList = (communitiesRes.communities || []).sort((a, b) => (b.post_count || 0) - (a.post_count || 0));
+    const comChipWrap = document.getElementById('community-chips');
+    state.communityList.slice(0, 100).forEach(c => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'chip';
+      el.dataset.communityId = c.id;
+      el.setAttribute('aria-pressed', 'false');
+      el.textContent = c.name || c.id;
+      comChipWrap.appendChild(el);
+    });
+    comChipWrap.addEventListener('click', e => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      filterByCommunity(chip.dataset.communityId);
+    });
+
+    // Sync chip active states to reflect any applied filters
+    syncAllChipsDom();
+    updateFilterCounts();
+    scheduleSuggestions();
+    checkFilterBarFit();
+  }).catch(e => console.error('Phase 2 init failed:', e));
+
   checkFilterBarFit();
   setupInfiniteScroll();
 
