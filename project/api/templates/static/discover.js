@@ -113,8 +113,8 @@ async function init() {
     pChip.textContent = parent.name;
     group.appendChild(pChip);
     (parent.children||[]).forEach(ch => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
+      const chip = document.createElement('a');
+      chip.href = `/c/${encodeURIComponent(ch.name)}`;
       chip.className = 'chip';
       chip.dataset.cat = ch.name;
       chip.dataset.parent = parent.name;
@@ -130,6 +130,9 @@ async function init() {
   catWrap.addEventListener('click', e => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
+    // Modifier-click (cmd/ctrl/shift) navigates normally — opens link in new tab.
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
     if (chip.classList.contains('cat-parent')) {
       const children = catWrap.querySelectorAll(`.chip[data-parent="${chip.dataset.cat}"]`);
       const allActive = Array.from(children).every(c => f.categories.has(c.dataset.cat));
@@ -222,11 +225,11 @@ async function init() {
       if (apiLink) apiLink.href = statsRes.api_base_url + '/docs';
     }
 
-    // Build language chips
+    // Build language chips (anchors so right-click → copy link, cmd-click → new tab)
     const langWrap = document.getElementById('lang-chips');
     (langsRes.languages || []).slice(0, 40).forEach(l => {
-      const el = document.createElement('button');
-      el.type = 'button';
+      const el = document.createElement('a');
+      el.href = `/lang/${encodeURIComponent(l.language)}`;
       el.className = 'chip';
       el.dataset.lang = l.language;
       el.setAttribute('aria-pressed', 'false');
@@ -236,15 +239,17 @@ async function init() {
     langWrap.addEventListener('click', e => {
       const chip = e.target.closest('.chip');
       if (!chip) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
       f.toggle('languages', chip.dataset.lang);
     });
 
-    // Build community chips
+    // Build community chips (anchors so right-click → copy link, cmd-click → new tab)
     state.communityList = (communitiesRes.communities || []).sort((a, b) => (b.post_count || 0) - (a.post_count || 0));
     const comChipWrap = document.getElementById('community-chips');
     state.communityList.slice(0, 100).forEach(c => {
-      const el = document.createElement('button');
-      el.type = 'button';
+      const el = document.createElement('a');
+      el.href = `/community/${encodeURIComponent(c.id)}`;
       el.className = 'chip';
       el.dataset.communityId = c.id;
       el.setAttribute('aria-pressed', 'false');
@@ -254,6 +259,8 @@ async function init() {
     comChipWrap.addEventListener('click', e => {
       const chip = e.target.closest('.chip');
       if (!chip) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
       filterByCommunity(chip.dataset.communityId);
     });
 
