@@ -212,19 +212,12 @@ async def robots_txt():
     return PlainTextResponse(body, media_type="text/plain")
 
 
-@router.get("/sitemap.xml", include_in_schema=False)
-async def sitemap_xml(db: AsyncSession = Depends(get_db)):
-    site_url = settings.site_url.rstrip("/") if settings.site_url else ""
-    if not site_url:
-        return PlainTextResponse(
-            '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>',
-            media_type="application/xml",
-        )
+_SITEMAP_TTL = 86400  # 24h — sitemap data changes slowly; lifespan pre-warms on boot
 
-    cached = cache.get("sitemap_xml")
-    if cached is not None:
-        return Response(content=cached, media_type="application/xml")
 
+async def _build_sitemap_xml(db: AsyncSession, site_url: str) -> str:
+    """Build the sitemap XML body. Expensive (HAFSQL JSONB scan, language
+    unnest). Cached for _SITEMAP_TTL after the first build."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     urls = [
@@ -300,15 +293,43 @@ async def sitemap_xml(db: AsyncSession = Depends(get_db)):
             f"<lastmod>{author_lastmod[author]}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>"
         )
 
-    xml = (
+    return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         + "\n".join(urls) + "\n"
         '</urlset>\n'
     )
 
-    cache.put("sitemap_xml", xml, ttl=600)
+
+@router.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml(db: AsyncSession = Depends(get_db)):
+    site_url = settings.site_url.rstrip("/") if settings.site_url else ""
+    if not site_url:
+        return PlainTextResponse(
+            '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>',
+            media_type="application/xml",
+        )
+    cached = cache.get("sitemap_xml")
+    if cached is not None:
+        return Response(content=cached, media_type="application/xml")
+    xml = await _build_sitemap_xml(db, site_url)
+    cache.put("sitemap_xml", xml, ttl=_SITEMAP_TTL)
     return Response(content=xml, media_type="application/xml")
+
+
+async def warm_sitemap_cache(session_factory) -> None:
+    """Pre-build and cache the sitemap. Call from lifespan so the slow
+    first build happens during startup, not when Googlebot is waiting."""
+    site_url = settings.site_url.rstrip("/") if settings.site_url else ""
+    if not site_url:
+        return
+    try:
+        async with session_factory() as session:
+            xml = await _build_sitemap_xml(session, site_url)
+        cache.put("sitemap_xml", xml, ttl=_SITEMAP_TTL)
+        logger.info("sitemap cache warmed (%d bytes)", len(xml))
+    except Exception as exc:
+        logger.warning("sitemap warm failed: %s", exc)
 
 
 @router.get("/llms.txt", include_in_schema=False)
