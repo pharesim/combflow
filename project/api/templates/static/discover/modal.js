@@ -92,10 +92,15 @@ async function openModal(post, skipPush) {
   // Fetch comments in parallel with post body
   fetchComments(post.author, post.permlink);
 
-  // Reuse cached metadata if fetchSingleMeta already fetched body
+  // Reuse cached metadata if fetchSingleMeta already fetched body.
+  // The cached vote count / payout may be stale though (cached when the user
+  // first scrolled past the post in the feed), so always kick off a fresh
+  // bridge.get_post in the background and patch the rendered DOM with the
+  // up-to-date numbers once it arrives.
   const cacheKey = `${post.author}/${post.permlink}`;
   const cached = state.metaCache[cacheKey];
   let result;
+  let freshPromise = null;
   if (cached && cached.body) {
     // Build a result-like object from cached data
     result = {
@@ -113,6 +118,8 @@ async function openModal(post, skipPush) {
       if (meta.cross_post_key) result.cross_post_key = meta.cross_post_key;
       else if (meta.original_author && meta.original_permlink) result.cross_post_key = meta.original_author + '/' + meta.original_permlink;
     } catch(e) {}
+    // Background refresh — caches go stale fast for vote count and payout.
+    freshPromise = hiveRpc('bridge.get_post', {author: post.author, permlink: post.permlink}).catch(() => null);
   } else {
     result = await hiveRpc('bridge.get_post', {author: post.author, permlink: post.permlink});
     normalizeCrossPostKey(result);
@@ -229,6 +236,36 @@ async function openModal(post, skipPush) {
     document.getElementById('modal-body').textContent = '(Could not load post content)';
   }
   window.prerenderReady = true;
+
+  // Patch in fresh stats once the background refetch returns. Bail if the
+  // modal was closed or navigated to a different post in the meantime.
+  if (freshPromise) {
+    freshPromise.then(fresh => {
+      if (!fresh) return;
+      const cur = Alpine.store('app').modalPost;
+      if (!cur || cur.author !== post.author || cur.permlink !== post.permlink) return;
+      const freshVotes = (fresh.stats && fresh.stats.total_votes) || (fresh.active_votes || []).length;
+      document.getElementById('modal-vote-count').textContent = freshVotes;
+      let freshPayout = null;
+      if (fresh.pending_payout_value) {
+        const pf = parseFloat(fresh.pending_payout_value);
+        if (!isNaN(pf)) freshPayout = pf;
+      }
+      cacheMetaEntry(`${post.author}/${post.permlink}`, {
+        ...state.metaCache[`${post.author}/${post.permlink}`],
+        votes: freshVotes,
+        children: fresh.children || 0,
+        payout: freshPayout,
+      });
+      Alpine.store('app').metaRev++;
+      const auth2 = getStoredAuth();
+      const voteKey2 = `${post.author}/${post.permlink}`;
+      if (auth2 && checkExistingVote(fresh, auth2.username) && !state.votedPosts[voteKey2]) {
+        saveVotedPost(voteKey2);
+        updateVoteButtons(voteKey2, true);
+      }
+    });
+  }
 }
 
 function closeModal(skipPush) {
