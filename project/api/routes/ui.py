@@ -175,7 +175,7 @@ async def robots_txt():
 
 
 @router.get("/sitemap.xml", include_in_schema=False)
-async def sitemap_xml():
+async def sitemap_xml(db: AsyncSession = Depends(get_db)):
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
     if not site_url:
         return PlainTextResponse(
@@ -199,7 +199,7 @@ async def sitemap_xml():
     # copies as "Duplicate, Google chose different canonical" — wasted crawl budget
     # and a low-quality signal on our sitemap.
     posts = await asyncio.to_thread(get_hivecomb_posts, 1000)
-    authors_seen: set[str] = set()
+    author_lastmod: dict[str, str] = {}
     for author, permlink, created in posts:
         lastmod = created.strftime("%Y-%m-%d") if created else now
         loc = f"{site_url}/@{xml_escape(author)}/{xml_escape(permlink)}"
@@ -207,13 +207,20 @@ async def sitemap_xml():
             f"  <url><loc>{loc}</loc>"
             f"<lastmod>{lastmod}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>"
         )
-        authors_seen.add(author)
+        author_lastmod[author] = max(author_lastmod.get(author, ""), lastmod)
 
-    for author in sorted(authors_seen):
+    # Author profile pages: unique aggregation surface, not duplicate content.
+    # Include recently active authors regardless of which UI they post from.
+    active_authors = await crud.get_recently_active_authors(db, days=60, limit=1000)
+    for author, last_created in active_authors:
+        lastmod = last_created.strftime("%Y-%m-%d") if last_created else now
+        author_lastmod[author] = max(author_lastmod.get(author, ""), lastmod)
+
+    for author in sorted(author_lastmod):
         loc = f"{site_url}/@{xml_escape(author)}"
         urls.append(
             f"  <url><loc>{loc}</loc>"
-            f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>"
+            f"<lastmod>{author_lastmod[author]}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>"
         )
 
     xml = (

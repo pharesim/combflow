@@ -674,6 +674,27 @@ async def get_distinct_authors(
     return [r[0] for r in rows.fetchall()]
 
 
+async def get_recently_active_authors(
+    session: AsyncSession, days: int = 60, limit: int = 1000
+) -> list[tuple[str, _dt]]:
+    """Return (author, last_post_created) for authors with a classified post
+    in the last `days` days, ordered by most-recent-post DESC, capped at `limit`.
+
+    Used for the sitemap — author profile pages are a unique aggregation
+    surface (not duplicate content from other UIs), worth indexing.
+    """
+    rows = await session.execute(
+        text(
+            "SELECT author, MAX(created) AS last_created FROM posts "
+            "WHERE category_ids != '{}' "
+            "AND created >= NOW() - make_interval(days => :days) "
+            "GROUP BY author ORDER BY last_created DESC LIMIT :lim"
+        ),
+        {"days": days, "lim": limit},
+    )
+    return [(r[0], r[1]) for r in rows.fetchall()]
+
+
 @retry_transient
 async def delete_posts_by_author(session: AsyncSession, author: str) -> int:
     """Delete all posts for a blacklisted author. Returns count deleted."""

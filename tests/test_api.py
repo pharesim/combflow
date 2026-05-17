@@ -181,7 +181,7 @@ async def test_sitemap_xml_empty_site_url(client):
     assert "<urlset" in resp.text
 
 
-async def test_sitemap_xml_with_posts(client):
+async def test_sitemap_xml_with_posts(client, seeded_db):
     from datetime import datetime, timezone
     fake_posts = [
         ("alice", "test-post-one", datetime(2026, 5, 1, tzinfo=timezone.utc)),
@@ -195,14 +195,36 @@ async def test_sitemap_xml_with_posts(client):
     assert resp.status_code == 200
     body = resp.text
     assert "https://example.com/" in body
+    # HiveComb-canonical posts
     assert "@alice/test-post-one" in body
     assert "@bob/test-post-two" in body
-    # Author profile URLs included
+    # Author profile URLs for HiveComb authors
     assert "<loc>https://example.com/@alice</loc>" in body
     assert "<loc>https://example.com/@bob</loc>" in body
 
 
-async def test_sitemap_xml_cached(client):
+async def test_sitemap_xml_includes_active_authors(client):
+    """Active authors from our DB get profile URLs, even if they never
+    posted via HiveComb — unique aggregation surface, not duplicate content."""
+    from datetime import datetime, timezone
+    fake_authors = [
+        ("carol", datetime(2026, 5, 10, tzinfo=timezone.utc)),
+        ("dave", datetime(2026, 5, 11, tzinfo=timezone.utc)),
+    ]
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]), \
+         patch("project.api.routes.ui.crud.get_recently_active_authors",
+               return_value=fake_authors):
+        mock_settings.site_url = "https://example.com"
+        cache.clear()
+        resp = await client.get("/sitemap.xml")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "<loc>https://example.com/@carol</loc>" in body
+    assert "<loc>https://example.com/@dave</loc>" in body
+
+
+async def test_sitemap_xml_cached(client, seeded_db):
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]):
         mock_settings.site_url = "https://example.com"
