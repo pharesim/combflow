@@ -15,7 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 import asyncio
 
 from .routes import router
-from .routes.ui import warm_sitemap_cache
+from .routes.ui import periodic_sitemap_warm
 from .. import cache
 from ..categories import CATEGORY_TREE
 from ..config import settings
@@ -94,13 +94,14 @@ async def lifespan(app: FastAPI):
         headers={"User-Agent": "CombFlow/1.0"},
     )
 
-    # Pre-warm the sitemap cache in the background — the HAFSQL JSONB scan
-    # and language unnest can take 15-20s. Don't block startup waiting for it;
-    # Googlebot just gets stale-but-fast cached XML if it hits before warm finishes.
-    asyncio.create_task(warm_sitemap_cache(AsyncSessionLocal))
+    # Pre-warm the sitemap cache, then re-warm every 12h in the background.
+    # The first request after startup gets cached XML; the cache never goes
+    # cold under live traffic. Don't await — let startup finish immediately.
+    sitemap_warm_task = asyncio.create_task(periodic_sitemap_warm(AsyncSessionLocal))
 
     logger.info("startup complete")
     yield
+    sitemap_warm_task.cancel()
     await app.state.http_client.aclose()
     hafsql_shutdown()
     await engine.dispose()

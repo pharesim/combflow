@@ -332,6 +332,18 @@ async def warm_sitemap_cache(session_factory) -> None:
         logger.warning("sitemap warm failed: %s", exc)
 
 
+async def periodic_sitemap_warm(session_factory, interval: int = _SITEMAP_TTL // 2) -> None:
+    """Warm immediately, then re-warm every `interval` seconds (default 12h).
+    Cache TTL is 24h so the entry is always at least 12h fresh when re-warmed —
+    no real request ever hits a cold cache. Runs until the task is cancelled."""
+    while True:
+        await warm_sitemap_cache(session_factory)
+        try:
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            return
+
+
 @router.get("/llms.txt", include_in_schema=False)
 async def llms_txt():
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
