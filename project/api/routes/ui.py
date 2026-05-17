@@ -105,11 +105,8 @@ async def discover_page_redirect():
 
 
 @router.get("/{prefix}/@{author}/{permlink}", include_in_schema=False)
-async def discover_prefixed_post(
-    request: Request, prefix: str, author: str, permlink: str  # prefix: path capture only, not used
-):
-    og = await _fetch_post_og(author, permlink)
-    return _render("discover.html", request, og=og)
+async def discover_prefixed_post(prefix: str, author: str, permlink: str):
+    return RedirectResponse(f"/@{author}/{permlink}", status_code=301)
 
 
 @router.get("/@{author}", include_in_schema=False)
@@ -193,6 +190,12 @@ async def sitemap_xml(db: AsyncSession = Depends(get_db)):
         f"  <url><loc>{xml_escape(site_url)}/</loc>"
         f"<lastmod>{now}</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url>"
     ]
+
+    for legal in ("privacy", "terms", "takedown"):
+        urls.append(
+            f"  <url><loc>{xml_escape(site_url)}/{legal}</loc>"
+            f"<lastmod>{now}</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>"
+        )
 
     # Only list posts where HiveComb is the rightful canonical (posted via HiveComb).
     # For posts originally published on PeakD/Ecency/etc., Google would mark our

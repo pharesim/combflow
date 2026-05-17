@@ -105,10 +105,10 @@ async def test_ui_post_page_returns_html(client):
     assert "text/html" in resp.headers.get("content-type", "")
 
 
-async def test_prefixed_post_url_returns_html(client):
+async def test_prefixed_post_url_redirects_to_canonical(client):
     resp = await client.get("/hive-139531/@alice/some-post")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers.get("content-type", "")
+    assert resp.status_code == 301
+    assert resp.headers.get("location") == "/@alice/some-post"
 
 
 async def test_author_profile_returns_html(client):
@@ -201,6 +201,10 @@ async def test_sitemap_xml_with_posts(client, seeded_db):
     # Author profile URLs for HiveComb authors
     assert "<loc>https://example.com/@alice</loc>" in body
     assert "<loc>https://example.com/@bob</loc>" in body
+    # Legal pages
+    assert "<loc>https://example.com/privacy</loc>" in body
+    assert "<loc>https://example.com/terms</loc>" in body
+    assert "<loc>https://example.com/takedown</loc>" in body
 
 
 async def test_sitemap_xml_includes_active_authors(client):
@@ -283,13 +287,6 @@ async def test_categories_fallback_on_exception(client):
          'content="https://images.hive.blog/0x0/https://example.com/photo.jpg"', 'content="article"'],
         ["{{OG_", 'content="website"'],
     ),
-    # Prefixed post URLs also get OG overrides
-    (
-        "/hive-139531/@bob/cross-post",
-        {"title": "Cross-posted Article", "description": "Some description", "image": ""},
-        ['content="Cross-posted Article"', 'content="article"'],
-        [],
-    ),
     # Post with no image keeps default og:image
     (
         "/@alice/no-img",
@@ -311,7 +308,7 @@ async def test_categories_fallback_on_exception(client):
         ['content="Title Only"'],
         [],
     ),
-], ids=["deep-link", "prefixed", "no-image", "html-escape", "partial-metadata"])
+], ids=["deep-link", "no-image", "html-escape", "partial-metadata"])
 async def test_og_post_with_metadata(client, url, metadata, expect_in, expect_not_in):
     with patch("project.api.routes.ui.get_post_metadata") as mock_get:
         mock_get.return_value = metadata
