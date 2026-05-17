@@ -235,7 +235,8 @@ def get_hivecomb_posts(limit: int = 1000) -> list[tuple]:
                 """
                 SELECT author, permlink, created
                 FROM hafsql.comments
-                WHERE depth = 0
+                WHERE parent_author = ''
+                  AND deleted = false
                   AND created >= NOW() - INTERVAL '180 days'
                   AND (
                     (json_metadata ->> 'app') ILIKE 'hivecomb%%'
