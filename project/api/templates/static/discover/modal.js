@@ -228,6 +228,7 @@ async function openModal(post, skipPush) {
     document.getElementById('modal-title').textContent = post.permlink;
     document.getElementById('modal-body').textContent = '(Could not load post content)';
   }
+  window.prerenderReady = true;
 }
 
 function closeModal(skipPush) {

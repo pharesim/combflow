@@ -16,6 +16,7 @@ async function init() {
       .then(r => r.ok ? r.json() : null)
       .then(postData => {
         if (postData) openModal(postData, true);
+        else window.prerenderReady = true;
         return postData;
       })
       .catch(() => {
@@ -280,6 +281,8 @@ async function init() {
       } catch(e) {}
     }
   }
+
+  if (!state.deepLinked) window.prerenderReady = true;
 }
 
 // ── Escape key handler ──
