@@ -2,16 +2,18 @@
 import asyncio
 import logging
 import pathlib
+import re
 from datetime import datetime, timezone
 from html import escape as html_escape
 from xml.sax.saxutils import escape as xml_escape
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import cache
+from ...categories import LEAF_CATEGORIES
 from ...config import settings
 from ...db import crud
 from ...hafsql import get_hivecomb_posts, get_post_metadata
@@ -102,6 +104,45 @@ async def root(request: Request):
 @router.get("/ui", include_in_schema=False)
 async def discover_page_redirect():
     return RedirectResponse("/", status_code=301)
+
+
+_LEAF_CATEGORY_SET = set(LEAF_CATEGORIES)
+_COMMUNITY_RE = re.compile(r"^hive-\d{6,}$")
+_LANG_RE = re.compile(r"^[a-z]{2,3}$")
+
+
+@router.get("/c/{category}", include_in_schema=False)
+async def discover_category(request: Request, category: str):
+    if category not in _LEAF_CATEGORY_SET:
+        raise HTTPException(status_code=404, detail="Unknown category")
+    pretty = category.replace("-", " ").title()
+    og = {
+        "title": f"{pretty} — Hive posts on HiveComb",
+        "description": f"Discover Hive blockchain posts about {category.replace('-', ' ')}, classified by topic, language, and sentiment.",
+    }
+    return _render("discover.html", request, og=og)
+
+
+@router.get("/community/{community_id}", include_in_schema=False)
+async def discover_community(request: Request, community_id: str):
+    if not _COMMUNITY_RE.match(community_id):
+        raise HTTPException(status_code=404, detail="Invalid community id")
+    og = {
+        "title": f"{community_id} — Hive community on HiveComb",
+        "description": f"Posts from the {community_id} Hive community on HiveComb.",
+    }
+    return _render("discover.html", request, og=og)
+
+
+@router.get("/lang/{lang}", include_in_schema=False)
+async def discover_language(request: Request, lang: str):
+    if not _LANG_RE.match(lang):
+        raise HTTPException(status_code=404, detail="Invalid language code")
+    og = {
+        "title": f"Hive posts in {lang} — HiveComb",
+        "description": f"Discover Hive blockchain posts written in {lang}.",
+    }
+    return _render("discover.html", request, og=og)
 
 
 @router.get("/{prefix}/@{author}/{permlink}", include_in_schema=False)
@@ -196,6 +237,39 @@ async def sitemap_xml(db: AsyncSession = Depends(get_db)):
             f"  <url><loc>{xml_escape(site_url)}/{legal}</loc>"
             f"<lastmod>{now}</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>"
         )
+
+    # Category landing pages — fixed taxonomy, all 38 leaves are valid surfaces.
+    for cat in LEAF_CATEGORIES:
+        urls.append(
+            f"  <url><loc>{xml_escape(site_url)}/c/{xml_escape(cat)}</loc>"
+            f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>"
+        )
+
+    # Language landing pages — only languages with actual posts.
+    try:
+        langs = await crud.get_available_languages(db)
+        for entry in langs[:100]:
+            code = entry.get("language")
+            if code and _LANG_RE.match(code):
+                urls.append(
+                    f"  <url><loc>{xml_escape(site_url)}/lang/{xml_escape(code)}</loc>"
+                    f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.5</priority></url>"
+                )
+    except Exception as exc:
+        logger.warning("sitemap language enumeration failed: %s", exc)
+
+    # Community landing pages — top by post count.
+    try:
+        comms = await crud.get_available_communities(db)
+        for entry in comms[:500]:
+            cid = entry.get("id")
+            if cid and _COMMUNITY_RE.match(cid):
+                urls.append(
+                    f"  <url><loc>{xml_escape(site_url)}/community/{xml_escape(cid)}</loc>"
+                    f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.5</priority></url>"
+                )
+    except Exception as exc:
+        logger.warning("sitemap community enumeration failed: %s", exc)
 
     # Only list posts where HiveComb is the rightful canonical (posted via HiveComb).
     # For posts originally published on PeakD/Ecency/etc., Google would mark our

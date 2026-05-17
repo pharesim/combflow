@@ -25,12 +25,30 @@ async function init() {
       });
   }
 
+  // URL-driven filter surfaces — /c/{cat}, /community/{id}, /lang/{lang}, /@{author}.
+  // Bake into the initial browse so the first (and only) fetch is already filtered,
+  // and the prerender snapshot reflects the filtered state without any second fetch.
+  const _urlCategoryMatch = window.location.pathname.match(/^\/c\/([a-z0-9-]+)$/);
+  const _urlCommunityMatch = window.location.pathname.match(/^\/community\/(hive-\d+)$/);
+  const _urlLanguageMatch = window.location.pathname.match(/^\/lang\/([a-z]{2,3})$/);
+  const _urlAuthorMatch = window.location.pathname.match(/^\/@([^/]+)$/);
+
   // Pre-read cached filters so the initial browse already includes them
   // (avoids a wasted unfiltered fetch followed by a second filtered fetch)
   let _initBrowseUrl = `/api/browse?limit=${PAGE_SIZE}`;
+  // URL-derived filters take priority over session/prefs (explicit deep link).
+  if (_urlCategoryMatch || _urlCommunityMatch || _urlLanguageMatch || _urlAuthorMatch) {
+    window.prerenderReady = false;
+    if (_urlCategoryMatch) _initBrowseUrl += `&category=${encodeURIComponent(_urlCategoryMatch[1])}`;
+    if (_urlCommunityMatch) _initBrowseUrl += `&community=${encodeURIComponent(_urlCommunityMatch[1])}`;
+    if (_urlLanguageMatch) _initBrowseUrl += `&language=${encodeURIComponent(_urlLanguageMatch[1])}`;
+    if (_urlAuthorMatch) _initBrowseUrl += `&authors=${encodeURIComponent(_urlAuthorMatch[1])}`;
+  }
   const _sessionRaw = sessionStorage.getItem('honeycomb_sessionFilters');
   const _prefsRaw = localStorage.getItem('honeycomb_filterPrefs');
-  const _initFilters = _sessionRaw ? JSON.parse(_sessionRaw) : (_prefsRaw ? JSON.parse(_prefsRaw) : null);
+  const _initFilters = (_urlCategoryMatch || _urlCommunityMatch || _urlLanguageMatch || _urlAuthorMatch)
+    ? null
+    : (_sessionRaw ? JSON.parse(_sessionRaw) : (_prefsRaw ? JSON.parse(_prefsRaw) : null));
   if (_initFilters) {
     (_initFilters.categories || _initFilters.default_categories || []).forEach(c =>
       _initBrowseUrl += `&category=${encodeURIComponent(c)}`);
@@ -166,12 +184,18 @@ async function init() {
 
   // Render posts immediately — don't wait for languages/stats/communities
   const fStore = Alpine.store('filters');
+  // URL-driven filters: seed state/store so chips and banners show as active.
+  // Done before enableFilterEffect() so this doesn't trigger a second fetch.
+  if (_urlCategoryMatch) fStore.add('categories', _urlCategoryMatch[1]);
+  if (_urlLanguageMatch) fStore.add('languages', _urlLanguageMatch[1]);
+  if (_urlCommunityMatch) state.activeCommunityFilter = _urlCommunityMatch[1];
+  if (_urlAuthorMatch) state.authorFilterUser = _urlAuthorMatch[1];
   if (state.myCommunitiesActive || state.followingFilterActive) {
     await applyFilters();
   } else {
     const rawPosts = postsRes.posts || [];
     if (fStore.categories.size > 0 || fStore.languages.size > 0 || fStore.sentiments.size > 0
-      || state.activeCommunityFilter) {
+      || state.activeCommunityFilter || state.authorFilterUser) {
       state.filteredTotalCount = postsRes.total || 0;
     }
     state.posts = filterMutedPosts(rawPosts);
@@ -251,11 +275,10 @@ async function init() {
   editorBody.addEventListener('drop', onEditorDrop);
   document.getElementById('editor-image-input').addEventListener('change', onEditorImagePick);
 
-  // Author profile URL (/@username with no permlink)
-  const authorMatch = window.location.pathname.match(/^\/@([^/]+)$/);
-  if (authorMatch) {
-    filterByAuthor(authorMatch[1]);
-  }
+  // URL-driven filters' UI affordances (banner, indicators) — chips were
+  // already synced via the Alpine effect after enableFilterEffect().
+  if (_urlAuthorMatch) updateAuthorFilterBanner();
+  if (_urlCommunityMatch) showCommunityIndicator();
 
   // Deep-link: modal was already opened early — now anchor the grid to that post
   if (_deepModalPromise) {

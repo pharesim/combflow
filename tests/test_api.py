@@ -117,6 +117,49 @@ async def test_author_profile_returns_html(client):
     assert "text/html" in resp.headers.get("content-type", "")
 
 
+async def test_category_landing_renders_with_og(client):
+    """Known leaf category returns 200 with category-specific OG tags."""
+    resp = await client.get("/c/photography")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    body = resp.text
+    assert 'rel="canonical" href="' in body
+    assert "/c/photography" in body
+    # OG title contains the category
+    assert "Photography" in body
+
+
+async def test_category_landing_unknown_returns_404(client):
+    resp = await client.get("/c/not-a-real-category-slug")
+    assert resp.status_code == 404
+
+
+async def test_community_landing_renders_with_og(client):
+    resp = await client.get("/community/hive-139531")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "/community/hive-139531" in body
+    assert "hive-139531" in body
+
+
+async def test_community_landing_invalid_id_returns_404(client):
+    resp = await client.get("/community/not-a-community")
+    assert resp.status_code == 404
+
+
+async def test_language_landing_renders_with_og(client):
+    resp = await client.get("/lang/de")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "/lang/de" in body
+    assert "de" in body
+
+
+async def test_language_landing_invalid_code_returns_404(client):
+    resp = await client.get("/lang/NOT_VALID_4")
+    assert resp.status_code == 404
+
+
 # ── GZip middleware ──────────────────────────────────────────────────────────
 
 async def test_gzip_large_response(client, seeded_db):
@@ -205,6 +248,21 @@ async def test_sitemap_xml_with_posts(client, seeded_db):
     assert "<loc>https://example.com/privacy</loc>" in body
     assert "<loc>https://example.com/terms</loc>" in body
     assert "<loc>https://example.com/takedown</loc>" in body
+    # Category landing pages (all 38 leaves, fixed taxonomy)
+    assert "<loc>https://example.com/c/crypto</loc>" in body
+    assert "<loc>https://example.com/c/photography</loc>" in body
+
+
+async def test_sitemap_xml_includes_language_and_community_landings(client, seeded_db):
+    """Languages and communities with posts should appear as landing-page URLs."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]):
+        mock_settings.site_url = "https://example.com"
+        cache.clear()
+        resp = await client.get("/sitemap.xml")
+    body = resp.text
+    # seeded posts have languages en/es/fr — they should be in the sitemap
+    assert "<loc>https://example.com/lang/en</loc>" in body
 
 
 async def test_sitemap_xml_includes_active_authors(client):
