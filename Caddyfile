@@ -34,7 +34,7 @@ Preferred-Languages: en
 	redir /docs / permanent
 	@bot {
 		header_regexp User-Agent (?i)(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|applebot|gptbot|claudebot|claudesearchbot|chatgpt-user|perplexitybot|bytespider)
-		not path /static/*
+		not path /static/* /sitemap.xml /robots.txt /llms.txt /.well-known/*
 	}
 	handle @bot {
 		log_skip
