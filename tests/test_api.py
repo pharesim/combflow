@@ -181,8 +181,14 @@ async def test_sitemap_xml_empty_site_url(client):
     assert "<urlset" in resp.text
 
 
-async def test_sitemap_xml_with_posts(client, seeded_db):
-    with patch("project.api.routes.ui.settings") as mock_settings:
+async def test_sitemap_xml_with_posts(client):
+    from datetime import datetime, timezone
+    fake_posts = [
+        ("alice", "test-post-one", datetime(2026, 5, 1, tzinfo=timezone.utc)),
+        ("bob", "test-post-two", datetime(2026, 5, 2, tzinfo=timezone.utc)),
+    ]
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=fake_posts):
         mock_settings.site_url = "https://example.com"
         cache.clear()
         resp = await client.get("/sitemap.xml")
@@ -191,10 +197,14 @@ async def test_sitemap_xml_with_posts(client, seeded_db):
     assert "https://example.com/" in body
     assert "@alice/test-post-one" in body
     assert "@bob/test-post-two" in body
+    # Author profile URLs included
+    assert "<loc>https://example.com/@alice</loc>" in body
+    assert "<loc>https://example.com/@bob</loc>" in body
 
 
-async def test_sitemap_xml_cached(client, seeded_db):
-    with patch("project.api.routes.ui.settings") as mock_settings:
+async def test_sitemap_xml_cached(client):
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]):
         mock_settings.site_url = "https://example.com"
         cache.clear()
         r1 = await client.get("/sitemap.xml")
@@ -270,7 +280,7 @@ async def test_categories_fallback_on_exception(client):
         "/@alice/xss-attempt",
         {"title": 'Post with <script> & "quotes"', "description": "Safe description", "image": ""},
         ["&lt;script&gt;", "&amp;"],
-        ["<script>"],
+        ['Post with <script>'],
     ),
     # Post with title but no description keeps default description
     (

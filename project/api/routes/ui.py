@@ -9,13 +9,12 @@ from xml.sax.saxutils import escape as xml_escape
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import cache
 from ...config import settings
 from ...db import crud
-from ...hafsql import get_post_metadata
+from ...hafsql import get_hivecomb_posts, get_post_metadata
 from ..deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -176,7 +175,7 @@ async def robots_txt():
 
 
 @router.get("/sitemap.xml", include_in_schema=False)
-async def sitemap_xml(db: AsyncSession = Depends(get_db)):
+async def sitemap_xml():
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
     if not site_url:
         return PlainTextResponse(
@@ -195,19 +194,26 @@ async def sitemap_xml(db: AsyncSession = Depends(get_db)):
         f"<lastmod>{now}</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url>"
     ]
 
-    # Recent posts (last 1000)
-    result = await db.execute(text(
-        "SELECT p.author, p.permlink, p.created FROM posts p "
-        "WHERE p.category_ids != '{}' "
-        "ORDER BY p.created DESC LIMIT 1000"
-    ))
-    for row in result:
-        author, permlink, created = row
+    # Only list posts where HiveComb is the rightful canonical (posted via HiveComb).
+    # For posts originally published on PeakD/Ecency/etc., Google would mark our
+    # copies as "Duplicate, Google chose different canonical" — wasted crawl budget
+    # and a low-quality signal on our sitemap.
+    posts = await asyncio.to_thread(get_hivecomb_posts, 1000)
+    authors_seen: set[str] = set()
+    for author, permlink, created in posts:
         lastmod = created.strftime("%Y-%m-%d") if created else now
         loc = f"{site_url}/@{xml_escape(author)}/{xml_escape(permlink)}"
         urls.append(
             f"  <url><loc>{loc}</loc>"
             f"<lastmod>{lastmod}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>"
+        )
+        authors_seen.add(author)
+
+    for author in sorted(authors_seen):
+        loc = f"{site_url}/@{xml_escape(author)}"
+        urls.append(
+            f"  <url><loc>{loc}</loc>"
+            f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>"
         )
 
     xml = (

@@ -220,6 +220,38 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
     return None
 
 
+def get_hivecomb_posts(limit: int = 1000) -> list[tuple]:
+    """Return (author, permlink, created) for top-level posts published via HiveComb.
+
+    Identifies posts by json_metadata.app starting with 'hivecomb' or
+    canonical_url pointing to hivecomb.net. Other UIs win the Google canonical
+    battle for posts originally published elsewhere, so the sitemap only lists
+    posts where we're the rightful canonical.
+    """
+    try:
+        with _cursor() as cur:
+            cur.execute("SET LOCAL statement_timeout = '15s'")
+            cur.execute(
+                """
+                SELECT author, permlink, created
+                FROM hafsql.comments
+                WHERE depth = 0
+                  AND created >= NOW() - INTERVAL '180 days'
+                  AND (
+                    (json_metadata ->> 'app') ILIKE 'hivecomb%%'
+                    OR (json_metadata ->> 'canonical_url') ILIKE 'https://hivecomb.net/%%'
+                  )
+                ORDER BY created DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [(row["author"], row["permlink"], row["created"]) for row in cur.fetchall()]
+    except Exception as exc:
+        logger.warning("hivecomb posts lookup failed: %s", exc)
+    return []
+
+
 def get_community(community_id: str) -> dict | None:
     """Fetch community title and about via Hive API bridge.get_community.
 
