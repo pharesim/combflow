@@ -400,29 +400,33 @@ async def sitemap_xml(db: AsyncSession = Depends(get_db)):
     return Response(content=xml, media_type="application/xml")
 
 
-async def warm_sitemap_cache(session_factory) -> None:
-    """Pre-build and cache the sitemap. Call from lifespan so the slow
-    first build happens during startup, not when Googlebot is waiting."""
+async def warm_sitemap_cache(session_factory) -> bool:
+    """Pre-build and cache the sitemap. Returns True on success, False on
+    failure (so periodic_sitemap_warm can retry sooner). Doesn't overwrite
+    the existing cache when the build fails — stale-but-valid beats empty."""
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
     if not site_url:
-        return
+        return True
     try:
         async with session_factory() as session:
             xml = await _build_sitemap_xml(session, site_url)
         cache.put("sitemap_xml", xml, ttl=_SITEMAP_TTL)
         logger.info("sitemap cache warmed (%d bytes)", len(xml))
+        return True
     except Exception as exc:
         logger.warning("sitemap warm failed: %s", exc)
+        return False
 
 
 async def periodic_sitemap_warm(session_factory, interval: int = _SITEMAP_TTL // 2) -> None:
     """Warm immediately, then re-warm every `interval` seconds (default 12h).
-    Cache TTL is 24h so the entry is always at least 12h fresh when re-warmed —
-    no real request ever hits a cold cache. Runs until the task is cancelled."""
+    On failure, retry after 5 min instead of waiting the full interval — a
+    transient HAFSQL hiccup at startup shouldn't lose a day of fresh sitemaps."""
     while True:
-        await warm_sitemap_cache(session_factory)
+        ok = await warm_sitemap_cache(session_factory)
+        delay = interval if ok else 300
         try:
-            await asyncio.sleep(interval)
+            await asyncio.sleep(delay)
         except asyncio.CancelledError:
             return
 

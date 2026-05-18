@@ -272,29 +272,30 @@ def get_hivecomb_posts(limit: int = 1000) -> list[tuple]:
     battle for posts originally published elsewhere, so the sitemap only lists
     posts where we're the rightful canonical.
     """
-    try:
-        with _cursor() as cur:
-            cur.execute("SET LOCAL statement_timeout = '15s'")
-            cur.execute(
-                """
-                SELECT author, permlink, created
-                FROM hafsql.comments
-                WHERE parent_author = ''
-                  AND deleted = false
-                  AND created >= NOW() - INTERVAL '180 days'
-                  AND (
-                    (json_metadata ->> 'app') ILIKE 'hivecomb%%'
-                    OR (json_metadata ->> 'canonical_url') ILIKE 'https://hivecomb.net/%%'
-                  )
-                ORDER BY created DESC
-                LIMIT %s
-                """,
-                (limit,),
-            )
-            return [(row["author"], row["permlink"], row["created"]) for row in cur.fetchall()]
-    except Exception as exc:
-        logger.warning("hivecomb posts lookup failed: %s", exc)
-    return []
+    # Don't swallow failures — empty list here would get cached by the warm
+    # task and serve a bad sitemap for 24h. Let exceptions propagate so the
+    # warm task skips the cache write and retries on the next interval.
+    # (SET, not SET LOCAL: autocommit mode means no transaction for SET LOCAL
+    # to bind to. Session-scoped SET is what we actually want here.)
+    with _cursor() as cur:
+        cur.execute("SET statement_timeout = '30s'")
+        cur.execute(
+            """
+            SELECT author, permlink, created
+            FROM hafsql.comments
+            WHERE parent_author = ''
+              AND deleted = false
+              AND created >= NOW() - INTERVAL '180 days'
+              AND (
+                (json_metadata ->> 'app') ILIKE 'hivecomb%%'
+                OR (json_metadata ->> 'canonical_url') ILIKE 'https://hivecomb.net/%%'
+              )
+            ORDER BY created DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return [(row["author"], row["permlink"], row["created"]) for row in cur.fetchall()]
 
 
 def get_community(community_id: str) -> dict | None:
