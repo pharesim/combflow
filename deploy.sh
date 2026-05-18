@@ -122,17 +122,21 @@ rolling_swap_app() {
 }
 
 deploy() {
-    # Full daily-deploy flow:
-    #   1. (optional) git pull
-    #   2. Build app + worker + prerender images
-    #   3. Restart worker (no user impact)
-    #   4. Recreate prerender (brief gap; Googlebot retries via Caddy)
-    #   5. Rolling swap combflow-app (zero downtime, user-facing)
+    # Full deploy — everything, in dependency order, with rolling swaps where
+    # downtime would be user-visible. Designed to be the single command for
+    # all updates (code, third-party images, Caddyfile, infra).
     #
-    # Skips caddy/goaccess image updates — those rarely change. For those:
-    #   $COMPOSE pull caddy goaccess && $COMPOSE up -d --no-deps caddy goaccess
-    # For Caddyfile-only changes (no image change):
-    #   $COMPOSE exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+    # Order:
+    #   1. (optional --pull) git pull
+    #   2. Pull third-party images (caddy, goaccess) — no-op if up to date
+    #   3. Build local images (combflow-app, hive_worker, prerender)
+    #   4. Recreate caddy/goaccess if the image changed (compose up is a no-op
+    #      if the image hash matches), then hot-reload Caddyfile (no downtime)
+    #   5. Recreate hive_worker (brief gap, no user impact)
+    #   6. Recreate prerender (brief gap for crawler requests — Caddy retries
+    #      via lb_try_duration so most are absorbed; the cache survives the
+    #      restart since it's on a docker volume)
+    #   7. Rolling swap of combflow-app — zero user-facing downtime
 
     if [ "$1" = "--pull" ] || [ "$1" = "-p" ]; then
         echo "Pulling latest code..."
@@ -140,8 +144,21 @@ deploy() {
         echo
     fi
 
-    echo "Building images..."
+    echo "Pulling third-party images..."
+    $COMPOSE pull caddy goaccess
+    echo
+
+    echo "Building local images..."
     $COMPOSE build combflow-app hive_worker prerender
+    echo
+
+    echo "Updating caddy + goaccess (no-op if image unchanged)..."
+    $COMPOSE up -d --no-deps caddy goaccess
+    # Hot-reload Caddyfile so config-only changes don't need a container restart.
+    if [ -n "$($COMPOSE ps -q caddy)" ]; then
+        $COMPOSE exec -T caddy caddy reload \
+            --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null || true
+    fi
     echo
 
     echo "Recreating hive_worker (brief gap, no user impact)..."
