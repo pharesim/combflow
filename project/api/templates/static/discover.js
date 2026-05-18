@@ -37,8 +37,11 @@ async function init() {
     _deepModalPromise = fetch(`/posts/${encodeURIComponent(_dlAuthor)}/${encodeURIComponent(_dlPermlink)}`)
       .then(r => r.ok ? r.json() : null)
       .then(postData => {
-        if (postData) openModal(postData, true);
-        else window.prerenderReady = true;
+        // Open the modal regardless of /posts/ response. Comments (replies)
+        // aren't in our DB so the fetch 404s, but the inlined hivecomb-post-data
+        // script tag already seeded metaCache with the body — openModal's
+        // cache path will render it.
+        openModal(postData || { author: _dlAuthor, permlink: _dlPermlink }, true);
         return postData;
       })
       .catch(() => {
