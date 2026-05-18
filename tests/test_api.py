@@ -518,6 +518,19 @@ async def test_canonical_omitted_for_post_with_no_app(client):
     assert "<link rel=\"canonical\"" not in body
 
 
+async def test_static_refs_have_version_query_string(client):
+    """Self-hosted JS/CSS/asset refs should be cache-busted with ?v=HASH
+    so immutable browser/CDN caching doesn't strand users on stale code."""
+    resp = await client.get("/")
+    body = resp.text
+    # discover.js must be referenced with a version
+    import re
+    matches = re.findall(r'(?:src|href)="(/static/[^"]+)"', body)
+    assert matches, "no /static/ refs found"
+    for url in matches:
+        assert "?v=" in url, f"unversioned static ref: {url}"
+
+
 async def test_homepage_still_self_canonicals(client):
     """Non-post pages (homepage, author profile, category landings) are
     legitimately unique surfaces — always self-canonical."""

@@ -28,8 +28,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _TEMPLATE_DIR = pathlib.Path(__file__).resolve().parent.parent / "templates"
+_STATIC_DIR = _TEMPLATE_DIR / "static"
+
+
+def _compute_asset_version() -> str:
+    """Combined sha256 of every static file (sorted), used as a cache buster
+    so /static/X.js becomes /static/X.js?v=HASH. Hash changes on any static
+    file change → URL changes → browser/CDN cache invalidates instantly."""
+    import hashlib
+    h = hashlib.sha256()
+    if _STATIC_DIR.exists():
+        for path in sorted(_STATIC_DIR.rglob("*")):
+            if path.is_file():
+                h.update(str(path.relative_to(_STATIC_DIR)).encode())
+                h.update(b"\0")
+                h.update(path.read_bytes())
+                h.update(b"\0")
+    return h.hexdigest()[:12]
+
+
+_ASSET_VERSION = _compute_asset_version()
+# Rewrite every self-hosted static reference to include ?v=HASH at template
+# load time. One-time work; per-request rendering pays nothing.
+_STATIC_REF_RE = __import__("re").compile(r'(src|href)="(/static/[^"?]+)"')
 _TEMPLATES = {
-    name: (_TEMPLATE_DIR / name).read_text()
+    name: _STATIC_REF_RE.sub(
+        rf'\1="\2?v={_ASSET_VERSION}"',
+        (_TEMPLATE_DIR / name).read_text(),
+    )
     for name in ["discover.html", "privacy.html", "terms.html", "takedown.html"]
 }
 

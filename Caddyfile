@@ -48,18 +48,11 @@ Preferred-Languages: en
 		log_skip
 		reverse_proxy combflow-app:8000
 	}
-	@static_revalidate path /static/*.js /static/*.css
-	handle @static_revalidate {
-		# JS/CSS change with deploys — short cache + must-revalidate so
-		# Cloudflare + browsers re-check every 5 min. 304 responses keep the
-		# revalidation cheap (FastAPI's StaticFiles sets ETag/Last-Modified).
-		header Cache-Control "public, max-age=300, must-revalidate"
-		encode zstd gzip
-		reverse_proxy combflow-app:8000
-	}
 	handle /static/* {
-		# Images, fonts, favicons — truly immutable per URL, cache hard.
-		header Cache-Control "public, max-age=86400, immutable"
+		# Asset URLs are content-hash versioned (?v=HASH) by the app, so
+		# immutable + long max-age is correct — a content change means a new
+		# URL, which busts both the browser and Cloudflare cache instantly.
+		header Cache-Control "public, max-age=31536000, immutable"
 		encode zstd gzip
 		reverse_proxy combflow-app:8000
 	}
