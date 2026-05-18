@@ -108,9 +108,10 @@ async def _fetch_post_og(author: str, permlink: str) -> dict:
 
     Canonical resolution order:
       1. Explicit json_metadata.canonical_url → honor it
-      2. Known publishing app (peakd/ecency/hiveblog) → derive canonical
-      3. Otherwise → omit canonical (set canonical_self=False so _render
-         won't fall back to self-canonical)
+      2. Cross-post (original_author + original_permlink) → canonical to
+         the original (rendered on peakd, which serves any Hive post)
+      3. Known publishing app (peakd/ecency/hiveblog) → derive canonical
+      4. Otherwise → omit canonical (canonical_self=False)
     """
     try:
         meta = await asyncio.to_thread(get_post_metadata, author, permlink)
@@ -125,6 +126,10 @@ async def _fetch_post_og(author: str, permlink: str) -> dict:
             og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
         if meta.get("canonical_url"):
             og["canonical"] = meta["canonical_url"]
+        elif meta.get("original_author") and meta.get("original_permlink"):
+            og["canonical"] = _APP_CANONICAL_TEMPLATES["peakd"].format(
+                author=meta["original_author"], permlink=meta["original_permlink"]
+            )
         elif meta.get("app") in _APP_CANONICAL_TEMPLATES:
             og["canonical"] = _APP_CANONICAL_TEMPLATES[meta["app"]].format(
                 author=author, permlink=permlink

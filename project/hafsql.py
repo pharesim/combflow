@@ -231,12 +231,25 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
             if isinstance(a, str):
                 app = a.split("/", 1)[0].strip().lower()
 
+        # Cross-post markers — peakd/ecency set these when a post republishes
+        # someone else's content. The original is the rightful canonical.
+        original_author = ""
+        original_permlink = ""
+        if isinstance(meta, dict):
+            oa = meta.get("original_author")
+            op = meta.get("original_permlink")
+            if isinstance(oa, str) and isinstance(op, str) and oa and op:
+                original_author = oa
+                original_permlink = op
+
         return {
             "title": title,
             "description": description,
             "image": image,
             "canonical_url": canonical_url,
             "app": app,
+            "original_author": original_author,
+            "original_permlink": original_permlink,
         }
     except Exception as exc:
         logger.debug("post metadata lookup failed for %s/%s: %s", author, permlink, exc)

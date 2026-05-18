@@ -418,6 +418,29 @@ async def test_canonical_inferred_from_app_when_no_explicit_canonical(client):
     assert '<meta property="og:url" content="https://example.com/@alice/some-post">' in body
 
 
+async def test_canonical_for_crosspost_points_to_original(client):
+    """When peakd/ecency mark a post as a cross-post via original_author +
+    original_permlink, our canonical points to the original post, not the
+    cross-poster."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        mock_get.return_value = {
+            "title": "Cross-post by bob of alice's post",
+            "description": "Body",
+            "image": "",
+            "app": "peakd",
+            "original_author": "alice",
+            "original_permlink": "original-post-slug",
+        }
+        resp = await client.get("/@bob/cross-post-slug")
+    body = resp.text
+    # Canonical points to the original post (alice's), rendered on peakd
+    assert '<link rel="canonical" href="https://peakd.com/@alice/original-post-slug">' in body
+    # NOT to the cross-poster's URL
+    assert "/@bob/" not in body.split('rel="canonical"')[1].split(">")[0]
+
+
 async def test_canonical_omitted_for_unknown_app(client):
     """Apps we don't have URL templates for (dBuzz, 3speak, etc.) get no
     canonical at all — we don't claim what we can't identify."""
