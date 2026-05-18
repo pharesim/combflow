@@ -49,24 +49,31 @@ def _render_legal(name: str) -> HTMLResponse:
 
 
 def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse:
-    """Return an HTML template with placeholders replaced.
+    """Render the discover template with placeholders substituted.
 
-    Replaces {{SITE_URL}}, {{CANONICAL_URL}}, and {{OG_*}} placeholders.
-    OG placeholders fall back to defaults when no overrides are provided.
-    If og["canonical"] is set and points away from our site, it is used as
-    the canonical/og:url — honoring the publisher's json_metadata.canonical_url.
+    Distinguishes canonical (SEO claim, may be off-site or omitted) from
+    og:url (share endpoint, always our URL).
+
+    `og["canonical_self"]` (bool, default True): whether to self-canonical
+    when no off-site canonical is given. Post pages may pass False to omit
+    the canonical tag entirely when we can't identify the rightful publisher.
     """
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
     default_image = f"{site_url}/static/og-image.png"
 
-    # Canonical: honor publisher-declared canonical when it points off-site;
-    # otherwise self-canonical to our own URL.
-    own_url = site_url + request.url.path
+    # og:url always points to us — that's the URL share clicks should land on.
+    own_url = html_escape(site_url + request.url.path)
+
+    # Canonical: prefer off-site (when set and pointing elsewhere), else
+    # self-canonical, else omit entirely.
     external_canonical = (og or {}).get("canonical") if og else None
+    canonical_self = (og or {}).get("canonical_self", True) if og else True
     if external_canonical and site_url and not external_canonical.startswith(site_url):
-        canonical_url = html_escape(external_canonical)
+        canonical_tag = f'<link rel="canonical" href="{html_escape(external_canonical)}">'
+    elif canonical_self:
+        canonical_tag = f'<link rel="canonical" href="{own_url}">'
     else:
-        canonical_url = html_escape(own_url)
+        canonical_tag = ""
 
     og_type = html_escape(og["type"]) if og and "type" in og else "website"
     og_title = html_escape(og["title"]) if og and "title" in og else _OG_DEFAULT_TITLE
@@ -76,7 +83,8 @@ def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse
     html = (
         _TEMPLATES[name]
         .replace("{{SITE_URL}}", site_url)
-        .replace("{{CANONICAL_URL}}", canonical_url)
+        .replace("{{CANONICAL_LINK_TAG}}", canonical_tag)
+        .replace("{{OG_URL}}", own_url)
         .replace("{{OG_TYPE}}", og_type)
         .replace("{{OG_TITLE}}", og_title)
         .replace("{{OG_DESCRIPTION}}", og_desc)
@@ -85,8 +93,25 @@ def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse
     return HTMLResponse(html)
 
 
+# Apps whose URL pattern we know with confidence. Used to derive a canonical
+# URL when the post doesn't set json_metadata.canonical_url explicitly (which
+# 99%+ of peakd/ecency/hiveblog posts don't, despite being the rightful canonical).
+_APP_CANONICAL_TEMPLATES = {
+    "peakd": "https://peakd.com/@{author}/{permlink}",
+    "ecency": "https://ecency.com/@{author}/{permlink}",
+    "hiveblog": "https://hive.blog/@{author}/{permlink}",
+}
+
+
 async def _fetch_post_og(author: str, permlink: str) -> dict:
-    """Fetch OG overrides for a post from Hive API. Returns {} on failure."""
+    """Fetch OG overrides for a post from Hive API. Returns {} on failure.
+
+    Canonical resolution order:
+      1. Explicit json_metadata.canonical_url → honor it
+      2. Known publishing app (peakd/ecency/hiveblog) → derive canonical
+      3. Otherwise → omit canonical (set canonical_self=False so _render
+         won't fall back to self-canonical)
+    """
     try:
         meta = await asyncio.to_thread(get_post_metadata, author, permlink)
         if not meta:
@@ -100,6 +125,13 @@ async def _fetch_post_og(author: str, permlink: str) -> dict:
             og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
         if meta.get("canonical_url"):
             og["canonical"] = meta["canonical_url"]
+        elif meta.get("app") in _APP_CANONICAL_TEMPLATES:
+            og["canonical"] = _APP_CANONICAL_TEMPLATES[meta["app"]].format(
+                author=author, permlink=permlink
+            )
+        else:
+            # No signal — don't claim canonical for content we don't own.
+            og["canonical_self"] = False
         return og
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.debug("OG fetch failed for %s/%s: %s", author, permlink, exc)

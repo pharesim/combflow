@@ -223,11 +223,20 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
             if isinstance(cu, str) and cu.startswith(("https://", "http://")):
                 canonical_url = cu
 
+        # Publishing app (json_metadata.app) — first slash-segment only.
+        # Used to derive a canonical URL when canonical_url is absent.
+        app = ""
+        if isinstance(meta, dict):
+            a = meta.get("app")
+            if isinstance(a, str):
+                app = a.split("/", 1)[0].strip().lower()
+
         return {
             "title": title,
             "description": description,
             "image": image,
             "canonical_url": canonical_url,
+            "app": app,
         }
     except Exception as exc:
         logger.debug("post metadata lookup failed for %s/%s: %s", author, permlink, exc)

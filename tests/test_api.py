@@ -380,8 +380,8 @@ async def test_og_post_with_metadata(client, url, metadata, expect_in, expect_no
 
 
 async def test_canonical_honors_publisher_declared_url(client):
-    """If json_metadata.canonical_url points to another UI, our canonical and
-    og:url defer to it — we don't compete with the rightful publisher."""
+    """If json_metadata.canonical_url points to another UI, our canonical
+    defers to it. og:url stays pointing to us (share clicks land here)."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_post_metadata") as mock_get:
         mock_settings.site_url = "https://example.com"
@@ -390,44 +390,76 @@ async def test_canonical_honors_publisher_declared_url(client):
             "description": "Body excerpt",
             "image": "",
             "canonical_url": "https://peakd.com/@alice/some-post",
+            "app": "ecency",  # irrelevant — explicit canonical wins
         }
         resp = await client.get("/@alice/some-post")
     body = resp.text
     assert '<link rel="canonical" href="https://peakd.com/@alice/some-post">' in body
-    assert 'content="https://peakd.com/@alice/some-post"' in body  # og:url
+    # og:url stays as our URL so social shares from us link back to us
+    assert '<meta property="og:url" content="https://example.com/@alice/some-post">' in body
 
 
-async def test_canonical_ignores_self_pointing_canonical_url(client):
-    """If canonical_url already points to us, just self-canonical normally
-    (don't drop it just because the field is present)."""
+async def test_canonical_inferred_from_app_when_no_explicit_canonical(client):
+    """peakd/ecency/hiveblog posts (which don't set canonical_url) should
+    canonical to their rightful publisher based on the app field."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_post_metadata") as mock_get:
         mock_settings.site_url = "https://example.com"
         mock_get.return_value = {
-            "title": "HiveComb-published post",
+            "title": "Peakd-published post",
             "description": "Body",
             "image": "",
-            "canonical_url": "https://example.com/@alice/some-post",
+            "app": "peakd",
         }
         resp = await client.get("/@alice/some-post")
     body = resp.text
-    assert '<link rel="canonical" href="https://example.com/@alice/some-post">' in body
+    assert '<link rel="canonical" href="https://peakd.com/@alice/some-post">' in body
+    # og:url unchanged — points to us
+    assert '<meta property="og:url" content="https://example.com/@alice/some-post">' in body
 
 
-async def test_canonical_defaults_to_self_when_metadata_missing_canonical(client):
-    """Posts without a canonical_url in metadata still self-canonical."""
+async def test_canonical_omitted_for_unknown_app(client):
+    """Apps we don't have URL templates for (dBuzz, 3speak, etc.) get no
+    canonical at all — we don't claim what we can't identify."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_post_metadata") as mock_get:
         mock_settings.site_url = "https://example.com"
         mock_get.return_value = {
-            "title": "Some post",
+            "title": "A 3speak video post",
             "description": "Body",
             "image": "",
-            # No canonical_url key at all
+            "app": "3speak",
         }
         resp = await client.get("/@alice/some-post")
     body = resp.text
-    assert '<link rel="canonical" href="https://example.com/@alice/some-post">' in body
+    assert "<link rel=\"canonical\"" not in body
+    # og:url still present
+    assert '<meta property="og:url" content="https://example.com/@alice/some-post">' in body
+
+
+async def test_canonical_omitted_for_post_with_no_app(client):
+    """Posts with no app field — no signal at all → omit canonical."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        mock_get.return_value = {
+            "title": "Unknown-source post",
+            "description": "Body",
+            "image": "",
+        }
+        resp = await client.get("/@alice/some-post")
+    body = resp.text
+    assert "<link rel=\"canonical\"" not in body
+
+
+async def test_homepage_still_self_canonicals(client):
+    """Non-post pages (homepage, author profile, category landings) are
+    legitimately unique surfaces — always self-canonical."""
+    with patch("project.api.routes.ui.settings") as mock_settings:
+        mock_settings.site_url = "https://example.com"
+        resp = await client.get("/")
+    body = resp.text
+    assert '<link rel="canonical" href="https://example.com/">' in body
 
 
 async def test_og_post_fallback_returns_none(client):
