@@ -12,6 +12,28 @@ async function init() {
   if (_deepPostMatch) {
     const [, _dlAuthor, _dlPermlink] = _deepPostMatch;
     state.deepLinked = true;
+    // Seed metaCache from server-inlined post data so openModal skips its
+    // own bridge.get_post RPC. Background refresh in modal.js still patches
+    // stale numbers (votes, payout) once the fresh fetch returns.
+    try {
+      const _inlineEl = document.getElementById('hivecomb-post-data');
+      if (_inlineEl) {
+        const _ip = JSON.parse(_inlineEl.textContent);
+        if (_ip && _ip.body) {
+          const _imgs = (_ip.json_metadata && _ip.json_metadata.image) || [];
+          const _payout = _ip.pending_payout_value ? parseFloat(_ip.pending_payout_value) : null;
+          state.metaCache[`${_dlAuthor}/${_dlPermlink}`] = {
+            title: _ip.title || '',
+            thumbnail: Array.isArray(_imgs) && _imgs.length ? _imgs[0] : '',
+            votes: (_ip.stats && _ip.stats.total_votes) || (_ip.active_votes || []).length,
+            children: _ip.children || 0,
+            payout: isNaN(_payout) ? null : _payout,
+            body: _ip.body,
+            json_metadata: _ip.json_metadata || null,
+          };
+        }
+      }
+    } catch(e) { /* fall through to RPC path */ }
     _deepModalPromise = fetch(`/posts/${encodeURIComponent(_dlAuthor)}/${encodeURIComponent(_dlPermlink)}`)
       .then(r => r.ok ? r.json() : null)
       .then(postData => {

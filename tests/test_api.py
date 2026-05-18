@@ -336,11 +336,25 @@ async def test_categories_fallback_on_exception(client):
 # ── OG meta tags (proposal 043) ──────────────────────────────────────────
 
 
+def _bridge(title="", description="", image="", body="", **meta_extras):
+    """Build a minimal bridge.get_post-like response with given metadata fields.
+
+    Mirrors what api.hive.blog returns: title/body at top level, everything else
+    under json_metadata. Passed to get_post_full mocks in tests.
+    """
+    metadata = {k: v for k, v in meta_extras.items() if v}
+    if description:
+        metadata["description"] = description
+    if image:
+        metadata["image"] = [image]
+    return {"title": title, "body": body, "json_metadata": metadata}
+
+
 @pytest.mark.parametrize("url,metadata,expect_in,expect_not_in", [
     # Post deep link injects OG tags from Hive API
     (
         "/@alice/my-great-post",
-        {"title": "My Great Post About Hive", "description": "A short description of my post", "image": "https://example.com/photo.jpg"},
+        _bridge(title="My Great Post About Hive", description="A short description of my post", image="https://example.com/photo.jpg"),
         ['content="My Great Post About Hive"', 'content="A short description of my post"',
          'content="https://images.hive.blog/0x0/https://example.com/photo.jpg"', 'content="article"'],
         ["{{OG_", 'content="website"'],
@@ -348,27 +362,30 @@ async def test_categories_fallback_on_exception(client):
     # Post with no image keeps default og:image
     (
         "/@alice/no-img",
-        {"title": "No Image Post", "description": "Desc", "image": ""},
+        _bridge(title="No Image Post", description="Desc"),
         ["og-image.png"],
         [],
     ),
-    # HTML special chars are escaped
+    # HTML special chars are escaped in og/meta attributes
     (
         "/@alice/xss-attempt",
-        {"title": 'Post with <script> & "quotes"', "description": "Safe description", "image": ""},
+        _bridge(title='Post with <script> & "quotes"', description="Safe description"),
         ["&lt;script&gt;", "&amp;"],
-        ['Post with <script>'],
+        # Don't appear unescaped INSIDE quoted HTML attributes — JSON in the
+        # post-data script tag is allowed to contain the raw bytes since it's
+        # not executable there.
+        ['content="Post with <script>'],
     ),
     # Post with title but no description keeps default description
     (
         "/@alice/title-only",
-        {"title": "Title Only", "description": "", "image": ""},
+        _bridge(title="Title Only"),
         ['content="Title Only"'],
         [],
     ),
 ], ids=["deep-link", "no-image", "html-escape", "partial-metadata"])
 async def test_og_post_with_metadata(client, url, metadata, expect_in, expect_not_in):
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_get.return_value = metadata
         resp = await client.get(url)
     assert resp.status_code == 200
@@ -383,15 +400,14 @@ async def test_canonical_honors_publisher_declared_url(client):
     """If json_metadata.canonical_url points to another UI, our canonical
     defers to it. og:url stays pointing to us (share clicks land here)."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
-         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+         patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
-        mock_get.return_value = {
-            "title": "A post originally on PeakD",
-            "description": "Body excerpt",
-            "image": "",
-            "canonical_url": "https://peakd.com/@alice/some-post",
-            "app": "ecency",  # irrelevant — explicit canonical wins
-        }
+        mock_get.return_value = _bridge(
+            title="A post originally on PeakD",
+            description="Body excerpt",
+            canonical_url="https://peakd.com/@alice/some-post",
+            app="ecency",  # irrelevant — explicit canonical wins
+        )
         resp = await client.get("/@alice/some-post")
     body = resp.text
     assert '<link rel="canonical" href="https://peakd.com/@alice/some-post">' in body
@@ -403,14 +419,13 @@ async def test_canonical_inferred_from_app_when_no_explicit_canonical(client):
     """peakd/ecency/hiveblog posts (which don't set canonical_url) should
     canonical to their rightful publisher based on the app field."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
-         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+         patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
-        mock_get.return_value = {
-            "title": "Peakd-published post",
-            "description": "Body",
-            "image": "",
-            "app": "peakd",
-        }
+        mock_get.return_value = _bridge(
+            title="Peakd-published post",
+            description="Body",
+            app="peakd",
+        )
         resp = await client.get("/@alice/some-post")
     body = resp.text
     assert '<link rel="canonical" href="https://peakd.com/@alice/some-post">' in body
@@ -423,16 +438,15 @@ async def test_canonical_for_crosspost_points_to_original(client):
     original_permlink, our canonical points to the original post, not the
     cross-poster."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
-         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+         patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
-        mock_get.return_value = {
-            "title": "Cross-post by bob of alice's post",
-            "description": "Body",
-            "image": "",
-            "app": "peakd",
-            "original_author": "alice",
-            "original_permlink": "original-post-slug",
-        }
+        mock_get.return_value = _bridge(
+            title="Cross-post by bob of alice's post",
+            description="Body",
+            app="peakd",
+            original_author="alice",
+            original_permlink="original-post-slug",
+        )
         resp = await client.get("/@bob/cross-post-slug")
     body = resp.text
     # Canonical points to the original post (alice's), rendered on peakd
@@ -445,14 +459,11 @@ async def test_canonical_omitted_for_unknown_app(client):
     """Apps we don't have URL templates for (dBuzz, 3speak, etc.) get no
     canonical at all — we don't claim what we can't identify."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
-         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+         patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
-        mock_get.return_value = {
-            "title": "A 3speak video post",
-            "description": "Body",
-            "image": "",
-            "app": "3speak",
-        }
+        mock_get.return_value = _bridge(
+            title="A 3speak video post", description="Body", app="3speak"
+        )
         resp = await client.get("/@alice/some-post")
     body = resp.text
     assert "<link rel=\"canonical\"" not in body
@@ -463,13 +474,9 @@ async def test_canonical_omitted_for_unknown_app(client):
 async def test_canonical_omitted_for_post_with_no_app(client):
     """Posts with no app field — no signal at all → omit canonical."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
-         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+         patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
-        mock_get.return_value = {
-            "title": "Unknown-source post",
-            "description": "Body",
-            "image": "",
-        }
+        mock_get.return_value = _bridge(title="Unknown-source post", description="Body")
         resp = await client.get("/@alice/some-post")
     body = resp.text
     assert "<link rel=\"canonical\"" not in body
@@ -485,9 +492,23 @@ async def test_homepage_still_self_canonicals(client):
     assert '<link rel="canonical" href="https://example.com/">' in body
 
 
+async def test_post_data_inlined_for_post_pages(client):
+    """The full bridge.get_post response is embedded as JSON in the page so
+    the client can render the modal without a second RPC."""
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
+        mock_get.return_value = _bridge(
+            title="Inline test", body="The post body content", app="peakd"
+        )
+        resp = await client.get("/@alice/inline-test")
+    body = resp.text
+    assert '<script id="hivecomb-post-data" type="application/json">' in body
+    assert "The post body content" in body
+    assert '"title":"Inline test"' in body
+
+
 async def test_og_post_fallback_returns_none(client):
     """When Hive API returns None, OG tags use defaults."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_get.return_value = None
         resp = await client.get("/@alice/my-great-post")
     assert resp.status_code == 200
@@ -496,7 +517,7 @@ async def test_og_post_fallback_returns_none(client):
 
 async def test_og_post_fallback_raises_exception(client):
     """When Hive API raises, OG tags use defaults."""
-    with patch("project.api.routes.ui.get_post_metadata") as mock_get:
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_get.side_effect = OSError("network error")
         resp = await client.get("/@alice/my-great-post")
     assert resp.status_code == 200

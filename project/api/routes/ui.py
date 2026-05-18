@@ -16,7 +16,11 @@ from ... import cache
 from ...categories import LEAF_CATEGORIES
 from ...config import settings
 from ...db import crud
-from ...hafsql import get_hivecomb_posts, get_post_metadata
+from ...hafsql import (
+    extract_post_metadata,
+    get_hivecomb_posts,
+    get_post_full,
+)
 from ..deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -48,7 +52,12 @@ def _render_legal(name: str) -> HTMLResponse:
     return HTMLResponse(html)
 
 
-def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse:
+def _render(
+    name: str,
+    request: Request,
+    og: dict | None = None,
+    post_data: dict | None = None,
+) -> HTMLResponse:
     """Render the discover template with placeholders substituted.
 
     Distinguishes canonical (SEO claim, may be off-site or omitted) from
@@ -80,6 +89,20 @@ def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse
     og_desc = html_escape(og["description"]) if og and "description" in og else _OG_DEFAULT_DESC
     og_image = html_escape(og["image"]) if og and "image" in og else default_image
 
+    # Inline post data so the client can render the modal without a second
+    # bridge.get_post RPC. Use JSON in a script tag; safe per HTML spec as
+    # long as we replace the literal "</" sequence (case-insensitive).
+    if post_data:
+        import json as _json
+        post_json = _json.dumps(post_data, separators=(",", ":"), default=str)
+        post_json = post_json.replace("</", "<\\/")
+        post_data_tag = (
+            '<script id="hivecomb-post-data" type="application/json">'
+            f'{post_json}</script>'
+        )
+    else:
+        post_data_tag = ""
+
     html = (
         _TEMPLATES[name]
         .replace("{{SITE_URL}}", site_url)
@@ -89,6 +112,7 @@ def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse
         .replace("{{OG_TITLE}}", og_title)
         .replace("{{OG_DESCRIPTION}}", og_desc)
         .replace("{{OG_IMAGE}}", og_image)
+        .replace("{{POST_DATA_SCRIPT}}", post_data_tag)
     )
     return HTMLResponse(html)
 
@@ -103,8 +127,8 @@ _APP_CANONICAL_TEMPLATES = {
 }
 
 
-async def _fetch_post_og(author: str, permlink: str) -> dict:
-    """Fetch OG overrides for a post from Hive API. Returns {} on failure.
+def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
+    """Turn extracted post metadata into the og dict consumed by _render.
 
     Canonical resolution order:
       1. Explicit json_metadata.canonical_url → honor it
@@ -113,34 +137,44 @@ async def _fetch_post_og(author: str, permlink: str) -> dict:
       3. Known publishing app (peakd/ecency/hiveblog) → derive canonical
       4. Otherwise → omit canonical (canonical_self=False)
     """
+    og: dict = {"type": "article"}
+    if meta["title"]:
+        og["title"] = meta["title"]
+    if meta["description"]:
+        og["description"] = meta["description"]
+    if meta["image"]:
+        og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
+    if meta.get("canonical_url"):
+        og["canonical"] = meta["canonical_url"]
+    elif meta.get("original_author") and meta.get("original_permlink"):
+        og["canonical"] = _APP_CANONICAL_TEMPLATES["peakd"].format(
+            author=meta["original_author"], permlink=meta["original_permlink"]
+        )
+    elif meta.get("app") in _APP_CANONICAL_TEMPLATES:
+        og["canonical"] = _APP_CANONICAL_TEMPLATES[meta["app"]].format(
+            author=author, permlink=permlink
+        )
+    else:
+        og["canonical_self"] = False
+    return og
+
+
+async def _fetch_post(author: str, permlink: str) -> tuple[dict, dict | None]:
+    """Single bridge.get_post call → (og_overrides, raw_post_data).
+
+    Raw post data is inlined into the HTML so the client renders the modal
+    without a duplicate RPC. og overrides drive the per-page tags.
+    Returns ({}, None) on RPC failure.
+    """
     try:
-        meta = await asyncio.to_thread(get_post_metadata, author, permlink)
-        if not meta:
-            return {}
-        og: dict = {"type": "article"}
-        if meta["title"]:
-            og["title"] = meta["title"]
-        if meta["description"]:
-            og["description"] = meta["description"]
-        if meta["image"]:
-            og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
-        if meta.get("canonical_url"):
-            og["canonical"] = meta["canonical_url"]
-        elif meta.get("original_author") and meta.get("original_permlink"):
-            og["canonical"] = _APP_CANONICAL_TEMPLATES["peakd"].format(
-                author=meta["original_author"], permlink=meta["original_permlink"]
-            )
-        elif meta.get("app") in _APP_CANONICAL_TEMPLATES:
-            og["canonical"] = _APP_CANONICAL_TEMPLATES[meta["app"]].format(
-                author=author, permlink=permlink
-            )
-        else:
-            # No signal — don't claim canonical for content we don't own.
-            og["canonical_self"] = False
-        return og
+        raw = await asyncio.to_thread(get_post_full, author, permlink)
+        if not raw:
+            return ({}, None)
+        og = _build_og_from_meta(extract_post_metadata(raw), author, permlink)
+        return (og, raw)
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        logger.debug("OG fetch failed for %s/%s: %s", author, permlink, exc)
-        return {}
+        logger.debug("post fetch failed for %s/%s: %s", author, permlink, exc)
+        return ({}, None)
 
 
 # ── HTML pages ────────────────────────────────────────────────────────────────
@@ -210,8 +244,8 @@ async def discover_author(request: Request, author: str):
 
 @router.get("/@{author}/{permlink}", include_in_schema=False)
 async def discover_post(request: Request, author: str, permlink: str):
-    og = await _fetch_post_og(author, permlink)
-    return _render("discover.html", request, og=og)
+    og, raw = await _fetch_post(author, permlink)
+    return _render("discover.html", request, og=og, post_data=raw)
 
 
 # ── Legal pages ──────────────────────────────────────────────────────────────

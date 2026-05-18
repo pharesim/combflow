@@ -168,12 +168,11 @@ def get_post_body(author: str, permlink: str) -> str | None:
     return None
 
 
-def get_post_metadata(author: str, permlink: str) -> dict | None:
-    """Fetch post title, description, image, and canonical_url via bridge.get_post.
+def get_post_full(author: str, permlink: str) -> dict | None:
+    """Fetch the full bridge.get_post response. Returns None on error/not found.
 
-    Returns {"title", "description", "image", "canonical_url"} or None on error.
-    canonical_url is the publisher-declared canonical (json_metadata.canonical_url
-    convention used by HiveComb, PeakD, Ecency, etc.); empty string if absent.
+    Inlined into post-page HTML so the client can render the modal without a
+    duplicate RPC call. Also feeds get_post_metadata for OG extraction.
     """
     try:
         resp = requests.post(
@@ -186,74 +185,83 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
             },
             timeout=4,
         )
-        data = resp.json().get("result")
-        if data is None:
-            return None
-
-        title = data.get("title") or ""
-
-        # Description: json_metadata.description or first 160 chars of cleaned body.
-        meta = data.get("json_metadata") or {}
-        if isinstance(meta, str):
-            import json
-            try:
-                meta = json.loads(meta)
-            except Exception:
-                meta = {}
-
-        description = ""
-        if isinstance(meta, dict):
-            description = meta.get("description") or ""
-        if not description:
-            from .text import clean_post_body
-            body = data.get("body") or ""
-            description = clean_post_body(body)[:160]
-
-        # First image from json_metadata.
-        image = ""
-        if isinstance(meta, dict):
-            images = meta.get("image") or []
-            if isinstance(images, list) and images:
-                image = str(images[0])
-
-        # Publisher-declared canonical (json_metadata.canonical_url).
-        canonical_url = ""
-        if isinstance(meta, dict):
-            cu = meta.get("canonical_url")
-            if isinstance(cu, str) and cu.startswith(("https://", "http://")):
-                canonical_url = cu
-
-        # Publishing app (json_metadata.app) — first slash-segment only.
-        # Used to derive a canonical URL when canonical_url is absent.
-        app = ""
-        if isinstance(meta, dict):
-            a = meta.get("app")
-            if isinstance(a, str):
-                app = a.split("/", 1)[0].strip().lower()
-
-        # Cross-post markers — peakd/ecency set these when a post republishes
-        # someone else's content. The original is the rightful canonical.
-        original_author = ""
-        original_permlink = ""
-        if isinstance(meta, dict):
-            oa = meta.get("original_author")
-            op = meta.get("original_permlink")
-            if isinstance(oa, str) and isinstance(op, str) and oa and op:
-                original_author = oa
-                original_permlink = op
-
-        return {
-            "title": title,
-            "description": description,
-            "image": image,
-            "canonical_url": canonical_url,
-            "app": app,
-            "original_author": original_author,
-            "original_permlink": original_permlink,
-        }
+        return resp.json().get("result")
     except Exception as exc:
-        logger.debug("post metadata lookup failed for %s/%s: %s", author, permlink, exc)
+        logger.debug("post full fetch failed for %s/%s: %s", author, permlink, exc)
     return None
+
+
+def extract_post_metadata(data: dict) -> dict:
+    """Extract OG / canonical fields from a bridge.get_post response dict."""
+    title = data.get("title") or ""
+
+    # Description: json_metadata.description or first 160 chars of cleaned body.
+    meta = data.get("json_metadata") or {}
+    if isinstance(meta, str):
+        import json
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+
+    description = ""
+    if isinstance(meta, dict):
+        description = meta.get("description") or ""
+    if not description:
+        from .text import clean_post_body
+        body = data.get("body") or ""
+        description = clean_post_body(body)[:160]
+
+    # First image from json_metadata.
+    image = ""
+    if isinstance(meta, dict):
+        images = meta.get("image") or []
+        if isinstance(images, list) and images:
+            image = str(images[0])
+
+    # Publisher-declared canonical (json_metadata.canonical_url).
+    canonical_url = ""
+    if isinstance(meta, dict):
+        cu = meta.get("canonical_url")
+        if isinstance(cu, str) and cu.startswith(("https://", "http://")):
+            canonical_url = cu
+
+    # Publishing app (json_metadata.app) — first slash-segment only.
+    # Used to derive a canonical URL when canonical_url is absent.
+    app = ""
+    if isinstance(meta, dict):
+        a = meta.get("app")
+        if isinstance(a, str):
+            app = a.split("/", 1)[0].strip().lower()
+
+    # Cross-post markers — peakd/ecency set these when a post republishes
+    # someone else's content. The original is the rightful canonical.
+    original_author = ""
+    original_permlink = ""
+    if isinstance(meta, dict):
+        oa = meta.get("original_author")
+        op = meta.get("original_permlink")
+        if isinstance(oa, str) and isinstance(op, str) and oa and op:
+            original_author = oa
+            original_permlink = op
+
+    return {
+        "title": title,
+        "description": description,
+        "image": image,
+        "canonical_url": canonical_url,
+        "app": app,
+        "original_author": original_author,
+        "original_permlink": original_permlink,
+    }
+
+
+def get_post_metadata(author: str, permlink: str) -> dict | None:
+    """Convenience: get_post_full + extract_post_metadata. Returns None on error."""
+    data = get_post_full(author, permlink)
+    if data is None:
+        return None
+    return extract_post_metadata(data)
 
 
 def get_hivecomb_posts(limit: int = 1000) -> list[tuple]:
