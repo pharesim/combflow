@@ -245,6 +245,10 @@ def extract_post_metadata(data: dict) -> dict:
             original_author = oa
             original_permlink = op
 
+    # Replies/comments have a non-empty parent_author at the top level of
+    # the bridge.get_post response (alongside title/body, not in json_metadata).
+    parent_author = data.get("parent_author") or ""
+
     return {
         "title": title,
         "description": description,
@@ -253,6 +257,7 @@ def extract_post_metadata(data: dict) -> dict:
         "app": app,
         "original_author": original_author,
         "original_permlink": original_permlink,
+        "parent_author": parent_author,
     }
 
 

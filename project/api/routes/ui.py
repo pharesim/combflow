@@ -89,6 +89,12 @@ def _render(
     og_desc = html_escape(og["description"]) if og and "description" in og else _OG_DEFAULT_DESC
     og_image = html_escape(og["image"]) if og and "image" in og else default_image
 
+    robots_tag = (
+        '<meta name="robots" content="noindex,follow">'
+        if og and og.get("noindex")
+        else ""
+    )
+
     # Inline post data so the client can render the modal without a second
     # bridge.get_post RPC. Use JSON in a script tag; safe per HTML spec as
     # long as we replace the literal "</" sequence (case-insensitive).
@@ -107,6 +113,7 @@ def _render(
         _TEMPLATES[name]
         .replace("{{SITE_URL}}", site_url)
         .replace("{{CANONICAL_LINK_TAG}}", canonical_tag)
+        .replace("{{ROBOTS_TAG}}", robots_tag)
         .replace("{{OG_URL}}", own_url)
         .replace("{{OG_TYPE}}", og_type)
         .replace("{{OG_TITLE}}", og_title)
@@ -125,12 +132,18 @@ _CROSSPOST_DEFAULT_TEMPLATE = "https://peakd.com/@{author}/{permlink}"
 def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
     """Turn extracted post metadata into the og dict consumed by _render.
 
-    Canonical resolution order:
+    Canonical resolution order (top-level posts only):
       1. Explicit json_metadata.canonical_url → honor it
       2. Cross-post (original_author + original_permlink) → canonical to
          the original (rendered on peakd, which serves any Hive post)
       3. Known publishing app in the shared apps-canonical list → derive
       4. Otherwise → omit canonical (canonical_self=False)
+
+    Replies/comments (parent_author set) get noindex,follow and no
+    canonical. peakd/ecency/hive.blog don't render comment URLs as
+    standalone pages — they show the parent discussion — so any
+    canonical we'd claim points at content Google sees as duplicate
+    of the parent post URL, and the dedupe overrides ours anyway.
     """
     og: dict = {"type": "article"}
     if meta["title"]:
@@ -139,6 +152,12 @@ def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
         og["description"] = meta["description"]
     if meta["image"]:
         og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
+
+    if meta.get("parent_author"):
+        og["noindex"] = True
+        og["canonical_self"] = False
+        return og
+
     app_urls = apps_canonical.APP_CANONICAL_URLS
     if meta.get("canonical_url"):
         og["canonical"] = meta["canonical_url"]

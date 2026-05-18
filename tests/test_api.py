@@ -455,6 +455,41 @@ async def test_canonical_for_crosspost_points_to_original(client):
     assert "/@bob/" not in body.split('rel="canonical"')[1].split(">")[0]
 
 
+async def test_reply_gets_noindex_and_omits_canonical(client):
+    """Comments/replies (parent_author set) get robots noindex and no
+    canonical — standalone comment URLs aren't really pages on the other
+    UIs anyway, so claiming canonical there just confuses Google."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_full") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        # _bridge doesn't take parent_author; build it directly.
+        mock_get.return_value = {
+            "title": "",
+            "body": "Reply body",
+            "parent_author": "alice",
+            "parent_permlink": "original-post",
+            "json_metadata": {"app": "peakd/2026.5.2"},
+        }
+        resp = await client.get("/@bob/re-alice-12345")
+    body = resp.text
+    assert '<meta name="robots" content="noindex,follow">' in body
+    assert '<link rel="canonical"' not in body
+
+
+async def test_top_level_post_does_not_get_noindex(client):
+    """Posts with no parent_author keep current canonical behavior, no robots tag."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_full") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        mock_get.return_value = _bridge(
+            title="Top-level post", description="Body", app="peakd"
+        )
+        resp = await client.get("/@alice/some-post")
+    body = resp.text
+    assert '<meta name="robots"' not in body
+    assert '<link rel="canonical" href="https://peakd.com/@alice/some-post">' in body
+
+
 async def test_canonical_omitted_for_unknown_app(client):
     """Apps not in the shared apps-canonical list get no canonical at all —
     we don't claim what we can't identify."""
