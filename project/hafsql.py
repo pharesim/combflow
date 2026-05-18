@@ -169,9 +169,11 @@ def get_post_body(author: str, permlink: str) -> str | None:
 
 
 def get_post_metadata(author: str, permlink: str) -> dict | None:
-    """Fetch post title, description, and image via Hive API bridge.get_post.
+    """Fetch post title, description, image, and canonical_url via bridge.get_post.
 
-    Returns {"title": ..., "description": ..., "image": ...} or None on error/not found.
+    Returns {"title", "description", "image", "canonical_url"} or None on error.
+    canonical_url is the publisher-declared canonical (json_metadata.canonical_url
+    convention used by HiveComb, PeakD, Ecency, etc.); empty string if absent.
     """
     try:
         resp = requests.post(
@@ -214,7 +216,19 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
             if isinstance(images, list) and images:
                 image = str(images[0])
 
-        return {"title": title, "description": description, "image": image}
+        # Publisher-declared canonical (json_metadata.canonical_url).
+        canonical_url = ""
+        if isinstance(meta, dict):
+            cu = meta.get("canonical_url")
+            if isinstance(cu, str) and cu.startswith(("https://", "http://")):
+                canonical_url = cu
+
+        return {
+            "title": title,
+            "description": description,
+            "image": image,
+            "canonical_url": canonical_url,
+        }
     except Exception as exc:
         logger.debug("post metadata lookup failed for %s/%s: %s", author, permlink, exc)
     return None

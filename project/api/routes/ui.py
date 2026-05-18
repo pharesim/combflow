@@ -51,12 +51,22 @@ def _render_legal(name: str) -> HTMLResponse:
 def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse:
     """Return an HTML template with placeholders replaced.
 
-    Replaces {{SITE_URL}}, {{CANONICAL_PATH}}, and {{OG_*}} placeholders.
+    Replaces {{SITE_URL}}, {{CANONICAL_URL}}, and {{OG_*}} placeholders.
     OG placeholders fall back to defaults when no overrides are provided.
+    If og["canonical"] is set and points away from our site, it is used as
+    the canonical/og:url — honoring the publisher's json_metadata.canonical_url.
     """
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
-    canonical_path = html_escape(request.url.path)
     default_image = f"{site_url}/static/og-image.png"
+
+    # Canonical: honor publisher-declared canonical when it points off-site;
+    # otherwise self-canonical to our own URL.
+    own_url = site_url + request.url.path
+    external_canonical = (og or {}).get("canonical") if og else None
+    if external_canonical and site_url and not external_canonical.startswith(site_url):
+        canonical_url = html_escape(external_canonical)
+    else:
+        canonical_url = html_escape(own_url)
 
     og_type = html_escape(og["type"]) if og and "type" in og else "website"
     og_title = html_escape(og["title"]) if og and "title" in og else _OG_DEFAULT_TITLE
@@ -66,7 +76,7 @@ def _render(name: str, request: Request, og: dict | None = None) -> HTMLResponse
     html = (
         _TEMPLATES[name]
         .replace("{{SITE_URL}}", site_url)
-        .replace("{{CANONICAL_PATH}}", canonical_path)
+        .replace("{{CANONICAL_URL}}", canonical_url)
         .replace("{{OG_TYPE}}", og_type)
         .replace("{{OG_TITLE}}", og_title)
         .replace("{{OG_DESCRIPTION}}", og_desc)
@@ -88,6 +98,8 @@ async def _fetch_post_og(author: str, permlink: str) -> dict:
             og["description"] = meta["description"]
         if meta["image"]:
             og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
+        if meta.get("canonical_url"):
+            og["canonical"] = meta["canonical_url"]
         return og
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.debug("OG fetch failed for %s/%s: %s", author, permlink, exc)

@@ -379,6 +379,57 @@ async def test_og_post_with_metadata(client, url, metadata, expect_in, expect_no
         assert text not in body, f"Did not expect {text!r} in response for {url}"
 
 
+async def test_canonical_honors_publisher_declared_url(client):
+    """If json_metadata.canonical_url points to another UI, our canonical and
+    og:url defer to it — we don't compete with the rightful publisher."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        mock_get.return_value = {
+            "title": "A post originally on PeakD",
+            "description": "Body excerpt",
+            "image": "",
+            "canonical_url": "https://peakd.com/@alice/some-post",
+        }
+        resp = await client.get("/@alice/some-post")
+    body = resp.text
+    assert '<link rel="canonical" href="https://peakd.com/@alice/some-post">' in body
+    assert 'content="https://peakd.com/@alice/some-post"' in body  # og:url
+
+
+async def test_canonical_ignores_self_pointing_canonical_url(client):
+    """If canonical_url already points to us, just self-canonical normally
+    (don't drop it just because the field is present)."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        mock_get.return_value = {
+            "title": "HiveComb-published post",
+            "description": "Body",
+            "image": "",
+            "canonical_url": "https://example.com/@alice/some-post",
+        }
+        resp = await client.get("/@alice/some-post")
+    body = resp.text
+    assert '<link rel="canonical" href="https://example.com/@alice/some-post">' in body
+
+
+async def test_canonical_defaults_to_self_when_metadata_missing_canonical(client):
+    """Posts without a canonical_url in metadata still self-canonical."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_post_metadata") as mock_get:
+        mock_settings.site_url = "https://example.com"
+        mock_get.return_value = {
+            "title": "Some post",
+            "description": "Body",
+            "image": "",
+            # No canonical_url key at all
+        }
+        resp = await client.get("/@alice/some-post")
+    body = resp.text
+    assert '<link rel="canonical" href="https://example.com/@alice/some-post">' in body
+
+
 async def test_og_post_fallback_returns_none(client):
     """When Hive API returns None, OG tags use defaults."""
     with patch("project.api.routes.ui.get_post_metadata") as mock_get:
