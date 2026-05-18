@@ -456,13 +456,14 @@ async def test_canonical_for_crosspost_points_to_original(client):
 
 
 async def test_canonical_omitted_for_unknown_app(client):
-    """Apps we don't have URL templates for (dBuzz, 3speak, etc.) get no
-    canonical at all — we don't claim what we can't identify."""
+    """Apps not in the shared apps-canonical list get no canonical at all —
+    we don't claim what we can't identify."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
         mock_get.return_value = _bridge(
-            title="A 3speak video post", description="Body", app="3speak"
+            title="A post from an unknown app", description="Body",
+            app="some-random-app-name-not-in-the-list",
         )
         resp = await client.get("/@alice/some-post")
     body = resp.text

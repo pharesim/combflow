@@ -16,7 +16,7 @@ import asyncio
 
 from .routes import router
 from .routes.ui import periodic_sitemap_warm
-from .. import cache
+from .. import apps_canonical, cache
 from ..categories import CATEGORY_TREE
 from ..config import settings
 from ..db import crud
@@ -99,8 +99,20 @@ async def lifespan(app: FastAPI):
     # cold under live traffic. Don't await — let startup finish immediately.
     sitemap_warm_task = asyncio.create_task(periodic_sitemap_warm(AsyncSessionLocal))
 
+    # Refresh the shared apps-canonical list daily. Bundled fallback already
+    # populated APP_CANONICAL_URLS at import time, so this just keeps it fresh.
+    async def _refresh_apps_canonical():
+        while True:
+            await apps_canonical.refresh_from_upstream(app.state.http_client)
+            try:
+                await asyncio.sleep(86400)  # daily
+            except asyncio.CancelledError:
+                return
+    apps_canonical_task = asyncio.create_task(_refresh_apps_canonical())
+
     logger.info("startup complete")
     yield
+    apps_canonical_task.cancel()
     sitemap_warm_task.cancel()
     await app.state.http_client.aclose()
     hafsql_shutdown()

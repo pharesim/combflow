@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ... import cache
+from ... import apps_canonical, cache
 from ...categories import LEAF_CATEGORIES
 from ...config import settings
 from ...db import crud
@@ -117,14 +117,9 @@ def _render(
     return HTMLResponse(html)
 
 
-# Apps whose URL pattern we know with confidence. Used to derive a canonical
-# URL when the post doesn't set json_metadata.canonical_url explicitly (which
-# 99%+ of peakd/ecency/hiveblog posts don't, despite being the rightful canonical).
-_APP_CANONICAL_TEMPLATES = {
-    "peakd": "https://peakd.com/@{author}/{permlink}",
-    "ecency": "https://ecency.com/@{author}/{permlink}",
-    "hiveblog": "https://hive.blog/@{author}/{permlink}",
-}
+# Hard-coded fallback for the cross-post canonical destination: peakd renders
+# any Hive post, and pinning to one consistent surface lets Google consolidate.
+_CROSSPOST_DEFAULT_TEMPLATE = "https://peakd.com/@{author}/{permlink}"
 
 
 def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
@@ -134,7 +129,7 @@ def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
       1. Explicit json_metadata.canonical_url → honor it
       2. Cross-post (original_author + original_permlink) → canonical to
          the original (rendered on peakd, which serves any Hive post)
-      3. Known publishing app (peakd/ecency/hiveblog) → derive canonical
+      3. Known publishing app in the shared apps-canonical list → derive
       4. Otherwise → omit canonical (canonical_self=False)
     """
     og: dict = {"type": "article"}
@@ -144,14 +139,16 @@ def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
         og["description"] = meta["description"]
     if meta["image"]:
         og["image"] = f"https://images.hive.blog/0x0/{meta['image']}"
+    app_urls = apps_canonical.APP_CANONICAL_URLS
     if meta.get("canonical_url"):
         og["canonical"] = meta["canonical_url"]
     elif meta.get("original_author") and meta.get("original_permlink"):
-        og["canonical"] = _APP_CANONICAL_TEMPLATES["peakd"].format(
+        template = app_urls.get("peakd", _CROSSPOST_DEFAULT_TEMPLATE)
+        og["canonical"] = template.format(
             author=meta["original_author"], permlink=meta["original_permlink"]
         )
-    elif meta.get("app") in _APP_CANONICAL_TEMPLATES:
-        og["canonical"] = _APP_CANONICAL_TEMPLATES[meta["app"]].format(
+    elif meta.get("app") in app_urls:
+        og["canonical"] = app_urls[meta["app"]].format(
             author=author, permlink=permlink
         )
     else:

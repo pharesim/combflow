@@ -1,0 +1,11 @@
+{
+  "peakd":      "https://peakd.com/@{author}/{permlink}",
+  "ecency":     "https://ecency.com/@{author}/{permlink}",
+  "hiveblog":   "https://hive.blog/@{author}/{permlink}",
+  "hivecomb":   "https://hivecomb.net/@{author}/{permlink}",
+  "leothreads": "https://inleo.io/threads/@{author}/{permlink}",
+  "liketu":     "https://liketu.com/@{author}/{permlink}",
+  "waivio":     "https://www.waivio.com/@{author}/{permlink}",
+  "travelfeed": "https://travelfeed.com/@{author}/{permlink}",
+  "3speak":     "https://3speak.tv/watch?v={author}/{permlink}"
+}
