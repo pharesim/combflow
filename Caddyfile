@@ -46,7 +46,13 @@ Preferred-Languages: en
 	}
 	handle @prerender_internal {
 		log_skip
-		reverse_proxy combflow-app:8000
+		reverse_proxy {
+			dynamic dns combflow-app 8000 {
+				refresh 5s
+			}
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
 	}
 	handle /static/* {
 		# Asset URLs are content-hash versioned (?v=HASH) by the app, so
@@ -54,11 +60,23 @@ Preferred-Languages: en
 		# URL, which busts both the browser and Cloudflare cache instantly.
 		header Cache-Control "public, max-age=31536000, immutable"
 		encode zstd gzip
-		reverse_proxy combflow-app:8000
+		reverse_proxy {
+			dynamic dns combflow-app 8000 {
+				refresh 5s
+			}
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
 	}
 	handle {
 		encode zstd gzip
-		reverse_proxy combflow-app:8000
+		reverse_proxy {
+			dynamic dns combflow-app 8000 {
+				refresh 5s
+			}
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
 	}
 }
 
@@ -103,7 +121,13 @@ Preferred-Languages: en
 	redir / /docs permanent
 	handle /api/imageproxy {
 		# No compression — images are already compressed
-		reverse_proxy combflow-app:8000
+		reverse_proxy {
+			dynamic dns combflow-app 8000 {
+				refresh 5s
+			}
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
 	}
 	@api_paths {
 		path /api/* /docs /docs/* /openapi.json /redoc /health /categories /posts/*
@@ -111,7 +135,13 @@ Preferred-Languages: en
 	handle @api_paths {
 		header Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
 		encode zstd gzip
-		reverse_proxy combflow-app:8000
+		reverse_proxy {
+			dynamic dns combflow-app 8000 {
+				refresh 5s
+			}
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
 	}
 	handle {
 		respond "Not Found" 404
