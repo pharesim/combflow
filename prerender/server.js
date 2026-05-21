@@ -43,23 +43,52 @@ const server = prerender({
   waitAfterLastRequest: 1000
 });
 
-if (INTERNAL_URL) {
-  server.use({
-    requestReceived: function(req, res, next) {
+// Reject obviously-bad requests up front before any Chromium tab spawns.
+// Scanner / malformed-bot traffic was hitting us with empty or non-http(s)
+// URLs; the previous code logged a warning and called next() anyway, which
+// meant Chromium opened a tab for "http:///" and leaked the process (~5
+// helper PIDs each). Over hours, PIDS climbed past 1500 and the pool stalled.
+const ALLOWED_HOSTS = (process.env.PRERENDER_ALLOWED_HOSTS || 'hivecomb.net,lvh.me')
+  .split(',')
+  .map(h => h.trim().toLowerCase())
+  .filter(Boolean);
+function isAllowedHost(hostname) {
+  const h = hostname.toLowerCase();
+  return ALLOWED_HOSTS.some(d => h === d || h.endsWith('.' + d));
+}
+server.use({
+  requestReceived: function(req, res, next) {
+    const url = req.prerender.url;
+    if (!url || typeof url !== 'string') {
+      return res.send(400, 'missing url');
+    }
+    let parsed;
+    try { parsed = new URL(url); } catch (_) {
+      console.warn('rejecting invalid URL:', JSON.stringify(url));
+      return res.send(400, 'invalid url');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return res.send(400, 'unsupported protocol');
+    }
+    if (!isAllowedHost(parsed.hostname)) {
+      console.warn('rejecting off-domain URL:', url);
+      return res.send(403, 'off-domain');
+    }
+    if (INTERNAL_URL) {
       req.prerender.originalUrl = req.prerender.url;
       try {
-        const parsed = new URL(req.prerender.url);
         const internal = new URL(INTERNAL_URL);
         parsed.protocol = internal.protocol;
         parsed.host = internal.host;
         req.prerender.url = parsed.toString();
       } catch (e) {
-        console.warn('URL rewrite failed for:', req.prerender.url, e.message);
+        console.warn('internal URL rewrite failed:', e.message);
+        return res.send(500, 'internal url rewrite failed');
       }
-      next();
     }
-  });
-}
+    next();
+  }
+});
 
 // Block images, CSS, fonts, and media — prerender only needs the rendered DOM
 const BLOCKED_TYPES = new Set(['Stylesheet', 'Image', 'Font', 'Media']);
