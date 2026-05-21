@@ -110,6 +110,32 @@ server.use({
   }
 });
 
+// Empty the contents of <div id="ID">...</div> in `html`. Walks the
+// HTML with a div-depth counter so nested divs inside the container
+// don't confuse the match. No-op if the container isn't found.
+function emptyContainerById(html, id) {
+  const openRe = new RegExp(`<div\\b[^>]*\\sid=["']${id}["'][^>]*>`, 'i');
+  const m = openRe.exec(html);
+  if (!m) return html;
+  const contentStart = m.index + m[0].length;
+  let depth = 1;
+  let pos = contentStart;
+  while (depth > 0 && pos < html.length) {
+    const nextOpen = html.indexOf('<div', pos);
+    const nextClose = html.indexOf('</div>', pos);
+    if (nextClose === -1) return html;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++;
+      pos = nextOpen + 4;
+    } else {
+      depth--;
+      pos = nextClose + 6;
+    }
+  }
+  if (depth !== 0) return html;
+  return html.slice(0, contentStart) + html.slice(pos - 6);
+}
+
 server.use({
   requestReceived: function(req, res, next) {
     if (req.method !== 'GET') return next();
@@ -132,6 +158,18 @@ server.use({
         console.warn('skipping cache for empty page: ' + publicUrl);
         next();
         return;
+      }
+      // For post pages, strip the homepage listing feed from the snapshot.
+      // The 400+ post cards in #hex-grid/#card-grid/#list-grid added ~500KB
+      // of background noise that dwarfed the actual post body in Google's
+      // dedupe hash — different unrelated post URLs ended up clustered as
+      // duplicates of each other. Stripping these makes the post body the
+      // dominant content. Users keep seeing the full page; this only
+      // affects crawled HTML.
+      if (isPostUrl(publicUrl)) {
+        for (const id of ['hex-grid', 'card-grid', 'list-grid']) {
+          req.prerender.content = emptyContainerById(req.prerender.content, id);
+        }
       }
       const file = cachePath(publicUrl);
       fs.mkdirSync(path.dirname(file), { recursive: true });
