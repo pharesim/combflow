@@ -30,7 +30,7 @@ WORKDIR /home/user
 COPY package.json .
 RUN npm install --production
 
-COPY server.js cleanup.sh entrypoint.sh ./
+COPY server.js healthcheck.js cleanup.sh entrypoint.sh ./
 RUN chmod +x cleanup.sh entrypoint.sh
 
 EXPOSE 3000

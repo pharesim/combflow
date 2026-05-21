@@ -147,17 +147,26 @@ services:
     build: ./prerender
     restart: unless-stopped
     shm_size: '256m'
+    labels:
+      # Picked up by the autoheal sidecar to auto-restart when the healthcheck
+      # below fails — vanilla docker-compose's `restart: unless-stopped` only
+      # reacts to container exit, not unhealthy status, so without this a stuck
+      # Chromium worker can leave the container "running but unhealthy" forever.
+      autoheal: "true"
     environment:
       CACHE_ROOT_DIR: /cache
       INTERNAL_RENDER_URL: http://caddy:8080
     volumes:
       - prerender_cache:/cache
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/',r=>{process.exit(0)}).on('error',()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
+      # End-to-end render test (HTTP → Chromium → response). The previous
+      # check only probed the HTTP server, which passes even when Chromium
+      # workers are stuck — exactly the failure mode we hit on prod.
+      test: ["CMD", "node", "/home/user/healthcheck.js"]
+      interval: 60s
+      timeout: 20s
       retries: 3
-      start_period: 30s
+      start_period: 45s
     deploy:
       resources:
         limits:
@@ -167,6 +176,26 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  autoheal:
+    # Restarts any container labeled autoheal=true when its healthcheck fails.
+    # Used to auto-recover prerender from a stuck-Chromium state.
+    image: willfarrell/autoheal:latest
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   goaccess:
     image: allinurl/goaccess:1.10.2
