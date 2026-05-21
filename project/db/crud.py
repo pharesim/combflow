@@ -695,6 +695,17 @@ async def get_recently_active_authors(
     return [(r[0], r[1]) for r in rows.fetchall()]
 
 
+async def get_author_total_post_count(session: AsyncSession, author: str) -> int:
+    """Lifetime count of an author's classified posts. Used by the UI to
+    gate noindex on thin profiles — authors with very few classified posts
+    look empty to Google and get flagged as Soft 404."""
+    result = await session.execute(
+        text("SELECT COUNT(*) FROM posts WHERE author = :author AND category_ids != '{}'"),
+        {"author": author},
+    )
+    return int(result.scalar() or 0)
+
+
 @retry_transient
 async def delete_posts_by_author(session: AsyncSession, author: str) -> int:
     """Delete all posts for a blacklisted author. Returns count deleted."""

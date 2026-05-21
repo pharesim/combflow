@@ -455,6 +455,46 @@ async def test_canonical_for_crosspost_points_to_original(client):
     assert "/@bob/" not in body.split('rel="canonical"')[1].split(">")[0]
 
 
+async def test_author_with_few_posts_gets_noindex(client):
+    """Thin author profiles (< 10 lifetime classified posts) get noindex
+    to avoid Soft 404 flagging by Google."""
+    with patch("project.api.routes.ui.crud.get_author_total_post_count",
+               return_value=3):
+        resp = await client.get("/@thinauthor")
+    body = resp.text
+    assert '<meta name="robots" content="noindex,follow">' in body
+
+
+async def test_author_with_many_posts_does_not_get_noindex(client):
+    """Active author profiles (>= 10 lifetime classified posts) are
+    indexable — no robots meta added."""
+    with patch("project.api.routes.ui.crud.get_author_total_post_count",
+               return_value=50):
+        resp = await client.get("/@activeauthor")
+    body = resp.text
+    assert '<meta name="robots"' not in body
+
+
+async def test_author_at_exactly_threshold_is_indexable(client):
+    """Boundary check: exactly 10 posts → indexable (>= threshold)."""
+    with patch("project.api.routes.ui.crud.get_author_total_post_count",
+               return_value=10):
+        resp = await client.get("/@borderlineauthor")
+    body = resp.text
+    assert '<meta name="robots"' not in body
+
+
+async def test_author_db_error_falls_through_without_noindex(client):
+    """If the post-count query fails, don't tag noindex — better to risk
+    an indexable thin page than incorrectly hide a substantive one."""
+    with patch("project.api.routes.ui.crud.get_author_total_post_count",
+               side_effect=OSError("db down")):
+        resp = await client.get("/@anyauthor")
+    body = resp.text
+    assert resp.status_code == 200
+    assert '<meta name="robots"' not in body
+
+
 async def test_reply_gets_noindex_and_omits_canonical(client):
     """Comments/replies (parent_author set) get robots noindex and no
     canonical — standalone comment URLs aren't really pages on the other

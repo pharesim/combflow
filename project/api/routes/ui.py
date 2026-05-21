@@ -275,12 +275,25 @@ async def discover_prefixed_post(prefix: str, author: str, permlink: str):
     return RedirectResponse(f"/@{author}/{permlink}", status_code=301)
 
 
+# Below this lifetime classified-post count, an /@author page is too thin
+# for Google to want to index \u2014 it'll get flagged as Soft 404. We mark
+# such pages noindex,follow so they're cleanly excluded rather than failing.
+_AUTHOR_INDEX_MIN_POSTS = 10
+
+
 @router.get("/@{author}", include_in_schema=False)
-async def discover_author(request: Request, author: str):
+async def discover_author(
+    request: Request, author: str, db: AsyncSession = Depends(get_db)
+):
     og = {
         "title": f"@{author} \u2014 HiveComb",
         "description": f"Posts by @{author} on HiveComb",
     }
+    try:
+        if await crud.get_author_total_post_count(db, author) < _AUTHOR_INDEX_MIN_POSTS:
+            og["noindex"] = True
+    except Exception as exc:
+        logger.debug("author post-count lookup failed for %s: %s", author, exc)
     return _render("discover.html", request, og=og)
 
 
