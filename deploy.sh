@@ -145,15 +145,15 @@ deploy() {
     fi
 
     echo "Pulling third-party images..."
-    $COMPOSE pull caddy goaccess
+    $COMPOSE pull caddy goaccess autoheal
     echo
 
     echo "Building local images..."
     $COMPOSE build combflow-app hive_worker prerender
     echo
 
-    echo "Updating caddy + goaccess (no-op if image unchanged)..."
-    $COMPOSE up -d --no-deps caddy goaccess
+    echo "Updating caddy + goaccess + autoheal (no-op if image unchanged)..."
+    $COMPOSE up -d --no-deps caddy goaccess autoheal
     # Hot-reload Caddyfile so config-only changes don't need a container restart.
     if [ -n "$($COMPOSE ps -q caddy)" ]; then
         $COMPOSE exec -T caddy caddy reload \

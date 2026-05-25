@@ -156,6 +156,10 @@ services:
     environment:
       CACHE_ROOT_DIR: /cache
       INTERNAL_RENDER_URL: http://caddy:8080
+      # `caddy` is the internal Docker hostname the healthcheck hits via
+      # http://caddy:8080/health — without it here the allowed-host guard
+      # in server.js rejects every healthcheck with 403 before Chromium runs.
+      PRERENDER_ALLOWED_HOSTS: hivecomb.net,lvh.me,caddy
     volumes:
       - prerender_cache:/cache
     healthcheck:
