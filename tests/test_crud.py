@@ -441,6 +441,37 @@ async def test_get_author_summary_orders_categories_by_count(seeded_db):
     assert summary["top_categories"][0]["count"] == 2
 
 
+async def test_get_author_summary_filters_below_5pct_floor(seeded_db):
+    """Stray categories below the 5% floor are excluded from top categories."""
+    from datetime import datetime, timezone
+    from project.db.crud import get_author_summary, create_post
+
+    leaf_a = seeded_db["leaf_name"]                              # alice's existing 1
+    leaf_b = CATEGORY_TREE[list(CATEGORY_TREE.keys())[1]][0]     # bulk leaf
+
+    # 25 leaf_b posts + 1 existing leaf_a → total 26, floor = ceil(1.3) = 2.
+    # leaf_a has only 1 post, below the floor, so it drops out.
+    async with _TestSession() as session:
+        for i in range(25):
+            await create_post(session, {
+                "author": "alice",
+                "permlink": f"bulk-{i}",
+                "created": datetime(2026, 4, 1, tzinfo=timezone.utc),
+                "categories": [leaf_b],
+                "languages": ["en"],
+                "sentiment": "neutral",
+                "sentiment_score": 0.0,
+            })
+
+    async with _TestSession() as session:
+        summary = await get_author_summary(session, "alice")
+
+    assert summary["total_posts"] == 26
+    names = [c["name"] for c in summary["top_categories"]]
+    assert leaf_b in names
+    assert leaf_a not in names
+
+
 async def test_get_author_summary_includes_top_community(seeded_db):
     """Author with a community_id surfaces top_community with its display name."""
     from datetime import datetime, timezone

@@ -3,6 +3,7 @@ import functools
 import hashlib
 import json as _json
 import logging
+import math
 import re
 from datetime import datetime as _dt, timedelta, timezone as _tz
 
@@ -738,6 +739,12 @@ async def get_author_summary(session: AsyncSession, author: str) -> dict | None:
     if total == 0:
         return None
 
+    # Floor: a category must cover ≥5% of the author's classified posts to
+    # qualify for the top-3 summary. Without this, one stray match (e.g. a
+    # single HiveFest giveaway post hitting the "contests" centroid) can sit
+    # next to dominant categories with 10×+ the volume. `max(1, ...)` keeps
+    # small/new authors visible — at low totals every match still counts.
+    cat_floor = max(1, math.ceil(total * 0.05))
     cat_rows = await session.execute(
         text(
             "SELECT c.name AS name, t.n AS count "
@@ -745,11 +752,12 @@ async def get_author_summary(session: AsyncSession, author: str) -> dict | None:
             "  SELECT cid, COUNT(*) AS n "
             "  FROM posts, unnest(category_ids) AS cid "
             "  WHERE author = :author AND category_ids != '{}' "
-            "  GROUP BY cid ORDER BY n DESC LIMIT 3"
+            "  GROUP BY cid HAVING COUNT(*) >= :floor "
+            "  ORDER BY n DESC LIMIT 3"
             ") t JOIN categories c ON c.id = t.cid "
             "ORDER BY t.n DESC"
         ),
-        {"author": author},
+        {"author": author, "floor": cat_floor},
     )
     # Category name doubles as the /c/{slug} route key — id == name (slug).
     top_categories = [
