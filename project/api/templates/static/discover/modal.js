@@ -6,7 +6,6 @@ async function openModal(post, skipPush) {
                       '', `/@${post.author}/${post.permlink}`);
   }
   document.getElementById('modal-title').textContent = 'Loading...';
-  document.getElementById('modal-author').innerHTML = `${avatarHtml(post.author, 28)}<a class="clickable-author" href="/@${esc(post.author)}">@${esc(post.author)}</a>`;
 
   // Author mini-card (proposal 099): hide any stale card, then fetch this
   // author's HiveComb summary in parallel with the post body. Reputation is

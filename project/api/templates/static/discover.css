@@ -336,7 +336,6 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
 .modal-close:hover{color:var(--text-bright)}
 .modal h2{font-size:22px;margin-bottom:8px;color:var(--text-bright)}
 .modal-meta{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.modal-author{color:var(--hive-red);font-size:14px;display:inline-flex;align-items:center;gap:4px}
 .modal-body{margin-bottom:16px}
 .modal-body h1,.modal-body h2,.modal-body h3,.modal-body h4{margin:16px 0 8px}
 .modal-body h1{font-size:1.3em}.modal-body h2{font-size:1.2em}
