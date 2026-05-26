@@ -275,11 +275,11 @@
   <div class="suggestions-list" id="suggestions-list"></div>
 </div>
 
+<div class="author-filter-banner" id="author-filter-banner" style="display:none" role="status" aria-live="polite"></div>
 <!-- Server-rendered author summary (proposal 098). Substituted server-side on
      /@author pages with 10+ posts; empty string everywhere else. Stays in the
      DOM — it's real above-the-grid content for readers, not just a crawler primer. -->
 {{AUTHOR_SUMMARY_HTML}}
-<div class="author-filter-banner" id="author-filter-banner" style="display:none" role="status" aria-live="polite"></div>
 <div class="hex-container" id="hex-container" x-show="$store.app.layoutMode === 'hex'">
   <div class="hex-grid" id="hex-grid"
        x-effect="if ($store.app.hexGridW > 0) { $el.style.width = $store.app.hexGridW + 'px'; $el.style.height = $store.app.hexGridH + 'px'; }">
