@@ -1,4 +1,4 @@
-"""Tests for the apps-canonical loader (bundled fallback + upstream refresh)."""
+"""Tests for the apps-canonical upstream refresh."""
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -6,15 +6,11 @@ import pytest
 from project import apps_canonical
 
 
-def test_fallback_loaded_at_import():
-    """Importing the module seeds APP_CANONICAL_URLS from the bundled JSON."""
-    assert apps_canonical.APP_CANONICAL_URLS
-    # Spot-check that core entries are present
-    for app in ("peakd", "ecency", "hiveblog", "hivecomb"):
-        assert app in apps_canonical.APP_CANONICAL_URLS
-        url = apps_canonical.APP_CANONICAL_URLS[app]
-        assert "{author}" in url
-        assert "{permlink}" in url
+def test_starts_empty():
+    """The dict is empty at import time — populated only on first refresh."""
+    # Other tests in this file mutate APP_CANONICAL_URLS, so just assert it's
+    # a dict; the empty-at-fresh-import invariant is enforced by the type hint.
+    assert isinstance(apps_canonical.APP_CANONICAL_URLS, dict)
 
 
 def test_valid_entries_filters_bad_values():

@@ -1,14 +1,13 @@
 """Shared Hive app → canonical-URL list.
 
 Source of truth: https://github.com/pharesim/hive-apps-canonical
-Refreshed daily from the upstream raw JSON; falls back to the bundled
-snapshot in apps_canonical_fallback.json when upstream is unreachable.
+Fetched at startup and refreshed daily from the upstream raw JSON. Stays
+empty until the first successful refresh — pages rendered before then
+simply skip the canonical tag (same fallthrough as for unknown apps).
 
 Each value is a URL template with {author} and {permlink} placeholders.
 """
-import json
 import logging
-import pathlib
 
 import httpx
 
@@ -18,11 +17,8 @@ UPSTREAM_URL = (
     "https://raw.githubusercontent.com/pharesim/"
     "hive-apps-canonical/main/apps-canonical-list.json"
 )
-_FALLBACK_PATH = pathlib.Path(__file__).parent / "apps_canonical_fallback.json"
 
-# Always-populated module-level dict. Loaded synchronously from the bundled
-# fallback at import time; replaced by refresh_from_upstream() on first
-# successful daily fetch.
+# Module-level dict, replaced wholesale on each successful refresh.
 APP_CANONICAL_URLS: dict[str, str] = {}
 
 
@@ -40,19 +36,6 @@ def _valid_entries(data: object) -> dict[str, str] | None:
         ):
             cleaned[k] = v
     return cleaned or None
-
-
-def _load_fallback() -> None:
-    """Populate APP_CANONICAL_URLS from the bundled fallback file."""
-    global APP_CANONICAL_URLS
-    try:
-        data = json.loads(_FALLBACK_PATH.read_text())
-    except Exception as exc:
-        logger.warning("apps-canonical fallback load failed: %s", exc)
-        return
-    valid = _valid_entries(data)
-    if valid is not None:
-        APP_CANONICAL_URLS = valid
 
 
 async def refresh_from_upstream(client: httpx.AsyncClient) -> bool:
@@ -73,7 +56,3 @@ async def refresh_from_upstream(client: httpx.AsyncClient) -> bool:
     except Exception as exc:
         logger.warning("apps-canonical upstream refresh failed: %s", exc)
         return False
-
-
-# Seed at import time so the dict is never empty.
-_load_fallback()
