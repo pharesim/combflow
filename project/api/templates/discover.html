@@ -275,6 +275,10 @@
   <div class="suggestions-list" id="suggestions-list"></div>
 </div>
 
+<!-- Server-rendered author summary (proposal 098). Substituted server-side on
+     /@author pages with 10+ posts; empty string everywhere else. Stays in the
+     DOM — it's real above-the-grid content for readers, not just a crawler primer. -->
+{{AUTHOR_SUMMARY_HTML}}
 <div class="author-filter-banner" id="author-filter-banner" style="display:none" role="status" aria-live="polite"></div>
 <div class="hex-container" id="hex-container" x-show="$store.app.layoutMode === 'hex'">
   <div class="hex-grid" id="hex-grid"
@@ -682,6 +686,13 @@
     </div>
   </div>
 </div>
+
+<!-- Server-rendered post-page enrichments: author mini-card (096) + top comments
+     (095). Substituted server-side only on /@author/permlink pages; empty string
+     on every other page. This is a crawler / no-JS primer — the SPA modal renders
+     the live author card and comment tree, so discover.js removes this block on
+     boot to avoid duplicate content (proposal 095 risk #1, Option A). -->
+<div id="post-seo-enrichments">{{AUTHOR_CARD_HTML}}{{COMMENTS_HTML}}</div>
 
 </main>
 

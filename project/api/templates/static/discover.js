@@ -1,5 +1,12 @@
 // ── Init ──
 async function init() {
+  // Drop the server-rendered post-page primer (#post-seo-enrichments: author
+  // mini-card + top comments, proposals 095/096). It only exists on
+  // /@author/permlink loads, where the SPA modal renders the live author card
+  // and full comment tree — removing the static copy avoids duplicate content
+  // (proposal 095 risk #1, Option A). No-op (and absent) on every other page.
+  document.getElementById('post-seo-enrichments')?.remove();
+
   loadVotedPosts();
   loadMutedUsers();
   loadFollowedUsers();

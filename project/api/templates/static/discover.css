@@ -28,6 +28,8 @@ body{overflow-x:hidden}
 .editor-field label, .editor-char-count, .editor-tab,
 .md-help-grid pre, .location-coords,
 .mute-btn, .follow-btn, .report-char-count, .notif-time,
+.author-stats dt, .author-card .reputation,
+.author-card .post-count, .author-card .top-cats,
 .settings-section-title
 { font-size:12px; color:var(--text-dim) }
 
@@ -35,12 +37,14 @@ body{overflow-x:hidden}
 .login-box p, .signup-link, .signup-discord-hint, .onboarding-intro,
 .loading-more, .list-meta, .modal-date, .cross-post-banner,
 .comment-form-login, .settings-tab, .settings-nsfw-fieldset legend,
-.settings-slider-row label, .report-box p, .notif-empty
+.settings-slider-row label, .report-box p, .notif-empty,
+.author-summary .lede, .inline-comment-body
 { font-size:13px; color:var(--text-dim) }
 
 /* Uppercase dim labels */
 .filters-bar-label, .filter-header span,
-.suggestions-header, .settings-section-title
+.suggestions-header, .settings-section-title,
+.author-stats dt
 { text-transform:uppercase; letter-spacing:1px }
 
 /* Overlay base */
@@ -388,6 +392,41 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
 .comment-vote-btn .comment-vote-count{font-size:10px}
 .comment-vote-btn.voted{color:var(--hive-red)}
 
+/* ── Server-rendered post-page / author-page enrichments (proposals 095/096/098) ──
+   Text sizing/colour for .author-stats dt, .lede, .author-card meta and
+   .inline-comment-body lives in the shared dim-12 / dim-13 / uppercase groups. */
+
+/* Author summary above the grid on /@author (098) — readers see this, not just crawlers. */
+.author-summary{max-width:1280px;margin:16px auto 0;padding:20px 24px;background:var(--bg2);border:1px solid var(--border);border-radius:16px}
+.author-summary header{margin-bottom:14px}
+.author-summary h1{font-size:24px;color:var(--text-bright);margin:0}
+.author-summary .lede{margin:4px 0 0}
+.author-stats{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}
+.author-stats > div{margin:0}
+.author-stats dt{margin-bottom:4px}
+.author-stats dd{margin:0;font-size:14px;color:var(--text);line-height:1.7}
+.author-stats dd a{color:var(--hive-red);text-decoration:none}
+.author-stats dd a:hover{text-decoration:underline}
+
+/* Post-page primer — author mini-card (096) + inline top comments (095).
+   Removed by discover.js once the SPA modal takes over; styled for the brief
+   pre-JS flash and the no-JS fallback. */
+#post-seo-enrichments{max-width:1280px;margin:0 auto;padding:0 24px}
+.author-card{display:flex;gap:14px;align-items:flex-start;margin:24px 0 0;padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+.author-card img{border-radius:50%;flex-shrink:0}
+.author-card .meta{display:flex;flex-direction:column;gap:3px}
+.author-card .meta > a{color:var(--hive-red);text-decoration:none;font-size:15px}
+.author-card .meta > a:hover{text-decoration:underline}
+.author-card .all-posts{color:var(--hive-red);text-decoration:none;font-size:13px;margin-top:4px}
+.author-card .all-posts:hover{text-decoration:underline}
+#comments-inline{margin-top:24px;border-top:1px solid var(--border);padding-top:20px}
+#comments-inline h2{font-size:16px;color:var(--text-bright);font-weight:700;margin-bottom:16px}
+.inline-comments{list-style:none;margin:0;padding:0}
+.inline-comment{border-left:2px solid var(--border);padding:6px 0 6px 12px;margin-bottom:10px}
+.inline-comment-author{display:block;color:var(--hive-red);font-size:13px;font-weight:600;text-decoration:none;margin-bottom:4px}
+.inline-comment-author:hover{text-decoration:underline}
+.inline-comment-body{margin:0;line-height:1.6}
+
 /* Comment form */
 .comment-form{margin-bottom:16px;padding:12px;background:var(--card);border-radius:10px;border:1px solid var(--border)}
 .comment-form-login{padding:12px;background:var(--card);border-radius:10px;margin-bottom:16px;text-align:center}
@@ -609,6 +648,11 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
   .filters-bar-actions{gap:6px}
   #sort-select{display:none}
   .notif-dropdown{position:fixed;left:16px;right:16px;width:auto;top:56px}
+  /* Author summary stays compact so it doesn't push the post grid off-screen (098). */
+  .author-summary{margin:12px;padding:14px 16px;border-radius:12px}
+  .author-summary h1{font-size:20px}
+  .author-stats{gap:10px 20px}
+  #post-seo-enrichments{padding:0 16px}
 }
 @media(max-width:600px){.md-help-grid{grid-template-columns:1fr}}
 @media(max-width:767px){

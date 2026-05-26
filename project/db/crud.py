@@ -695,15 +695,109 @@ async def get_recently_active_authors(
     return [(r[0], r[1]) for r in rows.fetchall()]
 
 
-async def get_author_total_post_count(session: AsyncSession, author: str) -> int:
-    """Lifetime count of an author's classified posts. Used by the UI to
-    gate noindex on thin profiles — authors with very few classified posts
-    look empty to Google and get flagged as Soft 404."""
-    result = await session.execute(
-        text("SELECT COUNT(*) FROM posts WHERE author = :author AND category_ids != '{}'"),
+@retry_transient
+async def get_author_summary(session: AsyncSession, author: str) -> dict | None:
+    """Aggregate stats for the author profile page (proposals 096 + 098).
+
+    Canonical home of the author aggregation — both the server-rendered
+    ``/@author`` summary (098) and the post-page author mini-card (096) consume
+    this single function rather than building two near-duplicate queries.
+
+    Returns::
+
+        {
+            "total_posts": int,
+            "top_categories": [{"id": str, "name": str, "count": int}],  # up to 3
+            "top_languages": [{"code": str, "count": int}],              # up to 2
+            "top_community": {"id": str, "name": str, "count": int} | None,
+            "first_seen": datetime,
+            "last_seen": datetime,
+        }
+
+    Returns ``None`` if the author has zero classified posts. The result is
+    cached in-process for 6h — author stats change slowly and these are
+    background SEO fetches, not user-blocking. Only real authors (>=1 post) are
+    cached, so the cache stays bounded by O(active authors), not by every
+    random username a crawler probes. All queries filter on the indexed
+    ``author`` column, so cost is sub-10ms even for prolific authors.
+    """
+    cache_key = f"author_summary:{author}"
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    totals = await session.execute(
+        text(
+            "SELECT COUNT(*) AS total, MIN(created) AS first_seen, MAX(created) AS last_seen "
+            "FROM posts WHERE author = :author AND category_ids != '{}'"
+        ),
         {"author": author},
     )
-    return int(result.scalar() or 0)
+    trow = totals.mappings().first()
+    total = int(trow["total"]) if trow else 0
+    if total == 0:
+        return None
+
+    cat_rows = await session.execute(
+        text(
+            "SELECT c.name AS name, t.n AS count "
+            "FROM ("
+            "  SELECT cid, COUNT(*) AS n "
+            "  FROM posts, unnest(category_ids) AS cid "
+            "  WHERE author = :author AND category_ids != '{}' "
+            "  GROUP BY cid ORDER BY n DESC LIMIT 3"
+            ") t JOIN categories c ON c.id = t.cid "
+            "ORDER BY t.n DESC"
+        ),
+        {"author": author},
+    )
+    # Category name doubles as the /c/{slug} route key — id == name (slug).
+    top_categories = [
+        {"id": r["name"], "name": r["name"], "count": int(r["count"])}
+        for r in cat_rows.mappings()
+    ]
+
+    lang_rows = await session.execute(
+        text(
+            "SELECT lang AS code, COUNT(*) AS count "
+            "FROM posts, unnest(language_codes) AS lang "
+            "WHERE author = :author AND language_codes != '{}' "
+            "GROUP BY lang ORDER BY count DESC LIMIT 2"
+        ),
+        {"author": author},
+    )
+    top_languages = [
+        {"code": r["code"], "count": int(r["count"])} for r in lang_rows.mappings()
+    ]
+
+    comm_row = await session.execute(
+        text(
+            "SELECT p.community_id AS id, cm.community_name AS name, COUNT(*) AS count "
+            "FROM posts p "
+            "LEFT JOIN community_mappings cm ON cm.community_id = p.community_id "
+            "WHERE p.author = :author AND p.community_id IS NOT NULL "
+            "GROUP BY p.community_id, cm.community_name "
+            "ORDER BY count DESC LIMIT 1"
+        ),
+        {"author": author},
+    )
+    crow = comm_row.mappings().first()
+    top_community = (
+        {"id": crow["id"], "name": crow["name"] or crow["id"], "count": int(crow["count"])}
+        if crow
+        else None
+    )
+
+    summary = {
+        "total_posts": total,
+        "top_categories": top_categories,
+        "top_languages": top_languages,
+        "top_community": top_community,
+        "first_seen": trow["first_seen"],
+        "last_seen": trow["last_seen"],
+    }
+    _cache.put(cache_key, summary, ttl=21600)
+    return summary
 
 
 @retry_transient

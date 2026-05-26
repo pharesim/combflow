@@ -384,3 +384,87 @@ async def test_delete_posts_by_author_cascades_associations(seeded_db):
             sql_text("SELECT COUNT(*) FROM posts WHERE author = 'alice'")
         )
         assert remaining.scalar() == 0
+
+
+# ── get_author_summary (proposals 096 + 098) ───────────────────────────────
+
+async def test_get_author_summary_aggregates(seeded_db):
+    """Single-post author → totals + top category/language, no community."""
+    from project.db.crud import get_author_summary
+
+    async with _TestSession() as session:
+        summary = await get_author_summary(session, "alice")
+
+    assert summary is not None
+    assert summary["total_posts"] == 1
+    assert summary["top_categories"][0]["name"] == seeded_db["leaf_name"]
+    assert summary["top_categories"][0]["id"] == seeded_db["leaf_name"]
+    assert summary["top_languages"][0]["code"] == "en"
+    assert summary["top_community"] is None
+    assert summary["first_seen"] is not None
+    assert summary["last_seen"] is not None
+
+
+async def test_get_author_summary_none_for_unknown_author(seeded_db):
+    from project.db.crud import get_author_summary
+
+    async with _TestSession() as session:
+        summary = await get_author_summary(session, "nobody-here")
+    assert summary is None
+
+
+async def test_get_author_summary_orders_categories_by_count(seeded_db):
+    """Top categories are ordered by post count descending."""
+    from datetime import datetime, timezone
+    from project.db.crud import get_author_summary, create_post
+
+    leaf_a = seeded_db["leaf_name"]                              # alice already has 1
+    leaf_b = CATEGORY_TREE[list(CATEGORY_TREE.keys())[1]][0]     # distinct leaf
+
+    async with _TestSession() as session:
+        for i in range(2):
+            await create_post(session, {
+                "author": "alice",
+                "permlink": f"extra-{i}",
+                "created": datetime(2026, 4, 1, tzinfo=timezone.utc),
+                "categories": [leaf_b],
+                "languages": ["en"],
+                "sentiment": "neutral",
+                "sentiment_score": 0.0,
+            })
+
+    async with _TestSession() as session:
+        summary = await get_author_summary(session, "alice")
+
+    assert summary["total_posts"] == 3
+    assert summary["top_categories"][0]["name"] == leaf_b   # 2 posts > 1
+    assert summary["top_categories"][0]["count"] == 2
+
+
+async def test_get_author_summary_includes_top_community(seeded_db):
+    """Author with a community_id surfaces top_community with its display name."""
+    from datetime import datetime, timezone
+    from sqlalchemy import text as sql_text
+    from project.db.crud import get_author_summary, create_post
+
+    async with _TestSession() as session:
+        await session.execute(sql_text(
+            "INSERT INTO community_mappings (community_id, community_name, score, post_count) "
+            "VALUES ('hive-999', 'Test Community', 0.5, 0)"
+        ))
+        await session.commit()
+        await create_post(session, {
+            "author": "dave",
+            "permlink": "comm-post",
+            "created": datetime(2026, 4, 2, tzinfo=timezone.utc),
+            "categories": [seeded_db["leaf_name"]],
+            "languages": ["en"],
+            "sentiment": "neutral",
+            "sentiment_score": 0.0,
+            "community_id": "hive-999",
+        })
+
+    async with _TestSession() as session:
+        summary = await get_author_summary(session, "dave")
+
+    assert summary["top_community"] == {"id": "hive-999", "name": "Test Community", "count": 1}

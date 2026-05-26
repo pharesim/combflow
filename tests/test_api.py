@@ -1,4 +1,5 @@
 """Core API tests — health, schema validation, categories, middleware, SEO, OG tags."""
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,26 @@ from project.categories import CATEGORY_TREE, LEAF_CATEGORIES
 from project import cache
 from project import apps_canonical
 from project.api.routes.ui import _OG_DEFAULT_TITLE, _OG_DEFAULT_DESC
+
+
+@pytest.fixture(autouse=True)
+def _stub_inline_comments(monkeypatch):
+    """Post pages fetch inline comments via bridge.get_discussion (proposal 095).
+    Stub it out so the suite never makes a live RPC; tests that exercise comments
+    patch project.api.routes.ui.get_top_comments explicitly."""
+    monkeypatch.setattr("project.api.routes.ui.get_top_comments", lambda *a, **k: [])
+
+
+def _author_summary(total, cats=("photography",), langs=("en",)):
+    """Build an author-summary dict matching crud.get_author_summary's shape."""
+    return {
+        "total_posts": total,
+        "top_categories": [{"id": c, "name": c, "count": 5} for c in cats],
+        "top_languages": [{"code": l, "count": 5} for l in langs],
+        "top_community": None,
+        "first_seen": datetime(2020, 1, 1, tzinfo=timezone.utc),
+        "last_seen": datetime(2026, 1, 1, tzinfo=timezone.utc),
+    }
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -466,36 +487,48 @@ async def test_canonical_for_crosspost_points_to_original(client):
 async def test_author_with_few_posts_gets_noindex(client):
     """Thin author profiles (< 10 lifetime classified posts) get noindex
     to avoid Soft 404 flagging by Google."""
-    with patch("project.api.routes.ui.crud.get_author_total_post_count",
-               return_value=3):
+    with patch("project.api.routes.ui.crud.get_author_summary",
+               return_value=_author_summary(3)):
         resp = await client.get("/@thinauthor")
     body = resp.text
     assert '<meta name="robots" content="noindex,follow">' in body
 
 
+async def test_author_with_zero_posts_gets_noindex(client):
+    """Unknown author (get_author_summary returns None) → noindex shell."""
+    with patch("project.api.routes.ui.crud.get_author_summary",
+               return_value=None):
+        resp = await client.get("/@ghost")
+    body = resp.text
+    assert '<meta name="robots" content="noindex,follow">' in body
+    assert "Posts by @ghost on HiveComb" in body
+
+
 async def test_author_with_many_posts_does_not_get_noindex(client):
     """Active author profiles (>= 10 lifetime classified posts) are
-    indexable — no robots meta added."""
-    with patch("project.api.routes.ui.crud.get_author_total_post_count",
-               return_value=50):
+    indexable — no robots meta added, dynamic title/description instead."""
+    with patch("project.api.routes.ui.crud.get_author_summary",
+               return_value=_author_summary(50)):
         resp = await client.get("/@activeauthor")
     body = resp.text
     assert '<meta name="robots"' not in body
+    assert "@activeauthor — 50 posts on Hive" in body
+    assert "Browse 50 classified posts by @activeauthor" in body
 
 
 async def test_author_at_exactly_threshold_is_indexable(client):
     """Boundary check: exactly 10 posts → indexable (>= threshold)."""
-    with patch("project.api.routes.ui.crud.get_author_total_post_count",
-               return_value=10):
+    with patch("project.api.routes.ui.crud.get_author_summary",
+               return_value=_author_summary(10)):
         resp = await client.get("/@borderlineauthor")
     body = resp.text
     assert '<meta name="robots"' not in body
 
 
 async def test_author_db_error_falls_through_without_noindex(client):
-    """If the post-count query fails, don't tag noindex — better to risk
+    """If the summary query fails, don't tag noindex — better to risk
     an indexable thin page than incorrectly hide a substantive one."""
-    with patch("project.api.routes.ui.crud.get_author_total_post_count",
+    with patch("project.api.routes.ui.crud.get_author_summary",
                side_effect=OSError("db down")):
         resp = await client.get("/@anyauthor")
     body = resp.text
@@ -643,5 +676,133 @@ async def test_og_root_page_keeps_defaults(client):
     assert "{{OG_" not in body
     assert _OG_DEFAULT_TITLE in body
     assert 'content="website"' in body
+
+
+# ── Inline comments / author enrichments (proposals 095, 096, 098) ───────────
+#
+# The {{COMMENTS_HTML}} / {{AUTHOR_CARD_HTML}} / {{AUTHOR_SUMMARY_HTML}}
+# placeholders are added to discover.html by the UI agent. Until then these
+# blocks are built server-side but have no slot in the page, so we unit-test the
+# builders directly and assert the route-observable behaviour (OG tags,
+# concurrent fetch, reply handling) separately.
+
+
+def test_build_comments_html_excerpts_and_escapes():
+    from project.api.routes.ui import _build_comments_html
+    # Bare "<" / "&" (no matching ">") survive clean_post_body, so we can verify
+    # html_escape is applied to whatever plain text remains.
+    html = _build_comments_html([
+        {"author": "alice", "permlink": "p", "created": "",
+         "body": "Math 5 < 3 and AT&T " + "x" * 400, "payout": 0, "children": 0},
+    ])
+    assert 'id="comments-inline"' in html
+    assert 'class="inline-comment-body"' in html
+    assert '/@alice' in html
+    assert "&lt;" in html and "&amp;" in html            # escaped
+    assert "…" in html                                  # truncated past 280 chars
+    assert '"@type":"Comment"' in html
+
+
+def test_build_comments_html_empty_returns_blank():
+    from project.api.routes.ui import _build_comments_html
+    assert _build_comments_html([]) == ""
+    assert _build_comments_html(None) == ""
+    # All-whitespace bodies produce no items → no section.
+    assert _build_comments_html([{"author": "a", "body": "   "}]) == ""
+
+
+def test_build_author_card_html():
+    from project.api.routes.ui import _build_author_card_html
+    card = {
+        "author": "alice", "reputation": 68.5,
+        "summary": {"total_posts": 42,
+                    "top_categories": [{"id": "photography", "name": "photography", "count": 10}]},
+    }
+    html = _build_author_card_html(card, "https://example.com")
+    assert 'class="author-card"' in html
+    assert "Reputation: 68" in html
+    assert "42 posts on HiveComb" in html
+    assert "Mostly writes about: photography" in html
+    assert "/api/imageproxy?url=" in html          # avatar via proxy (CSP-safe)
+    assert '"@type":"Person"' in html
+
+
+def test_build_author_card_html_blank_without_summary():
+    from project.api.routes.ui import _build_author_card_html
+    assert _build_author_card_html(None, "") == ""
+    assert _build_author_card_html({"author": "x", "summary": None}, "") == ""
+
+
+def test_build_author_summary_html():
+    from project.api.routes.ui import _build_author_summary_html
+    summary = {
+        "total_posts": 42,
+        "top_categories": [{"id": "photography", "name": "photography", "count": 10}],
+        "top_languages": [{"code": "en", "count": 30}],
+        "top_community": {"id": "hive-1", "name": "Foto", "count": 5},
+        "first_seen": datetime(2019, 5, 1, tzinfo=timezone.utc),
+        "last_seen": datetime(2026, 1, 1, tzinfo=timezone.utc),
+    }
+    html = _build_author_summary_html("alice", summary, "https://example.com")
+    assert 'class="author-summary"' in html
+    assert "Active since 2019" in html
+    assert 'href="/c/photography"' in html
+    assert 'href="/lang/en"' in html
+    assert 'href="/community/hive-1"' in html
+    assert '"@type":"Person"' in html
+
+
+def test_build_author_summary_html_blank_without_summary():
+    from project.api.routes.ui import _build_author_summary_html
+    assert _build_author_summary_html("alice", None, "") == ""
+
+
+def test_build_author_description_caps_at_155():
+    from project.api.routes.ui import _build_author_description
+    summary = {
+        "total_posts": 247,
+        "top_categories": [{"name": "photography"}, {"name": "travel"}, {"name": "lifestyle"}],
+        "top_languages": [{"code": "en"}],
+    }
+    desc = _build_author_description("gallya", summary)
+    assert desc.startswith("Browse 247 classified posts by @gallya on HiveComb.")
+    assert "Most active in photography, travel, lifestyle." in desc
+    assert "Primary language: en." in desc
+    assert len(desc) <= 155
+
+
+async def test_fetch_post_includes_comments_concurrently():
+    """_fetch_post returns (og, raw, comments) with comments fetched alongside
+    the post (proposal 095, approval decision #2)."""
+    from project.api.routes.ui import _fetch_post
+    with patch("project.api.routes.ui.get_post_full",
+               return_value=_bridge(title="T", body="Body", app="peakd")), \
+         patch("project.api.routes.ui.get_top_comments",
+               return_value=[{"author": "x", "permlink": "c", "body": "nice",
+                              "created": "", "payout": 1.0, "children": 0}]):
+        og, raw, comments = await _fetch_post("alice", "post")
+    assert raw["title"] == "T"
+    assert len(comments) == 1 and comments[0]["author"] == "x"
+
+
+async def test_fetch_post_drops_comments_for_reply():
+    """Replies are noindex'd; their fetched comments are discarded."""
+    from project.api.routes.ui import _fetch_post
+    reply = {"title": "", "body": "re", "parent_author": "alice",
+             "parent_permlink": "orig", "json_metadata": {}}
+    with patch("project.api.routes.ui.get_post_full", return_value=reply), \
+         patch("project.api.routes.ui.get_top_comments",
+               return_value=[{"author": "x", "permlink": "c", "body": "nice",
+                              "created": "", "payout": 1.0, "children": 0}]):
+        og, raw, comments = await _fetch_post("bob", "re-orig")
+    assert comments == []
+    assert og.get("noindex") is True
+
+
+async def test_fetch_post_returns_empty_triple_on_failure():
+    from project.api.routes.ui import _fetch_post
+    with patch("project.api.routes.ui.get_post_full", return_value=None):
+        og, raw, comments = await _fetch_post("alice", "missing")
+    assert og == {} and raw is None and comments == []
 
 

@@ -16,6 +16,7 @@ import psycopg2.extras
 import psycopg2.pool
 import requests
 
+from . import cache
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -267,6 +268,94 @@ def get_post_metadata(author: str, permlink: str) -> dict | None:
     if data is None:
         return None
     return extract_post_metadata(data)
+
+
+def _parse_payout(comment: dict) -> float:
+    """Best-effort total payout for a bridge comment object.
+
+    bridge.get_discussion sometimes exposes a numeric ``payout`` field; when
+    it doesn't, sum the HBD value strings (e.g. "1.234 HBD"). Returns 0.0 when
+    nothing parseable is present (zero-payout comments are common and fine).
+    """
+    val = comment.get("payout")
+    if isinstance(val, (int, float)):
+        return float(val)
+    total = 0.0
+    for key in ("pending_payout_value", "total_payout_value", "curator_payout_value"):
+        raw = comment.get(key)
+        if isinstance(raw, str):
+            try:
+                total += float(raw.split()[0])
+            except (ValueError, IndexError):
+                pass
+    return total
+
+
+def get_top_comments(author: str, permlink: str, limit: int = 10) -> list[dict]:
+    """Fetch the top direct replies to a post, sorted by payout DESC (proposal 095).
+
+    Uses ``bridge.get_discussion`` which returns the full thread keyed by
+    ``"author/permlink"`` strings — sort order is NOT guaranteed by any field,
+    so we explicitly select the *direct* children of the focal post
+    (``parent_author``/``parent_permlink`` match) and sort them deterministically
+    by payout, then created, then permlink. Muted/hidden comments (``stats.hide``
+    or ``stats.gray``) are dropped so we don't surface spam for SEO.
+
+    Cached per-post for 1h (comments evolve slowly). Returns a list of
+    ``{author, permlink, body, created, payout, children}``; empty list on
+    error / not found.
+    """
+    cache_key = f"top_comments:{author}/{permlink}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    thread = None
+    for node in settings.hive_api_nodes:
+        try:
+            resp = requests.post(
+                node,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "bridge.get_discussion",
+                    "params": {"author": author, "permlink": permlink},
+                    "id": 1,
+                },
+                timeout=4,
+            )
+            thread = resp.json().get("result")
+            if thread is not None:
+                break
+        except Exception:
+            continue  # try next node
+    if not isinstance(thread, dict):
+        return []
+
+    children: list[dict] = []
+    for comment in thread.values():
+        if not isinstance(comment, dict):
+            continue
+        if (
+            comment.get("parent_author") != author
+            or comment.get("parent_permlink") != permlink
+        ):
+            continue
+        stats = comment.get("stats") or {}
+        if stats.get("hide") or stats.get("gray"):
+            continue
+        children.append({
+            "author": comment.get("author") or "",
+            "permlink": comment.get("permlink") or "",
+            "body": comment.get("body") or "",
+            "created": comment.get("created") or "",
+            "payout": _parse_payout(comment),
+            "children": int(comment.get("children") or 0),
+        })
+
+    children.sort(key=lambda c: (-c["payout"], c["created"], c["permlink"]))
+    result = children[:limit]
+    cache.put(cache_key, result, ttl=3600)
+    return result
 
 
 def get_hivecomb_posts(limit: int = 1000) -> list[tuple]:

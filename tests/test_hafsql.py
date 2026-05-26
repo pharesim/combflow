@@ -7,6 +7,7 @@ from project.hafsql import (
     _raw_rep_to_score, build_dsn, get_reputations,
     get_reputations_via_api, get_reputation_via_api, shutdown,
     get_community, get_post_body, get_post_metadata,
+    get_top_comments, _parse_payout,
     _cursor, _get_pool,
 )
 
@@ -394,3 +395,87 @@ class TestShutdown:
             shutdown()
         finally:
             mod._pool = old_pool
+
+
+# ── _parse_payout ─────────────────────────────────────────────────────────
+
+class TestParsePayout:
+    def test_numeric_payout(self):
+        assert _parse_payout({"payout": 3.5}) == 3.5
+
+    def test_string_values_summed(self):
+        assert _parse_payout(
+            {"pending_payout_value": "1.500 HBD", "total_payout_value": "2.000 HBD"}
+        ) == 3.5
+
+    def test_missing_returns_zero(self):
+        assert _parse_payout({}) == 0.0
+
+    def test_malformed_string_ignored(self):
+        assert _parse_payout({"pending_payout_value": "garbage"}) == 0.0
+
+
+# ── get_top_comments (proposal 095, mocked Hive API) ─────────────────────────
+
+class TestGetTopComments:
+    def _resp(self, thread):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": thread}
+        return mock_resp
+
+    def test_extracts_direct_children_sorted_by_payout(self):
+        thread = {
+            # the focal post itself — excluded (its parent isn't the focal post)
+            "alice/post1": {"author": "alice", "permlink": "post1",
+                            "parent_author": "", "parent_permlink": "topic",
+                            "body": "the post", "stats": {}},
+            "bob/c1": {"author": "bob", "permlink": "c1", "parent_author": "alice",
+                       "parent_permlink": "post1", "body": "top comment",
+                       "created": "2026-01-01", "payout": 5.0, "children": 1, "stats": {}},
+            "carol/c2": {"author": "carol", "permlink": "c2", "parent_author": "alice",
+                         "parent_permlink": "post1", "body": "second", "created": "2026-01-02",
+                         "payout": 2.0, "children": 0, "stats": {}},
+            # muted/gray — dropped even with the highest payout
+            "dave/c3": {"author": "dave", "permlink": "c3", "parent_author": "alice",
+                        "parent_permlink": "post1", "body": "spam", "created": "2026-01-03",
+                        "payout": 99.0, "children": 0, "stats": {"gray": True}},
+            # nested reply — not a direct child, excluded
+            "eve/r1": {"author": "eve", "permlink": "r1", "parent_author": "bob",
+                       "parent_permlink": "c1", "body": "nested", "created": "2026-01-04",
+                       "payout": 50.0, "children": 0, "stats": {}},
+        }
+        with patch("project.hafsql.requests.post", return_value=self._resp(thread)):
+            result = get_top_comments("alice", "post1", limit=10)
+        assert [c["author"] for c in result] == ["bob", "carol"]
+        assert result[0]["payout"] == 5.0
+        assert result[0]["children"] == 1
+
+    def test_respects_limit(self):
+        thread = {
+            f"u{i}/c{i}": {"author": f"u{i}", "permlink": f"c{i}", "parent_author": "alice",
+                           "parent_permlink": "lim", "body": f"c{i}",
+                           "created": f"2026-01-0{i}", "payout": float(i),
+                           "children": 0, "stats": {}}
+            for i in range(1, 6)
+        }
+        with patch("project.hafsql.requests.post", return_value=self._resp(thread)):
+            result = get_top_comments("alice", "lim", limit=2)
+        assert len(result) == 2
+        assert result[0]["author"] == "u5"   # highest payout first
+
+    def test_hidden_comment_dropped(self):
+        thread = {
+            "x/c": {"author": "x", "permlink": "c", "parent_author": "alice",
+                    "parent_permlink": "hid", "body": "hidden", "created": "2026-01-01",
+                    "payout": 1.0, "children": 0, "stats": {"hide": True}},
+        }
+        with patch("project.hafsql.requests.post", return_value=self._resp(thread)):
+            assert get_top_comments("alice", "hid") == []
+
+    def test_returns_empty_when_no_result(self):
+        with patch("project.hafsql.requests.post", return_value=self._resp(None)):
+            assert get_top_comments("alice", "none-post") == []
+
+    def test_returns_empty_on_network_error(self):
+        with patch("project.hafsql.requests.post", side_effect=Exception("down")):
+            assert get_top_comments("alice", "err-post") == []

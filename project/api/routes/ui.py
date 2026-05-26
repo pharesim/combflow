@@ -1,10 +1,12 @@
 """UI routes — serves the discovery page and supporting API endpoints."""
 import asyncio
+import json as _json
 import logging
 import pathlib
 import re
 from datetime import datetime, timezone
 from html import escape as html_escape
+from urllib.parse import quote
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -20,7 +22,9 @@ from ...hafsql import (
     extract_post_metadata,
     get_hivecomb_posts,
     get_post_full,
+    get_top_comments,
 )
+from ...text import clean_post_body
 from ..deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -67,6 +71,166 @@ _OG_DEFAULT_DESC = (
 )
 
 
+# Inline-content limits for the server-rendered post-page enrichments
+# (proposals 095/096). Top N comments, each excerpted to keep page weight bounded.
+_INLINE_COMMENT_LIMIT = 10
+_INLINE_COMMENT_EXCERPT = 280
+
+
+def _proxied_avatar(author: str) -> str:
+    """Same-origin avatar URL (routed through the image proxy so it satisfies
+    the tightened CSP img-src, which only allows 'self')."""
+    target = f"https://images.hive.blog/u/{quote(author, safe='')}/avatar/small"
+    return f"/api/imageproxy?url={quote(target, safe='')}"
+
+
+def _build_comments_html(comments: list[dict] | None) -> str:
+    """Server-render the top comments as plain-text excerpts (proposal 095,
+    approval decision #1 — no server-side markdown renderer). Returns the full
+    ``<section>`` block (so it renders nothing on pages without comments) or ""."""
+    if not comments:
+        return ""
+    items: list[str] = []
+    ld_comments: list[dict] = []
+    for c in comments:
+        author = c.get("author") or ""
+        body = clean_post_body(c.get("body") or "")
+        if not body:
+            continue
+        excerpt = body[:_INLINE_COMMENT_EXCERPT].rstrip()
+        if len(body) > _INLINE_COMMENT_EXCERPT:
+            excerpt += "…"
+        items.append(
+            '<li class="inline-comment">'
+            f'<a class="inline-comment-author" href="/@{html_escape(author)}">@{html_escape(author)}</a>'
+            f'<blockquote class="inline-comment-body">{html_escape(excerpt)}</blockquote>'
+            "</li>"
+        )
+        ld_comments.append({
+            "@type": "Comment",
+            "author": {"@type": "Person", "name": f"@{author}"},
+            "text": excerpt,
+        })
+    if not items:
+        return ""
+    ld = _json.dumps(
+        {"@context": "https://schema.org", "@type": "ItemList",
+         "itemListElement": ld_comments},
+        separators=(",", ":"),
+    ).replace("</", "<\\/")
+    return (
+        '<section id="comments-inline" aria-label="Top comments">'
+        "<h2>Comments</h2>"
+        f'<ul class="inline-comments">{"".join(items)}</ul>'
+        f'<script type="application/ld+json">{ld}</script>'
+        "</section>"
+    )
+
+
+def _build_author_card_html(card: dict | None, site_url: str) -> str:
+    """Compact 'About the author' card for post pages (proposal 096). Reuses the
+    summary from ``crud.get_author_summary``; reputation comes from the already
+    fetched bridge.get_post payload (no extra RPC). Returns the full ``<aside>``
+    block or "" when the author has no classified posts."""
+    if not card:
+        return ""
+    summary = card.get("summary")
+    if not summary:
+        return ""
+    author = card["author"]
+    a = html_escape(author)
+    total = summary["total_posts"]
+    rep = card.get("reputation")
+    rep_html = (
+        f'<span class="reputation">Reputation: {int(rep)}</span>'
+        if isinstance(rep, (int, float))
+        else ""
+    )
+    cats = ", ".join(c["name"] for c in summary.get("top_categories", [])[:3])
+    cats_html = (
+        f'<div class="top-cats">Mostly writes about: {html_escape(cats)}</div>'
+        if cats
+        else ""
+    )
+    ld = _json.dumps(
+        {"@context": "https://schema.org", "@type": "Person", "name": f"@{author}",
+         "url": f"{site_url}/@{author}",
+         "knowsAbout": [c["name"] for c in summary.get("top_categories", [])]},
+        separators=(",", ":"),
+    ).replace("</", "<\\/")
+    return (
+        '<aside class="author-card" aria-label="About the author">'
+        f'<img src="{_proxied_avatar(author)}" alt="@{a}" width="48" height="48" loading="lazy">'
+        '<div class="meta">'
+        f'<a href="/@{a}"><strong>@{a}</strong></a>'
+        f"{rep_html}"
+        f'<span class="post-count">{total} posts on HiveComb</span>'
+        f"{cats_html}"
+        f'<a class="all-posts" href="/@{a}">View all posts →</a>'
+        "</div>"
+        f'<script type="application/ld+json">{ld}</script>'
+        "</aside>"
+    )
+
+
+def _build_author_summary_html(author: str, summary: dict | None, site_url: str) -> str:
+    """Server-render the author profile summary block for ``/@author`` pages
+    (proposal 098). Unique-per-page content above the post grid, plus a Person
+    JSON-LD blob. Returns the full ``<section>`` or "" when no summary."""
+    if not summary:
+        return ""
+    a = html_escape(author)
+    total = summary["total_posts"]
+    first_seen = summary.get("first_seen")
+    since = f" · Active since {first_seen.year}" if first_seen else ""
+    cat_html = "".join(
+        f'<a href="/c/{html_escape(c["id"])}">{html_escape(c["name"])}</a> ({c["count"]}) '
+        for c in summary.get("top_categories", [])
+    )
+    lang_html = "".join(
+        f'<a href="/lang/{html_escape(l["code"])}">{html_escape(l["code"])}</a> ({l["count"]}) '
+        for l in summary.get("top_languages", [])
+    )
+    tc = summary.get("top_community")
+    comm_html = (
+        "<div><dt>Top community</dt>"
+        f'<dd><a href="/community/{html_escape(tc["id"])}">{html_escape(tc["name"])}</a> ({tc["count"]})</dd></div>'
+        if tc
+        else ""
+    )
+    ld = _json.dumps(
+        {"@context": "https://schema.org", "@type": "Person", "name": f"@{author}",
+         "url": f"{site_url}/@{author}",
+         "knowsAbout": [c["name"] for c in summary.get("top_categories", [])]},
+        separators=(",", ":"),
+    ).replace("</", "<\\/")
+    return (
+        '<section class="author-summary" aria-label="Author profile">'
+        f"<header><h1>@{a}</h1>"
+        f'<p class="lede">{total} posts on Hive{since}</p></header>'
+        '<dl class="author-stats">'
+        f"<div><dt>Top categories</dt><dd>{cat_html}</dd></div>"
+        f"<div><dt>Languages</dt><dd>{lang_html}</dd></div>"
+        f"{comm_html}"
+        "</dl>"
+        f'<script type="application/ld+json">{ld}</script>'
+        "</section>"
+    )
+
+
+def _build_author_description(author: str, summary: dict) -> str:
+    """Per-author meta description for ``/@author`` pages (proposal 098).
+    Capped at ~155 chars to fit Google's snippet budget."""
+    parts = [f"Browse {summary['total_posts']} classified posts by @{author} on HiveComb."]
+    cats = [c["name"] for c in summary.get("top_categories", [])[:3]]
+    if cats:
+        parts.append(f"Most active in {', '.join(cats)}.")
+    langs = [l["code"] for l in summary.get("top_languages", [])[:1]]
+    if langs:
+        parts.append(f"Primary language: {langs[0]}.")
+    return " ".join(parts)[:155]
+
+
 def _render_legal(name: str) -> HTMLResponse:
     """Return a legal page template with placeholders replaced."""
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
@@ -83,6 +247,9 @@ def _render(
     request: Request,
     og: dict | None = None,
     post_data: dict | None = None,
+    comments: list[dict] | None = None,
+    author_card: dict | None = None,
+    author_summary: dict | None = None,
 ) -> HTMLResponse:
     """Render the discover template with placeholders substituted.
 
@@ -135,6 +302,19 @@ def _render(
     else:
         post_data_tag = ""
 
+    # Server-rendered post-page / author-page enrichments (proposals 095/096/098).
+    # Each builder returns the complete block or "" — so the placeholder renders
+    # nothing on pages without the data (this template engine has no conditionals).
+    # author_card / author_summary are {"author": str, "summary": dict | None} wrappers.
+    comments_html = _build_comments_html(comments)
+    author_card_html = _build_author_card_html(author_card, site_url)
+    if author_summary:
+        author_summary_html = _build_author_summary_html(
+            author_summary["author"], author_summary.get("summary"), site_url
+        )
+    else:
+        author_summary_html = ""
+
     html = (
         _TEMPLATES[name]
         .replace("{{SITE_URL}}", site_url)
@@ -146,6 +326,9 @@ def _render(
         .replace("{{OG_DESCRIPTION}}", og_desc)
         .replace("{{OG_IMAGE}}", og_image)
         .replace("{{POST_DATA_SCRIPT}}", post_data_tag)
+        .replace("{{COMMENTS_HTML}}", comments_html)
+        .replace("{{AUTHOR_CARD_HTML}}", author_card_html)
+        .replace("{{AUTHOR_SUMMARY_HTML}}", author_summary_html)
     )
     return HTMLResponse(html)
 
@@ -201,22 +384,44 @@ def _build_og_from_meta(meta: dict, author: str, permlink: str) -> dict:
     return og
 
 
-async def _fetch_post(author: str, permlink: str) -> tuple[dict, dict | None]:
-    """Single bridge.get_post call → (og_overrides, raw_post_data).
+async def _fetch_post(
+    author: str, permlink: str
+) -> tuple[dict, dict | None, list[dict]]:
+    """Fetch post + top comments concurrently (proposal 095).
 
-    Raw post data is inlined into the HTML so the client renders the modal
-    without a duplicate RPC. og overrides drive the per-page tags.
-    Returns ({}, None) on RPC failure.
+    → (og_overrides, raw_post_data, top_comments). The bridge.get_post and
+    bridge.get_discussion RPCs run concurrently via ``asyncio.gather`` (approval
+    decision #2 — shipping them sequentially is a latency regression). Raw post
+    data is inlined into the HTML so the client renders the modal without a
+    duplicate RPC; og overrides drive the per-page tags. Returns ({}, None, [])
+    on RPC failure.
     """
     try:
-        raw = await asyncio.to_thread(get_post_full, author, permlink)
+        raw, comments = await asyncio.gather(
+            asyncio.to_thread(get_post_full, author, permlink),
+            asyncio.to_thread(get_top_comments, author, permlink, _INLINE_COMMENT_LIMIT),
+        )
         if not raw:
-            return ({}, None)
+            return ({}, None, [])
         og = _build_og_from_meta(extract_post_metadata(raw), author, permlink)
-        return (og, raw)
+        # Replies are noindex'd and don't have a standalone discussion worth
+        # inlining — drop the (already fetched, concurrently) comments for them.
+        if raw.get("parent_author"):
+            comments = []
+        return (og, raw, comments)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.debug("post fetch failed for %s/%s: %s", author, permlink, exc)
-        return ({}, None)
+        return ({}, None, [])
+
+
+async def _safe_author_summary(db: AsyncSession, author: str) -> dict | None:
+    """crud.get_author_summary that swallows DB errors (returns None). Lets a
+    post-page render proceed even if the author aggregation query fails."""
+    try:
+        return await crud.get_author_summary(db, author)
+    except Exception as exc:
+        logger.debug("author summary lookup failed for %s: %s", author, exc)
+        return None
 
 
 # ── HTML pages ────────────────────────────────────────────────────────────────
@@ -285,22 +490,54 @@ _AUTHOR_INDEX_MIN_POSTS = 10
 async def discover_author(
     request: Request, author: str, db: AsyncSession = Depends(get_db)
 ):
-    og = {
+    # Default shell: also the graceful fallback on DB error \u2014 render WITHOUT
+    # noindex, since hiding a possibly-substantive profile on a transient error
+    # is worse than risking an indexable thin one.
+    default_og = {
         "title": f"@{author} \u2014 HiveComb",
         "description": f"Posts by @{author} on HiveComb",
     }
     try:
-        if await crud.get_author_total_post_count(db, author) < _AUTHOR_INDEX_MIN_POSTS:
-            og["noindex"] = True
+        summary = await crud.get_author_summary(db, author)
     except Exception as exc:
-        logger.debug("author post-count lookup failed for %s: %s", author, exc)
-    return _render("discover.html", request, og=og)
+        logger.debug("author summary lookup failed for %s: %s", author, exc)
+        return _render("discover.html", request, og=default_og)
+
+    total = summary["total_posts"] if summary else 0
+    if total < _AUTHOR_INDEX_MIN_POSTS:
+        # Thin profile \u2192 noindex,follow (Soft-404 avoidance) + shell-only render.
+        return _render(
+            "discover.html", request, og={**default_og, "noindex": True}
+        )
+
+    cats = ", ".join(c["name"] for c in summary["top_categories"][:3])
+    og = {
+        "canonical_self": True,
+        "title": f"@{author} \u2014 {total} posts on Hive" + (f" \u00b7 {cats}" if cats else ""),
+        "description": _build_author_description(author, summary),
+    }
+    return _render(
+        "discover.html", request, og=og,
+        author_summary={"author": author, "summary": summary},
+    )
 
 
 @router.get("/@{author}/{permlink}", include_in_schema=False)
-async def discover_post(request: Request, author: str, permlink: str):
-    og, raw = await _fetch_post(author, permlink)
-    return _render("discover.html", request, og=og, post_data=raw)
+async def discover_post(
+    request: Request, author: str, permlink: str, db: AsyncSession = Depends(get_db)
+):
+    # Post fetch (+ inline comments) and the author aggregation run concurrently.
+    (og, raw, comments), summary = await asyncio.gather(
+        _fetch_post(author, permlink),
+        _safe_author_summary(db, author),
+    )
+    # Reputation for the mini-card comes free from the bridge.get_post payload
+    # (no extra RPC) \u2014 bridge posts carry a pre-computed author_reputation score.
+    reputation = raw.get("author_reputation") if raw else None
+    return _render(
+        "discover.html", request, og=og, post_data=raw, comments=comments,
+        author_card={"author": author, "summary": summary, "reputation": reputation},
+    )
 
 
 # ── Legal pages ──────────────────────────────────────────────────────────────
