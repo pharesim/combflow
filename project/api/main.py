@@ -87,6 +87,26 @@ async def lifespan(app: FastAPI):
         app.state.centroids = {}
         logger.warning("No centroids — worker handles classification")
 
+    # Pre-warm expensive caches so the first browser request is fast.
+    # /api/languages and /api/stats otherwise do full table scans of posts
+    # with cold PG buffers, costing 5-10s on the first hit after a rebuild.
+    # Warm languages before stats: get_overview_stats reads the "languages"
+    # cache to skip its own full table scan.
+    try:
+        async with AsyncSessionLocal() as session:
+            langs = await crud.get_available_languages(session)
+            cache.put("languages", {"languages": langs}, ttl=3600)
+
+            stats = await crud.get_overview_stats(session)
+            stats["api_base_url"] = settings.api_base_url
+            cache.put("overview_stats", stats, ttl=300)
+
+            comms = await crud.get_available_communities(session)
+            cache.put("communities", {"communities": comms}, ttl=300)
+        logger.info("pre-warmed languages/stats/communities caches")
+    except SQLAlchemyError as exc:
+        logger.warning("cache pre-warm failed: %s", exc)
+
     app.state.http_client = httpx.AsyncClient(
         follow_redirects=True,
         max_redirects=5,

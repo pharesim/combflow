@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from project.categories import CATEGORY_TREE, LEAF_CATEGORIES
 from project import cache
+from project import apps_canonical
 from project.api.routes.ui import _OG_DEFAULT_TITLE, _OG_DEFAULT_DESC
 
 
@@ -415,9 +416,16 @@ async def test_canonical_honors_publisher_declared_url(client):
     assert '<meta property="og:url" content="https://example.com/@alice/some-post">' in body
 
 
-async def test_canonical_inferred_from_app_when_no_explicit_canonical(client):
+async def test_canonical_inferred_from_app_when_no_explicit_canonical(client, monkeypatch):
     """peakd/ecency/hiveblog posts (which don't set canonical_url) should
     canonical to their rightful publisher based on the app field."""
+    # APP_CANONICAL_URLS is empty at import (populated only by the upstream
+    # refresh, which never runs under pytest) — seed the entry the app-inference
+    # path needs. ui.py reads this same module object.
+    monkeypatch.setattr(
+        apps_canonical, "APP_CANONICAL_URLS",
+        {"peakd": "https://peakd.com/@{author}/{permlink}"},
+    )
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"
@@ -516,8 +524,12 @@ async def test_reply_gets_noindex_and_omits_canonical(client):
     assert '<link rel="canonical"' not in body
 
 
-async def test_top_level_post_does_not_get_noindex(client):
+async def test_top_level_post_does_not_get_noindex(client, monkeypatch):
     """Posts with no parent_author keep current canonical behavior, no robots tag."""
+    monkeypatch.setattr(
+        apps_canonical, "APP_CANONICAL_URLS",
+        {"peakd": "https://peakd.com/@{author}/{permlink}"},
+    )
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_post_full") as mock_get:
         mock_settings.site_url = "https://example.com"

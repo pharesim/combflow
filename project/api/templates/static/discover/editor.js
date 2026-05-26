@@ -390,7 +390,7 @@ function removeEditorTag(i) {
 }
 
 function handleTagKey(e) {
-  if (e.key === 'Enter' || e.key === ',') {
+  if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
     e.preventDefault();
     const val = e.target.value.trim().replace(/,$/,'');
     if (val) addEditorTag(val);
