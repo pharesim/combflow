@@ -66,6 +66,7 @@ function updateFilterCounts() {
   setFilterBadge('count-sentiment', sentCount);
   setFilterBadge('count-languages', langCount);
   setFilterBadge('count-communities', comCount);
+  setFilterBadge('count-filters', catCount + sentCount + langCount + comCount);
 }
 
 function setFilterBadge(id, count) {
