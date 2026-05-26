@@ -419,6 +419,9 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
 .author-card .meta > a:hover{text-decoration:underline}
 .author-card .all-posts{color:var(--hive-red);text-decoration:none;font-size:13px;margin-top:4px}
 .author-card .all-posts:hover{text-decoration:underline}
+/* Modal author mini-card (099) — sits under the compact meta header (which
+   already carries margin-bottom:16px), so drop the primer's top margin. */
+#modal-author-card{margin:0 0 12px}
 #comments-inline{margin-top:24px;border-top:1px solid var(--border);padding-top:20px}
 #comments-inline h2{font-size:16px;color:var(--text-bright);font-weight:700;margin-bottom:16px}
 .inline-comments{list-style:none;margin:0;padding:0}

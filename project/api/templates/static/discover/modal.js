@@ -7,6 +7,25 @@ async function openModal(post, skipPush) {
   }
   document.getElementById('modal-title').textContent = 'Loading...';
   document.getElementById('modal-author').innerHTML = `${avatarHtml(post.author, 28)}<a class="clickable-author" href="/@${esc(post.author)}">@${esc(post.author)}</a>`;
+
+  // Author mini-card (proposal 099): hide any stale card, then fetch this
+  // author's HiveComb summary in parallel with the post body. Reputation is
+  // filled in from the bridge.get_post payload (author_reputation) once it
+  // arrives; the rest (post count, top categories) comes from the summary.
+  document.getElementById('modal-author-card').style.display = 'none';
+  document.getElementById('modal-author-card').innerHTML = '';
+  let authorSummary = undefined;  // undefined = fetch in flight; null = no data
+  const applyAuthorCard = () => {
+    if (authorSummary === undefined) return;
+    const cur = Alpine.store('app').modalPost;
+    if (!cur || cur.author !== post.author || cur.permlink !== post.permlink) return;
+    const rep = (result && typeof result.author_reputation === 'number') ? result.author_reputation : null;
+    renderModalAuthorCard(post.author, rep, authorSummary);
+  };
+  fetch('/api/authors/' + encodeURIComponent(post.author) + '/summary')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { authorSummary = (d && d.summary) || null; applyAuthorCard(); })
+    .catch(() => { authorSummary = null; applyAuthorCard(); });
   const commEl = document.getElementById('modal-community');
   if (post.community_name && post.community_id) {
     commEl.textContent = post.community_name;
@@ -237,6 +256,9 @@ async function openModal(post, skipPush) {
   }
   window.prerenderReady = true;
 
+  // Render the author card now that the post payload (and its reputation) is in.
+  applyAuthorCard();
+
   // Patch in fresh stats once the background refetch returns. Bail if the
   // modal was closed or navigated to a different post in the meantime.
   if (freshPromise) {
@@ -244,6 +266,12 @@ async function openModal(post, skipPush) {
       if (!fresh) return;
       const cur = Alpine.store('app').modalPost;
       if (!cur || cur.author !== post.author || cur.permlink !== post.permlink) return;
+      // Cached-branch result has no reputation; fill it from the fresh payload
+      // and re-render the author card (proposal 099).
+      if (typeof fresh.author_reputation === 'number') {
+        result.author_reputation = fresh.author_reputation;
+        applyAuthorCard();
+      }
       const freshVotes = (fresh.stats && fresh.stats.total_votes) || (fresh.active_votes || []).length;
       document.getElementById('modal-vote-count').textContent = freshVotes;
       let freshPayout = null;
@@ -268,10 +296,38 @@ async function openModal(post, skipPush) {
   }
 }
 
+// Render the "About the author" mini-card at the top of the modal (proposal
+// 099). Mirrors the server-rendered card (_build_author_card_html): avatar,
+// @username, reputation (from the post payload), HiveComb post count, and the
+// top categories. Hides the card when there's no summary.
+function renderModalAuthorCard(author, reputation, summary) {
+  const el = document.getElementById('modal-author-card');
+  if (!el) return;
+  if (!summary) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const a = esc(author);
+  const avatar = proxyImg('https://images.hive.blog/u/' + encodeURIComponent(author) + '/avatar/small');
+  const repHtml = (typeof reputation === 'number')
+    ? `<span class="reputation">Reputation: ${Math.round(reputation)}</span>` : '';
+  const cats = (summary.top_categories || []).slice(0, 3).map(c => c.name).join(', ');
+  const catsHtml = cats ? `<div class="top-cats">Mostly writes about: ${esc(cats)}</div>` : '';
+  el.innerHTML =
+    `<img src="${esc(avatar)}" alt="@${a}" width="48" height="48" loading="lazy">` +
+    '<div class="meta">' +
+      `<a href="/@${a}"><strong>@${a}</strong></a>` +
+      repHtml +
+      `<span class="post-count">${summary.total_posts} posts on HiveComb</span>` +
+      catsHtml +
+      `<a class="all-posts" href="/@${a}">View all posts →</a>` +
+    '</div>';
+  el.style.display = '';
+}
+
 function closeModal(skipPush) {
   resumeMeta();
   const modalEl = document.getElementById('modal');
   releaseFocus(modalEl.querySelector('.modal'));
+  document.getElementById('modal-author-card').style.display = 'none';
+  document.getElementById('modal-author-card').innerHTML = '';
   Alpine.store('app').modalOpen = false;
   Alpine.store('app').modalPost = null;
   Alpine.store('app').reportOpen = false;

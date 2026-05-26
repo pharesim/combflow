@@ -806,3 +806,28 @@ async def test_fetch_post_returns_empty_triple_on_failure():
     assert og == {} and raw is None and comments == []
 
 
+# ── GET /api/authors/{author}/summary (proposal 099) ─────────────────────────
+
+async def test_author_summary_endpoint_returns_data(client, seeded_db):
+    resp = await client.get("/api/authors/alice/summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["summary"]["total_posts"] == 1
+    assert data["summary"]["top_categories"][0]["name"] == seeded_db["leaf_name"]
+    # Reputation is deliberately excluded — the client reads it from the post payload.
+    assert "reputation" not in data["summary"]
+    assert resp.headers["cache-control"] == "public, max-age=21600"
+
+
+async def test_author_summary_endpoint_null_for_unknown_author(client, seeded_db):
+    resp = await client.get("/api/authors/nobodyhere/summary")
+    assert resp.status_code == 200
+    assert resp.json() == {"summary": None}
+
+
+async def test_author_summary_endpoint_rejects_malformed_username(client):
+    # Uppercase fails the lowercase Hive username pattern → path validation 422.
+    resp = await client.get("/api/authors/Alice/summary")
+    assert resp.status_code == 422
+
+

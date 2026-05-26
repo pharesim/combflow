@@ -9,7 +9,7 @@ from html import escape as html_escape
 from urllib.parse import quote
 from xml.sax.saxutils import escape as xml_escape
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -874,3 +874,30 @@ async def overview_stats(db: AsyncSession = Depends(get_db)):
     result = await crud.get_overview_stats(db)
     result["api_base_url"] = settings.api_base_url
     return result
+
+
+# Hive username pattern (matches the post/report routes' author validation).
+_USERNAME_PATTERN = r"^[a-z0-9][a-z0-9.\-]{0,15}$"
+
+
+@router.get("/api/authors/{author}/summary", tags=["discovery"],
+            summary="Author profile summary")
+async def author_summary(
+    response: Response,
+    author: str = Path(..., max_length=16, pattern=_USERNAME_PATTERN),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aggregated author stats for the post-page author mini-card (proposal 099):
+    total classified posts, top categories/languages/community. Lets the SPA modal
+    render the card for any post opened client-side, where no server-rendered copy
+    exists.
+
+    Reputation is intentionally NOT returned — the modal already holds
+    ``author_reputation`` from the bridge.get_post payload, so this stays a fast,
+    DB-only read. Backed by ``crud.get_author_summary`` (6h in-process cache).
+    Returns ``{"summary": {...} | null}``; null when the author has no classified
+    posts. Malformed usernames are rejected by path validation (422).
+    """
+    summary = await crud.get_author_summary(db, author)
+    response.headers["Cache-Control"] = "public, max-age=21600"
+    return {"summary": summary}
