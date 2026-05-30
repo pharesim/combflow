@@ -250,20 +250,24 @@ def get_post_full(author: str, permlink: str) -> dict | None:
     Inlined into post-page HTML so the client can render the modal without a
     duplicate RPC call. Also feeds get_post_metadata for OG extraction.
     """
-    try:
-        resp = requests.post(
-            "https://api.hive.blog",
-            json={
-                "jsonrpc": "2.0",
-                "method": "bridge.get_post",
-                "params": {"author": author, "permlink": permlink},
-                "id": 1,
-            },
-            timeout=4,
-        )
-        return resp.json().get("result")
-    except Exception as exc:
-        logger.debug("post full fetch failed for %s/%s: %s", author, permlink, exc)
+    for node in settings.hive_api_nodes:
+        try:
+            resp = requests.post(
+                node,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "bridge.get_post",
+                    "params": {"author": author, "permlink": permlink},
+                    "id": 1,
+                },
+                timeout=4,
+            )
+            result = resp.json().get("result")
+            if result is not None:
+                return result
+        except Exception as exc:
+            logger.debug("post full fetch failed on %s for %s/%s: %s", node, author, permlink, exc)
+            continue
     return None
 
 
@@ -472,24 +476,26 @@ def get_community(community_id: str) -> dict | None:
 
     Returns {"title": ..., "about": ...} or None on error/not found.
     """
-    try:
-        resp = requests.post(
-            "https://api.hive.blog",
-            json={
-                "jsonrpc": "2.0",
-                "method": "bridge.get_community",
-                "params": {"name": community_id},
-                "id": 1,
-            },
-            timeout=4,
-        )
-        data = resp.json().get("result")
-        if data is not None:
-            return {
-                "title": data.get("title") or "",
-                "about": data.get("about") or "",
-            }
-    except Exception as exc:
-        logger.debug("community lookup failed for %s: %s", community_id, exc)
+    for node in settings.hive_api_nodes:
+        try:
+            resp = requests.post(
+                node,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "bridge.get_community",
+                    "params": {"name": community_id},
+                    "id": 1,
+                },
+                timeout=4,
+            )
+            data = resp.json().get("result")
+            if data is not None:
+                return {
+                    "title": data.get("title") or "",
+                    "about": data.get("about") or "",
+                }
+        except Exception as exc:
+            logger.debug("community lookup failed on %s for %s: %s", node, community_id, exc)
+            continue
     return None
 

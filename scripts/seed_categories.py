@@ -463,6 +463,20 @@ def fetcher_thread(
         status["fetch_done"] = True
         return
 
+    # Snapshot a created upper bound at the start of the run so OFFSET pagination
+    # is stable — without this, new posts arriving mid-run shift every row down
+    # and cause us to skip/duplicate rows across batches.
+    start_ts = None
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT MAX(created) AS max_created FROM hafsql.comments")
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            start_ts = row.get("max_created")
+    except Exception as exc:
+        log.warning("[FETCH] Could not snapshot upper-bound timestamp: %s", exc)
+
     while fetched < n_posts and not stop_event.is_set():
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -475,10 +489,11 @@ def fetcher_thread(
                 LEFT JOIN hafsql.reputations r ON c.author = r.account_name
                 WHERE c.parent_author = ''
                   AND LENGTH(c.body) >= 80
+                  AND (%s::timestamp IS NULL OR c.created <= %s)
                 ORDER BY c.created DESC
                 LIMIT %s OFFSET %s
                 """,
-                (batch_size, offset),
+                (start_ts, start_ts, batch_size, offset),
             )
             rows = cur.fetchall()
             cur.close()

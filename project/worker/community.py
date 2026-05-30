@@ -55,12 +55,11 @@ def _resolve_community(
         return cached
 
     meta = get_community(community_id)
-    name = ""
-    if meta:
-        name = meta.get("title") or ""
-        about = meta.get("about") or ""
-    else:
-        about = ""
+    if meta is None:
+        # Transient lookup failure — don't poison the cache; retry on the next post.
+        return (None, "", 0.0)
+    name = meta.get("title") or ""
+    about = meta.get("about") or ""
 
     result: tuple[str | None, str, float] = (None, name, 0.0)
 

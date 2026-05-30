@@ -675,6 +675,32 @@ async def get_distinct_authors(
     return [r[0] for r in rows.fetchall()]
 
 
+async def get_nsfw_author_permlinks(
+    session: AsyncSession, pairs: list[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Return the subset of (author, permlink) pairs flagged is_nsfw in our DB.
+
+    Used to scrub NSFW posts from public crawler-facing surfaces (e.g. the
+    sitemap) by reusing the same NSFW logic the worker already applies, rather
+    than re-deriving it from HAFSQL json_metadata at read time.
+    """
+    if not pairs:
+        return set()
+    authors = [a for a, _ in pairs]
+    permlinks = [p for _, p in pairs]
+    rows = await session.execute(
+        text(
+            "SELECT p.author, p.permlink FROM posts p "
+            "JOIN unnest(CAST(:authors AS text[]), CAST(:permlinks AS text[])) "
+            "  AS k(author, permlink) "
+            "  ON p.author = k.author AND p.permlink = k.permlink "
+            "WHERE p.is_nsfw = true"
+        ),
+        {"authors": authors, "permlinks": permlinks},
+    )
+    return {(r[0], r[1]) for r in rows.fetchall()}
+
+
 async def get_recently_active_authors(
     session: AsyncSession, days: int = 60, limit: int = 1000
 ) -> list[tuple[str, _dt]]:

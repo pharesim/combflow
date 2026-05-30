@@ -950,8 +950,15 @@ async def _build_sitemap_xml(db: AsyncSession, site_url: str) -> str:
     # copies as "Duplicate, Google chose different canonical" — wasted crawl budget
     # and a low-quality signal on our sitemap.
     posts = await asyncio.to_thread(get_hivecomb_posts, 1000)
+    # Drop NSFW posts so Google doesn't index them — reuse the worker's
+    # already-applied NSFW classification from our own posts table.
+    nsfw_pairs = await crud.get_nsfw_author_permlinks(
+        db, [(a, p) for a, p, _ in posts]
+    )
     author_lastmod: dict[str, str] = {}
     for author, permlink, created in posts:
+        if (author, permlink) in nsfw_pairs:
+            continue
         lastmod = created.strftime("%Y-%m-%d") if created else now
         loc = f"{site_url}/@{xml_escape(author)}/{xml_escape(permlink)}"
         urls.append(
