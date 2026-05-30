@@ -39,7 +39,31 @@ Preferred-Languages: en
 	handle @bot {
 		log_skip
 		rewrite * /https://{host}{path}
-		reverse_proxy prerender:3000
+		reverse_proxy prerender:3000 {
+			# Fail fast to the fallback rather than making a crawler wait out a
+			# Chromium stall (failure mode 1: prerender unreachable / silent stall).
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 20s
+			}
+			# Failure mode 2: prerender *responds* with a 5xx (e.g. a 504 Gateway
+			# Timeout body). reverse_proxy treats that as a successful proxy and
+			# would pass it straight through to the crawler — handle_errors does
+			# NOT fire. Intercept the 5xx here and re-proxy to the app's
+			# server-rendered floor (proposal 100, Phase 3).
+			@prerender_err status 500 502 503 504
+			handle_response @prerender_err {
+				# The @bot rewrite above replaced {path} with prerender's
+				# /https://{host}{path} form; restore the original request URI so
+				# the app sees the real path (orig_uri.path predates the rewrite).
+				rewrite * {http.request.orig_uri.path}
+				encode zstd gzip
+				reverse_proxy combflow-app:8000 {
+					lb_try_duration 10s
+					lb_try_interval 250ms
+				}
+			}
+		}
 	}
 	@prerender_internal {
 		header User-Agent *Prerender*
@@ -63,6 +87,25 @@ Preferred-Languages: en
 		}
 	}
 	handle {
+		encode zstd gzip
+		reverse_proxy combflow-app:8000 {
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
+	}
+	handle_errors {
+		# Prerender failure mode 1: the @bot reverse_proxy can't reach prerender
+		# or it stalls past the transport timeouts above, so reverse_proxy raises
+		# a handler error. (Mode 2 — prerender answering with a 5xx — is caught
+		# inside the @bot block by handle_response @prerender_err; it never reaches
+		# here.) Caddy disallows handle_errors nested inside handle, so it lives at
+		# the site level — but the orig_uri.path rewrite keeps it correct for every
+		# handler: on the @bot path it undoes the /https://{host}{path} rewrite, and
+		# on any other path orig_uri.path is just the original path, so a transient
+		# app-upstream error simply re-proxies to the app. Serve the direct app
+		# response, which after proposal 100 Phase 1 is a substantive server-rendered
+		# page — indexable HTML instead of a soft-404.
+		rewrite * {http.request.orig_uri.path}
 		encode zstd gzip
 		reverse_proxy combflow-app:8000 {
 			lb_try_duration 10s
