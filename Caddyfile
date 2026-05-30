@@ -63,6 +63,14 @@ Preferred-Languages: en
 					lb_try_interval 250ms
 				}
 			}
+			# NOT covered here: prerender answering 200 with a thin/empty body (JS
+			# eval failed or timed out internally). That passes straight to the
+			# crawler — it stays covered by the e2e healthcheck + autoheal, which
+			# restart the stuck container. Folding it into this fallback would need
+			# server.js to emit 503 (or an X-Prerender-Status header) on a
+			# below-threshold render; tracked as the optional prerender/ follow-up
+			# in proposal 100, Phase 3. Revisit if Phase 2 shows residual thin-body
+			# soft-404s.
 		}
 	}
 	@prerender_internal {
@@ -105,6 +113,13 @@ Preferred-Languages: en
 		# app-upstream error simply re-proxies to the app. Serve the direct app
 		# response, which after proposal 100 Phase 1 is a substantive server-rendered
 		# page — indexable HTML instead of a soft-404.
+		#
+		# Edge case (both down): if combflow-app is ALSO unreachable, this
+		# reverse_proxy fails too. Caddy does not re-enter handle_errors for an
+		# error raised inside handle_errors (no infinite loop), so the crawler gets
+		# Caddy's synthetic 502 after the prerender timeout + this lb_try_duration
+		# (~35s worst case). Acceptable: a total app+prerender outage is not a
+		# soft-404 case, and it surfaces the outage rather than masking it.
 		rewrite * {http.request.orig_uri.path}
 		encode zstd gzip
 		reverse_proxy combflow-app:8000 {
