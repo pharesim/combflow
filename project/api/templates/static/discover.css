@@ -30,6 +30,8 @@ body{overflow-x:hidden}
 .mute-btn, .follow-btn, .report-char-count, .notif-time,
 .author-stats dt, .author-card .reputation,
 .author-card .post-count, .author-card .top-cats,
+.author-recent-posts li time,
+.seo-post-meta, .post-body-fallback .post-meta,
 .settings-section-title
 { font-size:12px; color:var(--text-dim) }
 
@@ -406,6 +408,13 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
 .author-stats dd{margin:0;font-size:14px;color:var(--text);line-height:1.7}
 .author-stats dd a{color:var(--hive-red);text-decoration:none}
 .author-stats dd a:hover{text-decoration:underline}
+.author-recent-posts{margin-top:16px;border-top:1px solid var(--border);padding-top:16px}
+.author-recent-posts h2{font-size:14px;color:var(--text-bright);font-weight:700;margin:0 0 10px;text-transform:uppercase;letter-spacing:1px}
+.recent-posts-list{margin:0;padding-left:20px;color:var(--text);font-size:14px;line-height:1.7}
+.recent-posts-list li{margin-bottom:2px}
+.recent-posts-list a{color:var(--hive-red);text-decoration:none}
+.recent-posts-list a:hover{text-decoration:underline}
+.author-recent-posts li time{margin-left:8px}
 
 /* Post-page primer — author mini-card (096) + inline top comments (095).
    Removed by discover.js once the SPA modal takes over; styled for the brief
@@ -428,6 +437,51 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
 .inline-comment-author{display:block;color:var(--hive-red);font-size:13px;font-weight:600;text-decoration:none;margin-bottom:4px}
 .inline-comment-author:hover{text-decoration:underline}
 .inline-comment-body{margin:0;line-height:1.6}
+
+/* ── Server-rendered SEO primers (proposal 100, Phase 1) ──
+   Two crawler / no-JS surfaces the backend fills via {{RECENT_POSTS_HTML}} and
+   {{POST_BODY_FALLBACK_HTML}}. On the homepage + post pages discover.js removes
+   them on mount, so these styles cover the brief pre-JS flash and the no-JS
+   fallback; on /c/, /lang/, /community/ the recent-posts block stays visible.
+
+   HTML contract the backend builders must emit:
+     {{RECENT_POSTS_HTML}}  (root + filtered surfaces)
+       <section class="seo-recent-posts" aria-label="Recent posts">
+         <h2>{heading}</h2>
+         <p class="seo-intro">{optional category/lang/community description}</p>
+         <ol class="seo-post-list">
+           <li>
+             <a class="seo-post-title" href="/@{author}/{permlink}">{title}</a>
+             <div class="seo-post-meta">@{author} · <time datetime="{iso}">{date}</time></div>
+             <p class="seo-post-excerpt">{excerpt}</p>
+           </li>…
+         </ol>
+       </section>
+     {{POST_BODY_FALLBACK_HTML}}  (/@author/permlink top-level posts)
+       <article class="post-body-fallback">
+         <h1>{title}</h1>
+         <div class="post-meta">@{author} · {date} · {community} · {categories}</div>
+         <div class="post-body"><p>…</p>…</div>
+       </article> */
+.seo-recent-posts{max-width:1280px;margin:16px auto 0;padding:20px 24px;background:var(--bg2);border:1px solid var(--border);border-radius:16px}
+.seo-recent-posts h2{font-size:18px;color:var(--text-bright);font-weight:700;margin:0 0 10px}
+.seo-intro{margin:0 0 16px;font-size:14px;line-height:1.6;color:var(--text-dim);max-width:70ch}
+.seo-post-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:16px}
+.seo-post-list > li{margin:0}
+.seo-post-title{display:inline-block;color:var(--hive-red);text-decoration:none;font-size:15px;font-weight:600;line-height:1.4}
+.seo-post-title:hover{text-decoration:underline}
+.seo-post-meta{margin:2px 0}
+.seo-post-meta time{margin-left:0}
+.seo-post-excerpt{margin:4px 0 0;font-size:14px;line-height:1.6;color:var(--text);max-width:80ch}
+
+/* Post-body fallback under the author card on /@author/permlink — plain-text
+   body so crawlers index real content when prerender stalls; the SPA modal
+   renders full-fidelity markdown once mounted. */
+.post-body-fallback{max-width:1280px;margin:24px auto 0;padding:0 24px}
+.post-body-fallback h1{font-size:26px;color:var(--text-bright);line-height:1.25;margin:0 0 8px}
+.post-body-fallback .post-meta{margin:0 0 16px}
+.post-body-fallback .post-body{font-size:16px;line-height:1.7;color:var(--text)}
+.post-body-fallback .post-body p{margin:0 0 14px}
 
 /* Comment form */
 .comment-form{margin-bottom:16px;padding:12px;background:var(--card);border-radius:10px;border:1px solid var(--border)}
@@ -655,6 +709,12 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
   .author-summary h1{font-size:20px}
   .author-stats{gap:10px 20px}
   #post-seo-enrichments{padding:0 16px}
+  /* Keep the SEO primers compact on mobile so they don't push the grid off-screen (100). */
+  .seo-recent-posts{margin:12px;padding:14px 16px;border-radius:12px}
+  .seo-recent-posts h2{font-size:17px}
+  .post-body-fallback{padding:0 16px}
+  .post-body-fallback h1{font-size:22px}
+  .post-body-fallback .post-body{font-size:15px}
 }
 @media(max-width:600px){.md-help-grid{grid-template-columns:1fr}}
 @media(max-width:767px){

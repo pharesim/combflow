@@ -279,6 +279,14 @@
      /@author pages with 10+ posts; empty string everywhere else. Stays in the
      DOM — it's real above-the-grid content for readers, not just a crawler primer. -->
 {{AUTHOR_SUMMARY_HTML}}
+<!-- Server-rendered recent-posts primer (proposal 100, Phase 1). Backend fills
+     {{RECENT_POSTS_HTML}} with a <section class="seo-recent-posts"> block on /,
+     /c/{cat}, /lang/{lang}, /community/{id} (empty string elsewhere). On the
+     homepage discover.js removes this wrapper once the SPA mounts (the hex grid
+     is the product); on filtered surfaces it stays as a useful preview above the
+     grid (locked decision 2). The wrapper id is owned here so the removal logic
+     has a stable target even though the inner block is built server-side. -->
+<div id="recent-posts-seo">{{RECENT_POSTS_HTML}}</div>
 <div class="hex-container" id="hex-container" x-show="$store.app.layoutMode === 'hex'">
   <div class="hex-grid" id="hex-grid"
        x-effect="if ($store.app.hexGridW > 0) { $el.style.width = $store.app.hexGridW + 'px'; $el.style.height = $store.app.hexGridH + 'px'; }">
@@ -686,12 +694,14 @@
   </div>
 </div>
 
-<!-- Server-rendered post-page enrichments: author mini-card (096) + top comments
-     (095). Substituted server-side only on /@author/permlink pages; empty string
-     on every other page. This is a crawler / no-JS primer — the SPA modal renders
-     the live author card and comment tree, so discover.js removes this block on
-     boot to avoid duplicate content (proposal 095 risk #1, Option A). -->
-<div id="post-seo-enrichments">{{AUTHOR_CARD_HTML}}{{COMMENTS_HTML}}</div>
+<!-- Server-rendered post-page enrichments: author mini-card (096) + post-body
+     fallback (100, Phase 1) + top comments (095). Substituted server-side only on
+     /@author/permlink pages; empty string on every other page. This is a crawler /
+     no-JS primer — the SPA modal renders the live author card, full post body, and
+     comment tree, so discover.js removes this block on boot to avoid duplicate
+     content (proposal 095 risk #1, Option A). The body fallback sits under the
+     author card and inherits the same removal-on-mount for free. -->
+<div id="post-seo-enrichments">{{AUTHOR_CARD_HTML}}{{POST_BODY_FALLBACK_HTML}}{{COMMENTS_HTML}}</div>
 
 </main>
 

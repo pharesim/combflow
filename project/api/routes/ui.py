@@ -20,12 +20,22 @@ from ...config import settings
 from ...db import crud
 from ...hafsql import (
     extract_post_metadata,
+    get_community,
     get_hivecomb_posts,
     get_post_full,
     get_top_comments,
 )
+from ...lang_names import language_display_name
 from ...text import clean_post_body
 from ..deps import get_db
+
+# Per-leaf-category intro text (proposal 100, Seeds scope). Imported guardedly so
+# the app still boots if Seeds hasn't added the constant yet — a missing/empty
+# entry simply means "no intro paragraph" (the page renders without it).
+try:
+    from ...categories import CATEGORY_DESCRIPTIONS
+except ImportError:  # pragma: no cover - constant lands with the Seeds change
+    CATEGORY_DESCRIPTIONS: dict[str, str] = {}
 
 logger = logging.getLogger(__name__)
 
@@ -173,10 +183,22 @@ def _build_author_card_html(card: dict | None, site_url: str) -> str:
     )
 
 
-def _build_author_summary_html(author: str, summary: dict | None, site_url: str) -> str:
+def _build_author_summary_html(
+    author: str, summary: dict | None, site_url: str,
+    recent_posts: list[dict] | None = None,
+) -> str:
     """Server-render the author profile summary block for ``/@author`` pages
     (proposal 098). Unique-per-page content above the post grid, plus a Person
-    JSON-LD blob. Returns the full ``<section>`` or "" when no summary."""
+    JSON-LD blob.
+
+    ``recent_posts`` (Soft-404 fix): titles + permlinks of the author's recent
+    classified posts, rendered as a visible ``<ol>`` of `/@author/permlink`
+    links. These become the page's dominant unique-text signal — without
+    them the only server-rendered uniqueness is ~150 chars of stats, drowned
+    in ~9KB of template chrome and JS-only hex tiles → Google flags Soft 404.
+
+    Returns the full ``<section>`` or "" when no summary.
+    """
     if not summary:
         return ""
     a = html_escape(author)
@@ -204,6 +226,7 @@ def _build_author_summary_html(author: str, summary: dict | None, site_url: str)
          "knowsAbout": [c["name"] for c in summary.get("top_categories", [])]},
         separators=(",", ":"),
     ).replace("</", "<\\/")
+    recent_html = _build_author_recent_posts_html(author, recent_posts, site_url)
     return (
         '<section class="author-summary" aria-label="Author profile">'
         f"<header><h1>@{a}</h1>"
@@ -213,6 +236,51 @@ def _build_author_summary_html(author: str, summary: dict | None, site_url: str)
         f"<div><dt>Languages</dt><dd>{lang_html}</dd></div>"
         f"{comm_html}"
         "</dl>"
+        f"{recent_html}"
+        f'<script type="application/ld+json">{ld}</script>'
+        "</section>"
+    )
+
+
+def _build_author_recent_posts_html(
+    author: str, recent_posts: list[dict] | None, site_url: str
+) -> str:
+    """Render the author's recent posts as ``<ol>`` of titled links + ItemList
+    JSON-LD. Returns "" when empty so absent HAFSQL data degrades cleanly to
+    the stats-only summary (still indexable, just less dense)."""
+    if not recent_posts:
+        return ""
+    a = html_escape(author)
+    items_html: list[str] = []
+    ld_items: list[dict] = []
+    for i, p in enumerate(recent_posts, start=1):
+        permlink = p["permlink"]
+        title = p["title"]
+        created = p.get("created")
+        href = f"/@{a}/{html_escape(permlink)}"
+        time_html = ""
+        if created:
+            iso = created.isoformat()
+            human = created.strftime("%b %d, %Y")
+            time_html = f' <time datetime="{html_escape(iso)}">{html_escape(human)}</time>'
+        items_html.append(
+            f'<li><a href="{href}">{html_escape(title)}</a>{time_html}</li>'
+        )
+        ld_items.append({
+            "@type": "ListItem",
+            "position": i,
+            "url": f"{site_url}/@{author}/{permlink}",
+            "name": title,
+        })
+    ld = _json.dumps(
+        {"@context": "https://schema.org", "@type": "ItemList",
+         "itemListElement": ld_items},
+        separators=(",", ":"),
+    ).replace("</", "<\\/")
+    return (
+        '<section class="author-recent-posts" aria-label="Recent posts">'
+        "<h2>Recent posts</h2>"
+        f'<ol class="recent-posts-list">{"".join(items_html)}</ol>'
         f'<script type="application/ld+json">{ld}</script>'
         "</section>"
     )
@@ -229,6 +297,144 @@ def _build_author_description(author: str, summary: dict) -> str:
     if langs:
         parts.append(f"Primary language: {langs[0]}.")
     return " ".join(parts)[:155]
+
+
+def _build_post_list_html(
+    posts: list[dict], heading: str, *, show_author: bool = True, intro: str = "",
+) -> str:
+    """Server-render recent posts as a titled ``<ol>`` for the indexable SEO
+    primers on ``/``, ``/c/{cat}``, ``/lang/{lang}``, ``/community/{id}``
+    (proposal 100, Phase 1). Substantive unique text below the OG tags, so each
+    surface is a valid crawlable page without JS — and a usable floor when
+    prerender stalls. Matches the HTML contract documented in ``discover.css``.
+
+    Each post is ``{"author", "permlink", "title", "excerpt", "created"}``.
+    ``intro`` is an optional plain-text description paragraph (category / language
+    / community blurb). ``show_author`` omits the ``@author`` part of the per-post
+    meta line when False. All user-supplied text is HTML-escaped. Returns "" only
+    when there is neither a post nor an intro to show — so the placeholder renders
+    nothing on a surface with no data (this template engine has no conditionals).
+    """
+    intro_html = f'<p class="seo-intro">{html_escape(intro)}</p>' if intro else ""
+    site_url = settings.site_url.rstrip("/") if settings.site_url else ""
+    items_html: list[str] = []
+    ld_items: list[dict] = []
+    for i, p in enumerate(posts or [], start=1):
+        author = p["author"]
+        permlink = p["permlink"]
+        title = p["title"]
+        a = html_escape(author)
+        href = f"/@{a}/{html_escape(permlink)}"
+        meta_parts: list[str] = []
+        if show_author:
+            meta_parts.append(f"@{a}")
+        created = p.get("created")
+        if created:
+            iso = created.isoformat()
+            human = created.strftime("%b %d, %Y")
+            meta_parts.append(
+                f'<time datetime="{html_escape(iso)}">{html_escape(human)}</time>'
+            )
+        meta_html = (
+            f'<div class="seo-post-meta">{" · ".join(meta_parts)}</div>'
+            if meta_parts
+            else ""
+        )
+        excerpt = p.get("excerpt") or ""
+        excerpt_html = (
+            f'<p class="seo-post-excerpt">{html_escape(excerpt)}</p>' if excerpt else ""
+        )
+        items_html.append(
+            "<li>"
+            f'<a class="seo-post-title" href="{href}">{html_escape(title)}</a>'
+            f"{meta_html}{excerpt_html}"
+            "</li>"
+        )
+        ld_items.append({
+            "@type": "ListItem",
+            "position": i,
+            "url": f"{site_url}/@{author}/{permlink}",
+            "name": title,
+        })
+    if not items_html and not intro_html:
+        return ""
+    list_html = ld_html = ""
+    if items_html:
+        list_html = f'<ol class="seo-post-list">{"".join(items_html)}</ol>'
+        ld = _json.dumps(
+            {"@context": "https://schema.org", "@type": "ItemList",
+             "itemListElement": ld_items},
+            separators=(",", ":"),
+        ).replace("</", "<\\/")
+        ld_html = f'<script type="application/ld+json">{ld}</script>'
+    return (
+        '<section class="seo-recent-posts" aria-label="Recent posts">'
+        f"<h2>{html_escape(heading)}</h2>"
+        f"{intro_html}{list_html}{ld_html}"
+        "</section>"
+    )
+
+
+def _format_bridge_date(created) -> str:
+    """Human date ("May 30, 2026") from a bridge.get_post ``created`` value
+    (an ISO string) or a datetime. Falls back to the bare date portion / "" so
+    a parse failure never breaks the post-body fallback meta line."""
+    if isinstance(created, datetime):
+        return created.strftime("%b %d, %Y")
+    if isinstance(created, str) and created:
+        try:
+            return datetime.fromisoformat(
+                created.replace("Z", "+00:00")
+            ).strftime("%b %d, %Y")
+        except ValueError:
+            return created[:10]
+    return ""
+
+
+def _build_post_body_fallback_html(post_data: dict | None) -> str:
+    """Server-render a top-level post's body as plain-text HTML (proposal 100,
+    1a), built from the same bridge.get_post payload already inlined for the SPA
+    modal — no extra RPC. ``discover.js`` removes this block once the modal mounts
+    (which renders full-fidelity markdown). Matches the ``discover.css`` contract.
+
+    Replies (``parent_author`` set) are noindex'd and aren't standalone pages, so
+    they get no fallback. Body is ``clean_post_body`` plain text, split into ``<p>``
+    blocks on blank lines and capped at 8 KB. Returns "" when there's no usable
+    title or body.
+    """
+    if not post_data or post_data.get("parent_author"):
+        return ""
+    title = post_data.get("title") or ""
+    body = clean_post_body(post_data.get("body") or "")[:8192]
+    if not title and not body:
+        return ""
+
+    meta_parts: list[str] = []
+    author = post_data.get("author") or ""
+    if author:
+        meta_parts.append(f"@{html_escape(author)}")
+    human_date = _format_bridge_date(post_data.get("created"))
+    if human_date:
+        meta_parts.append(html_escape(human_date))
+    community = post_data.get("community_title") or post_data.get("community") or ""
+    if community:
+        meta_parts.append(html_escape(community))
+    meta_html = (
+        f'<div class="post-meta">{" · ".join(meta_parts)}</div>' if meta_parts else ""
+    )
+
+    paragraphs = [
+        f"<p>{html_escape(para.strip())}</p>"
+        for para in re.split(r"\n\s*\n", body)
+        if para.strip()
+    ]
+    body_html = f'<div class="post-body">{"".join(paragraphs)}</div>' if paragraphs else ""
+    title_html = f"<h1>{html_escape(title)}</h1>" if title else ""
+    return (
+        '<article class="post-body-fallback">'
+        f"{title_html}{meta_html}{body_html}"
+        "</article>"
+    )
 
 
 def _render_legal(name: str) -> HTMLResponse:
@@ -250,6 +456,7 @@ def _render(
     comments: list[dict] | None = None,
     author_card: dict | None = None,
     author_summary: dict | None = None,
+    recent: dict | None = None,
 ) -> HTMLResponse:
     """Render the discover template with placeholders substituted.
 
@@ -310,10 +517,26 @@ def _render(
     author_card_html = _build_author_card_html(author_card, site_url)
     if author_summary:
         author_summary_html = _build_author_summary_html(
-            author_summary["author"], author_summary.get("summary"), site_url
+            author_summary["author"], author_summary.get("summary"), site_url,
+            recent_posts=author_summary.get("recent_posts"),
         )
     else:
         author_summary_html = ""
+
+    # Server-rendered SEO primers (proposal 100, Phase 1): the recent-posts list
+    # for /, /c/, /lang/, /community/, and the plain-text post-body fallback for
+    # top-level /@author/permlink pages. Each builder returns "" when there's no
+    # data, so the placeholder renders nothing on surfaces without it.
+    if recent:
+        recent_posts_html = _build_post_list_html(
+            recent.get("posts") or [],
+            recent.get("heading", ""),
+            show_author=recent.get("show_author", True),
+            intro=recent.get("intro", ""),
+        )
+    else:
+        recent_posts_html = ""
+    post_body_fallback_html = _build_post_body_fallback_html(post_data)
 
     html = (
         _TEMPLATES[name]
@@ -329,6 +552,8 @@ def _render(
         .replace("{{COMMENTS_HTML}}", comments_html)
         .replace("{{AUTHOR_CARD_HTML}}", author_card_html)
         .replace("{{AUTHOR_SUMMARY_HTML}}", author_summary_html)
+        .replace("{{RECENT_POSTS_HTML}}", recent_posts_html)
+        .replace("{{POST_BODY_FALLBACK_HTML}}", post_body_fallback_html)
     )
     return HTMLResponse(html)
 
@@ -426,9 +651,57 @@ async def _safe_author_summary(db: AsyncSession, author: str) -> dict | None:
 
 # ── HTML pages ────────────────────────────────────────────────────────────────
 
+async def _safe_recent_posts(db: AsyncSession, **filters) -> list[dict]:
+    """crud.get_recent_posts_for_seo that swallows errors (returns []). A HAFSQL
+    or DB hiccup degrades the surface to "no recent-posts primer" rather than a
+    500 — the rest of the page still renders."""
+    try:
+        return await crud.get_recent_posts_for_seo(db, **filters)
+    except Exception as exc:
+        logger.debug("recent posts for SEO failed (%s): %s", filters, exc)
+        return []
+
+
+_COMMUNITY_META_TTL = 3600
+
+
+async def _safe_community_meta(db: AsyncSession, community_id: str) -> dict:
+    """Return ``{"name", "about"}`` for a ``/community/{id}`` SEO page. Name comes
+    from the worker-denormalized ``community_mappings`` row; about (and a name
+    fallback) from a cached ``bridge.get_community`` lookup (1h TTL so crawler
+    traffic doesn't hammer the Hive API). Degrades to the bare id / empty about on
+    any failure."""
+    name = community_id
+    try:
+        db_name = await crud.get_community_name(db, community_id)
+        if db_name:
+            name = db_name
+    except Exception as exc:
+        logger.debug("community name lookup failed for %s: %s", community_id, exc)
+
+    cache_key = f"community_meta:{community_id}"
+    meta = cache.get(cache_key)
+    if meta is None:
+        try:
+            meta = await asyncio.to_thread(get_community, community_id) or {}
+        except Exception as exc:
+            logger.debug("community meta fetch failed for %s: %s", community_id, exc)
+            meta = {}
+        cache.put(cache_key, meta, ttl=_COMMUNITY_META_TTL)
+    if name == community_id and meta.get("title"):
+        name = meta["title"]
+    return {"name": name, "about": meta.get("about") or ""}
+
+
 @router.get("/", include_in_schema=False)
-async def root(request: Request):
-    return _render("discover.html", request)
+async def root(request: Request, db: AsyncSession = Depends(get_db)):
+    # Hidden-on-mount on the homepage (the hex grid is the product) but a
+    # substantive indexable list for crawlers / no-JS (locked decision 2).
+    recent = await _safe_recent_posts(db)
+    return _render("discover.html", request, recent={
+        "posts": recent, "heading": "Recent posts on HiveComb",
+        "show_author": True, "intro": "",
+    })
 
 
 @router.get("/ui", include_in_schema=False)
@@ -442,37 +715,59 @@ _LANG_RE = re.compile(r"^[a-z]{2,3}$")
 
 
 @router.get("/c/{category}", include_in_schema=False)
-async def discover_category(request: Request, category: str):
+async def discover_category(
+    request: Request, category: str, db: AsyncSession = Depends(get_db)
+):
     if category not in _LEAF_CATEGORY_SET:
         raise HTTPException(status_code=404, detail="Unknown category")
     pretty = category.replace("-", " ").title()
+    desc = CATEGORY_DESCRIPTIONS.get(category, "")
     og = {
         "title": f"{pretty} — Hive posts on HiveComb",
-        "description": f"Discover Hive blockchain posts about {category.replace('-', ' ')}, classified by topic, language, and sentiment.",
+        "description": desc or f"Discover Hive blockchain posts about {category.replace('-', ' ')}, classified by topic, language, and sentiment.",
     }
-    return _render("discover.html", request, og=og)
+    recent = await _safe_recent_posts(db, category=category)
+    return _render("discover.html", request, og=og, recent={
+        "posts": recent, "heading": f"{pretty} posts on HiveComb",
+        "show_author": True, "intro": desc,
+    })
 
 
 @router.get("/community/{community_id}", include_in_schema=False)
-async def discover_community(request: Request, community_id: str):
+async def discover_community(
+    request: Request, community_id: str, db: AsyncSession = Depends(get_db)
+):
     if not _COMMUNITY_RE.match(community_id):
         raise HTTPException(status_code=404, detail="Invalid community id")
+    meta = await _safe_community_meta(db, community_id)
+    name, about = meta["name"], meta["about"]
     og = {
-        "title": f"{community_id} — Hive community on HiveComb",
-        "description": f"Posts from the {community_id} Hive community on HiveComb.",
+        "title": f"{name} — Hive community on HiveComb",
+        "description": (about or f"Posts from the {name} Hive community on HiveComb.")[:300],
     }
-    return _render("discover.html", request, og=og)
+    recent = await _safe_recent_posts(db, community=community_id)
+    return _render("discover.html", request, og=og, recent={
+        "posts": recent, "heading": f"{name} on HiveComb",
+        "show_author": True, "intro": about,
+    })
 
 
 @router.get("/lang/{lang}", include_in_schema=False)
-async def discover_language(request: Request, lang: str):
+async def discover_language(
+    request: Request, lang: str, db: AsyncSession = Depends(get_db)
+):
     if not _LANG_RE.match(lang):
         raise HTTPException(status_code=404, detail="Invalid language code")
+    name = language_display_name(lang)
     og = {
-        "title": f"Hive posts in {lang} — HiveComb",
-        "description": f"Discover Hive blockchain posts written in {lang}.",
+        "title": f"Hive posts in {name} — HiveComb",
+        "description": f"Discover Hive blockchain posts written in {name}, classified by topic, language, and sentiment.",
     }
-    return _render("discover.html", request, og=og)
+    recent = await _safe_recent_posts(db, language=lang)
+    return _render("discover.html", request, og=og, recent={
+        "posts": recent, "heading": f"Hive posts in {name}",
+        "show_author": True, "intro": "",
+    })
 
 
 @router.get("/{prefix}/@{author}/{permlink}", include_in_schema=False)
@@ -516,9 +811,20 @@ async def discover_author(
         "title": f"@{author} \u2014 {total} posts on Hive" + (f" \u00b7 {cats}" if cats else ""),
         "description": _build_author_description(author, summary),
     }
+    # Recent post titles enrich the server-rendered page with substantive
+    # unique text so Google doesn't flag Soft 404 even when prerender's
+    # JS-rendered hex grid is empty/missing. HAFSQL outage \u2192 [] \u2192 we still
+    # render the stats summary, just without the post list.
+    try:
+        recent_posts = await crud.get_author_recent_posts(db, author)
+    except Exception as exc:
+        logger.debug("recent posts lookup failed for %s: %s", author, exc)
+        recent_posts = []
     return _render(
         "discover.html", request, og=og,
-        author_summary={"author": author, "summary": summary},
+        author_summary={
+            "author": author, "summary": summary, "recent_posts": recent_posts,
+        },
     )
 
 

@@ -6,8 +6,8 @@ import pytest
 from project.hafsql import (
     _raw_rep_to_score, build_dsn, get_reputations,
     get_reputations_via_api, get_reputation_via_api, shutdown,
-    get_community, get_post_body, get_post_metadata,
-    get_top_comments, _parse_payout,
+    get_community, get_post_body, get_post_metadata, get_post_titles,
+    get_posts_titles_and_excerpts, get_top_comments, _parse_payout,
     _cursor, _get_pool,
 )
 
@@ -229,6 +229,88 @@ class TestGetPostBody:
         with patch("project.hafsql._cursor", side_effect=Exception("down")):
             result = get_post_body("alice", "my-post")
         assert result is None
+
+
+# ── get_post_titles (mocked DB) ──────────────────────────────────────────
+
+class TestGetPostTitles:
+    def test_returns_title_map(self):
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = [
+            {"permlink": "p1", "title": "First"},
+            {"permlink": "p2", "title": "Second"},
+        ]
+        with patch("project.hafsql._cursor") as mock_ctx:
+            mock_ctx.return_value.__enter__ = lambda s: mock_cur
+            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_post_titles("alice", ["p1", "p2"])
+        assert result == {"p1": "First", "p2": "Second"}
+
+    def test_drops_empty_titles(self):
+        """HAFSQL stores '' for some rows; rendering an empty link is worse
+        than skipping the row."""
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = [
+            {"permlink": "p1", "title": ""},
+            {"permlink": "p2", "title": "Real"},
+        ]
+        with patch("project.hafsql._cursor") as mock_ctx:
+            mock_ctx.return_value.__enter__ = lambda s: mock_cur
+            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_post_titles("alice", ["p1", "p2"])
+        assert result == {"p2": "Real"}
+
+    def test_returns_empty_for_empty_permlinks(self):
+        """Skip the query entirely on empty input."""
+        with patch("project.hafsql._cursor") as mock_ctx:
+            result = get_post_titles("alice", [])
+        assert result == {}
+        mock_ctx.assert_not_called()
+
+    def test_returns_empty_on_exception(self):
+        with patch("project.hafsql._cursor", side_effect=Exception("down")):
+            result = get_post_titles("alice", ["p1"])
+        assert result == {}
+
+
+class TestGetPostsTitlesAndExcerpts:
+    def test_returns_keyed_by_author_permlink(self):
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = [
+            {"author": "alice", "permlink": "p1", "title": "First", "body": "Body one"},
+            {"author": "bob", "permlink": "p2", "title": "Second", "body": "Body two"},
+        ]
+        with patch("project.hafsql._cursor") as mock_ctx:
+            mock_ctx.return_value.__enter__ = lambda s: mock_cur
+            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_posts_titles_and_excerpts([("alice", "p1"), ("bob", "p2")])
+        assert result == {
+            ("alice", "p1"): {"title": "First", "body": "Body one"},
+            ("bob", "p2"): {"title": "Second", "body": "Body two"},
+        }
+
+    def test_drops_empty_titles(self):
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = [
+            {"author": "alice", "permlink": "p1", "title": "", "body": "x"},
+            {"author": "bob", "permlink": "p2", "title": "Real", "body": "y"},
+        ]
+        with patch("project.hafsql._cursor") as mock_ctx:
+            mock_ctx.return_value.__enter__ = lambda s: mock_cur
+            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_posts_titles_and_excerpts([("alice", "p1"), ("bob", "p2")])
+        assert result == {("bob", "p2"): {"title": "Real", "body": "y"}}
+
+    def test_returns_empty_for_empty_pairs(self):
+        with patch("project.hafsql._cursor") as mock_ctx:
+            result = get_posts_titles_and_excerpts([])
+        assert result == {}
+        mock_ctx.assert_not_called()
+
+    def test_returns_empty_on_exception(self):
+        with patch("project.hafsql._cursor", side_effect=Exception("down")):
+            result = get_posts_titles_and_excerpts([("alice", "p1")])
+        assert result == {}
 
 
 # ── get_post_metadata (mocked HTTP) ──────────────────────────────────────

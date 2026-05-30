@@ -8,6 +8,15 @@ async function init() {
   // No-op (and absent) on every other page.
   document.getElementById('post-seo-enrichments')?.remove();
 
+  // Drop the server-rendered recent-posts primer (#recent-posts-seo, proposal
+  // 100) on the homepage only: there the hex grid is the product, so the static
+  // list is a crawler/no-JS primer that the SPA replaces on mount. On filtered
+  // surfaces (/c/, /lang/, /community/) it stays as a useful preview above the
+  // grid (locked decision 2). Absent/empty on /@author and /@author/permlink.
+  if (window.location.pathname === '/') {
+    document.getElementById('recent-posts-seo')?.remove();
+  }
+
   loadVotedPosts();
   loadMutedUsers();
   loadFollowedUsers();

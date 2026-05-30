@@ -13,10 +13,12 @@ from project.api.routes.ui import _OG_DEFAULT_TITLE, _OG_DEFAULT_DESC
 
 @pytest.fixture(autouse=True)
 def _stub_inline_comments(monkeypatch):
-    """Post pages fetch inline comments via bridge.get_discussion (proposal 095).
-    Stub it out so the suite never makes a live RPC; tests that exercise comments
-    patch project.api.routes.ui.get_top_comments explicitly."""
+    """Post pages fetch inline comments via bridge.get_discussion (proposal 095)
+    and community pages fetch about-text via bridge.get_community (proposal 100).
+    Stub both so the suite never makes a live RPC; tests that exercise them patch
+    the specific function explicitly."""
     monkeypatch.setattr("project.api.routes.ui.get_top_comments", lambda *a, **k: [])
+    monkeypatch.setattr("project.api.routes.ui.get_community", lambda *a, **k: None)
 
 
 def _author_summary(total, cats=("photography",), langs=("en",)):
@@ -508,7 +510,9 @@ async def test_author_with_many_posts_does_not_get_noindex(client):
     """Active author profiles (>= 10 lifetime classified posts) are
     indexable — no robots meta added, dynamic title/description instead."""
     with patch("project.api.routes.ui.crud.get_author_summary",
-               return_value=_author_summary(50)):
+               return_value=_author_summary(50)), \
+         patch("project.api.routes.ui.crud.get_author_recent_posts",
+               return_value=[]):
         resp = await client.get("/@activeauthor")
     body = resp.text
     assert '<meta name="robots"' not in body
@@ -516,10 +520,48 @@ async def test_author_with_many_posts_does_not_get_noindex(client):
     assert "Browse 50 classified posts by @activeauthor" in body
 
 
+async def test_author_page_renders_recent_posts(client):
+    """Active author page server-renders the recent-posts list — text Google
+    needs to escape Soft-404 even when prerender drops a hex grid render."""
+    recent = [
+        {"permlink": "first-post", "title": "First Post Title",
+         "created": datetime(2026, 5, 1, tzinfo=timezone.utc)},
+        {"permlink": "second-post", "title": "Second Post Title",
+         "created": datetime(2026, 4, 1, tzinfo=timezone.utc)},
+    ]
+    with patch("project.api.routes.ui.crud.get_author_summary",
+               return_value=_author_summary(50)), \
+         patch("project.api.routes.ui.crud.get_author_recent_posts",
+               return_value=recent):
+        resp = await client.get("/@activeauthor")
+    body = resp.text
+    assert 'class="author-recent-posts"' in body
+    assert ">First Post Title<" in body
+    assert ">Second Post Title<" in body
+    assert 'href="/@activeauthor/first-post"' in body
+    assert 'href="/@activeauthor/second-post"' in body
+
+
+async def test_author_page_degrades_when_recent_posts_unavailable(client):
+    """HAFSQL outage → recent_posts query raises → page still renders the
+    stats summary, no recent-posts block. Better than 500."""
+    with patch("project.api.routes.ui.crud.get_author_summary",
+               return_value=_author_summary(50)), \
+         patch("project.api.routes.ui.crud.get_author_recent_posts",
+               side_effect=OSError("hafsql down")):
+        resp = await client.get("/@activeauthor")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'class="author-summary"' in body
+    assert 'class="author-recent-posts"' not in body
+
+
 async def test_author_at_exactly_threshold_is_indexable(client):
     """Boundary check: exactly 10 posts → indexable (>= threshold)."""
     with patch("project.api.routes.ui.crud.get_author_summary",
-               return_value=_author_summary(10)):
+               return_value=_author_summary(10)), \
+         patch("project.api.routes.ui.crud.get_author_recent_posts",
+               return_value=[]):
         resp = await client.get("/@borderlineauthor")
     body = resp.text
     assert '<meta name="robots"' not in body
@@ -757,6 +799,55 @@ def test_build_author_summary_html_blank_without_summary():
     assert _build_author_summary_html("alice", None, "") == ""
 
 
+def test_build_author_summary_html_embeds_recent_posts():
+    from project.api.routes.ui import _build_author_summary_html
+    summary = {
+        "total_posts": 42,
+        "top_categories": [], "top_languages": [], "top_community": None,
+        "first_seen": None, "last_seen": None,
+    }
+    recent = [{"permlink": "p1", "title": "Hello World",
+               "created": datetime(2026, 5, 30, tzinfo=timezone.utc)}]
+    html = _build_author_summary_html(
+        "alice", summary, "https://example.com", recent_posts=recent,
+    )
+    assert 'class="author-recent-posts"' in html
+    assert ">Hello World<" in html
+    assert 'href="/@alice/p1"' in html
+
+
+def test_build_author_recent_posts_html_empty_returns_blank():
+    from project.api.routes.ui import _build_author_recent_posts_html
+    assert _build_author_recent_posts_html("alice", None, "") == ""
+    assert _build_author_recent_posts_html("alice", [], "") == ""
+
+
+def test_build_author_recent_posts_html_escapes_user_content():
+    """Titles and permlinks come from HAFSQL — must be HTML-escaped to keep
+    them from injecting markup into the server-rendered list."""
+    from project.api.routes.ui import _build_author_recent_posts_html
+    recent = [{"permlink": "p1", "title": "<script>x</script>",
+               "created": datetime(2026, 1, 1, tzinfo=timezone.utc)}]
+    html = _build_author_recent_posts_html("alice", recent, "https://example.com")
+    assert "<script>x</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_build_author_recent_posts_html_includes_itemlist_jsonld():
+    from project.api.routes.ui import _build_author_recent_posts_html
+    recent = [
+        {"permlink": "p1", "title": "T1",
+         "created": datetime(2026, 1, 1, tzinfo=timezone.utc)},
+        {"permlink": "p2", "title": "T2",
+         "created": datetime(2026, 1, 2, tzinfo=timezone.utc)},
+    ]
+    html = _build_author_recent_posts_html("alice", recent, "https://example.com")
+    assert '"@type":"ItemList"' in html
+    assert '"position":1' in html
+    assert '"position":2' in html
+    assert '"url":"https://example.com/@alice/p1"' in html
+
+
 def test_build_author_description_caps_at_155():
     from project.api.routes.ui import _build_author_description
     summary = {
@@ -769,6 +860,171 @@ def test_build_author_description_caps_at_155():
     assert "Most active in photography, travel, lifestyle." in desc
     assert "Primary language: en." in desc
     assert len(desc) <= 155
+
+
+# ── Server-rendered SEO primers (proposal 100, Phase 1) ──────────────────────
+
+def test_build_post_list_html_renders_and_escapes():
+    from project.api.routes.ui import _build_post_list_html
+    posts = [{"author": "alice", "permlink": "p1", "title": "<b>Hi</b>",
+              "excerpt": "Body & more", "created": datetime(2026, 5, 1, tzinfo=timezone.utc)}]
+    html = _build_post_list_html(posts, "Recent posts on HiveComb")
+    assert 'class="seo-recent-posts"' in html
+    assert "<h2>Recent posts on HiveComb</h2>" in html
+    assert 'href="/@alice/p1"' in html
+    assert "&lt;b&gt;Hi&lt;/b&gt;" in html         # title escaped
+    assert "Body &amp; more" in html               # excerpt escaped
+    assert 'seo-post-meta">@alice' in html          # author shown by default
+    assert '"@type":"ItemList"' in html and '"position":1' in html
+
+
+def test_build_post_list_html_omits_author_when_flag_false():
+    from project.api.routes.ui import _build_post_list_html
+    posts = [{"author": "alice", "permlink": "p1", "title": "T", "excerpt": "",
+              "created": datetime(2026, 5, 1, tzinfo=timezone.utc)}]
+    html = _build_post_list_html(posts, "H", show_author=False)
+    assert 'seo-post-meta">@' not in html           # no @author prefix on the meta line
+    assert "<time" in html                          # date still rendered
+
+
+def test_build_post_list_html_empty_returns_blank():
+    from project.api.routes.ui import _build_post_list_html
+    assert _build_post_list_html([], "H") == ""
+    assert _build_post_list_html(None, "H") == ""
+
+
+def test_build_post_list_html_intro_only_when_no_posts():
+    """A surface with an intro but no posts still emits the intro text (it's
+    substantive unique content) — but no empty <ol>."""
+    from project.api.routes.ui import _build_post_list_html
+    html = _build_post_list_html([], "Crypto on HiveComb", intro="All about crypto on Hive.")
+    assert 'class="seo-recent-posts"' in html
+    assert "All about crypto on Hive." in html
+    assert "seo-post-list" not in html
+
+
+def test_build_post_body_fallback_renders():
+    from project.api.routes.ui import _build_post_body_fallback_html
+    html = _build_post_body_fallback_html({
+        "title": "My Title", "body": "Para one.\n\nPara two.",
+        "author": "alice", "created": "2026-05-30T12:00:00",
+        "community_title": "Photo Lovers",
+    })
+    assert 'class="post-body-fallback"' in html
+    assert "<h1>My Title</h1>" in html
+    assert "@alice" in html
+    assert "Photo Lovers" in html
+    assert "<p>Para one.</p>" in html and "<p>Para two.</p>" in html
+
+
+def test_build_post_body_fallback_escapes_user_content():
+    from project.api.routes.ui import _build_post_body_fallback_html
+    html = _build_post_body_fallback_html({"title": "<x>", "body": "a & b"})
+    assert "<x>" not in html
+    assert "&lt;x&gt;" in html
+    assert "a &amp; b" in html
+
+
+def test_build_post_body_fallback_skips_replies():
+    """Replies are noindex'd — no body fallback (would waste a render)."""
+    from project.api.routes.ui import _build_post_body_fallback_html
+    assert _build_post_body_fallback_html(
+        {"title": "T", "body": "B", "parent_author": "alice"}
+    ) == ""
+
+
+def test_build_post_body_fallback_empty():
+    from project.api.routes.ui import _build_post_body_fallback_html
+    assert _build_post_body_fallback_html(None) == ""
+    assert _build_post_body_fallback_html({"title": "", "body": ""}) == ""
+
+
+async def test_homepage_renders_recent_posts_primer(client):
+    """Homepage server-renders the recent-posts list for crawlers / no-JS."""
+    recent = [{"author": "alice", "permlink": "p1", "title": "Homepage Post One",
+               "excerpt": "An excerpt.", "created": datetime(2026, 5, 1, tzinfo=timezone.utc)}]
+    with patch("project.api.routes.ui.crud.get_recent_posts_for_seo", return_value=recent):
+        resp = await client.get("/")
+    body = resp.text
+    assert '<section class="seo-recent-posts" aria-label="Recent posts">' in body
+    assert ">Homepage Post One<" in body
+    assert 'href="/@alice/p1"' in body
+
+
+async def test_homepage_degrades_when_recent_posts_unavailable(client):
+    """A failed recent-posts fetch leaves the page rendering without the primer
+    (200, not 500)."""
+    with patch("project.api.routes.ui.crud.get_recent_posts_for_seo",
+               side_effect=OSError("hafsql down")):
+        resp = await client.get("/")
+    assert resp.status_code == 200
+    assert '<section class="seo-recent-posts" aria-label="Recent posts">' not in resp.text
+
+
+async def test_category_page_renders_recent_posts_and_intro(client):
+    recent = [{"author": "alice", "permlink": "p1", "title": "Category Post",
+               "excerpt": "Ex.", "created": datetime(2026, 5, 1, tzinfo=timezone.utc)}]
+    with patch("project.api.routes.ui.CATEGORY_DESCRIPTIONS",
+               {"photography": "Photography and visual storytelling on Hive."}), \
+         patch("project.api.routes.ui.crud.get_recent_posts_for_seo", return_value=recent):
+        resp = await client.get("/c/photography")
+    body = resp.text
+    assert '<section class="seo-recent-posts" aria-label="Recent posts">' in body
+    assert ">Category Post<" in body
+    assert "Photography and visual storytelling on Hive." in body  # intro + og desc
+
+
+async def test_language_page_heading_uses_display_name(client):
+    with patch("project.api.routes.ui.crud.get_recent_posts_for_seo", return_value=[]):
+        resp = await client.get("/lang/pt")
+    body = resp.text
+    assert "Hive posts in Portuguese" in body
+
+
+async def test_community_page_uses_name_and_about(client):
+    with patch("project.api.routes.ui.crud.get_community_name",
+               return_value="Photography Lovers"), \
+         patch("project.api.routes.ui.get_community",
+               return_value={"title": "Photography Lovers",
+                             "about": "A community for photographers."}), \
+         patch("project.api.routes.ui.crud.get_recent_posts_for_seo", return_value=[]):
+        resp = await client.get("/community/hive-194913")
+    body = resp.text
+    assert "Photography Lovers" in body
+    assert "A community for photographers." in body
+
+
+async def test_community_page_falls_back_to_id_without_mapping(client):
+    """No mapping row + no Hive API result → bare id heading, page still renders."""
+    with patch("project.api.routes.ui.crud.get_community_name", return_value=None), \
+         patch("project.api.routes.ui.get_community", return_value=None), \
+         patch("project.api.routes.ui.crud.get_recent_posts_for_seo", return_value=[]):
+        resp = await client.get("/community/hive-194913")
+    assert resp.status_code == 200
+    assert "hive-194913" in resp.text
+
+
+async def test_post_page_renders_body_fallback(client):
+    """Top-level post pages server-render the plain-text body fallback."""
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
+        mock_get.return_value = _bridge(
+            title="My Post", body="First para.\n\nSecond para.", app="peakd",
+        )
+        resp = await client.get("/@alice/my-post")
+    body = resp.text
+    assert 'class="post-body-fallback"' in body
+    assert "<h1>My Post</h1>" in body
+    assert "First para." in body and "Second para." in body
+
+
+async def test_post_page_no_body_fallback_for_reply(client):
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
+        mock_get.return_value = {
+            "title": "", "body": "Reply body", "parent_author": "alice",
+            "parent_permlink": "orig", "json_metadata": {},
+        }
+        resp = await client.get("/@bob/re-alice-123")
+    assert 'class="post-body-fallback"' not in resp.text
 
 
 async def test_fetch_post_includes_comments_concurrently():
