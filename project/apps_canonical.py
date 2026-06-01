@@ -42,7 +42,10 @@ async def refresh_from_upstream(client: httpx.AsyncClient) -> bool:
     """Fetch the upstream list; replace APP_CANONICAL_URLS on success."""
     global APP_CANONICAL_URLS
     try:
-        resp = await client.get(UPSTREAM_URL, timeout=10.0)
+        # Explicit opt-in: the shared client now defaults to follow_redirects=
+        # False (proposal 101). This fetches a hardcoded, trusted URL (no user
+        # input → no SSRF concern), so following a GitHub-raw redirect is safe.
+        resp = await client.get(UPSTREAM_URL, timeout=10.0, follow_redirects=True)
         resp.raise_for_status()
         data = resp.json()
         valid = _valid_entries(data)

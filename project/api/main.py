@@ -46,6 +46,23 @@ logger = logging.getLogger(__name__)
 _SEEDS_FILE = Path("/combflow/seeds/centroids.json")
 
 
+def _make_http_client() -> httpx.AsyncClient:
+    """Build the shared outbound HTTP client.
+
+    Defaults to ``follow_redirects=False`` (SSRF hardening, proposal 101 M1):
+    callers that need redirect-following opt in explicitly (e.g.
+    ``apps_canonical.refresh_from_upstream``). ``max_redirects`` is inert while
+    redirects are disabled but kept harmless. Extracted so the redirect default
+    is unit-testable without driving the full lifespan.
+    """
+    return httpx.AsyncClient(
+        follow_redirects=False,  # SSRF hardening (proposal 101): callers opt in explicitly
+        max_redirects=5,         # inert while follow_redirects=False; kept harmless
+        timeout=httpx.Timeout(10.0),
+        headers={"User-Agent": "CombFlow/1.0"},
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Seed the category hierarchy.
@@ -107,20 +124,16 @@ async def lifespan(app: FastAPI):
     except SQLAlchemyError as exc:
         logger.warning("cache pre-warm failed: %s", exc)
 
-    app.state.http_client = httpx.AsyncClient(
-        follow_redirects=True,
-        max_redirects=5,
-        timeout=httpx.Timeout(10.0),
-        headers={"User-Agent": "CombFlow/1.0"},
-    )
+    app.state.http_client = _make_http_client()
 
     # Pre-warm the sitemap cache, then re-warm every 12h in the background.
     # The first request after startup gets cached XML; the cache never goes
     # cold under live traffic. Don't await — let startup finish immediately.
     sitemap_warm_task = asyncio.create_task(periodic_sitemap_warm(AsyncSessionLocal))
 
-    # Refresh the shared apps-canonical list daily. Bundled fallback already
-    # populated APP_CANONICAL_URLS at import time, so this just keeps it fresh.
+    # Refresh the shared apps-canonical list daily. APP_CANONICAL_URLS starts
+    # empty and is populated only by a successful refresh — pages rendered
+    # before the first refresh simply skip the canonical tag.
     async def _refresh_apps_canonical():
         while True:
             await apps_canonical.refresh_from_upstream(app.state.http_client)

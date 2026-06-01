@@ -80,3 +80,41 @@ async def test_refresh_preserves_dict_on_invalid_payload():
     ok = await apps_canonical.refresh_from_upstream(fake_client)
     assert ok is False
     assert apps_canonical.APP_CANONICAL_URLS == snapshot
+
+
+@pytest.mark.asyncio
+async def test_refresh_opts_into_redirects():
+    """M1 (proposal 101): the shared client now defaults to follow_redirects=
+    False, so this trusted-URL fetch must opt back in explicitly — otherwise a
+    GitHub-raw redirect would silently break the daily canonical refresh."""
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json = MagicMock(return_value={
+        "newapp": "https://new.example/@{author}/{permlink}",
+    })
+    fake_client = MagicMock()
+    fake_client.get = AsyncMock(return_value=fake_response)
+
+    original = dict(apps_canonical.APP_CANONICAL_URLS)
+    try:
+        await apps_canonical.refresh_from_upstream(fake_client)
+    finally:
+        apps_canonical.APP_CANONICAL_URLS = original
+
+    fake_client.get.assert_called_once_with(
+        apps_canonical.UPSTREAM_URL, timeout=10.0, follow_redirects=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_shared_http_client_defaults_to_no_redirects():
+    """M1 (proposal 101): the shared outbound client must default to
+    follow_redirects=False so SSRF-sensitive callers (imageproxy) don't inherit
+    redirect-following. A revert here would silently re-open the redirect vector."""
+    from project.api.main import _make_http_client
+
+    http_client = _make_http_client()
+    try:
+        assert http_client.follow_redirects is False
+    finally:
+        await http_client.aclose()
