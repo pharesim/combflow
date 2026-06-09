@@ -631,6 +631,35 @@ async def get_available_languages(session: AsyncSession) -> list[dict]:
 
 
 @retry_transient
+async def get_seo_eligible_language_counts(session: AsyncSession) -> list[dict]:
+    """Per-language counts of **SEO-eligible** posts — classified
+    (``category_ids <> '{}'``) and non-NSFW — as ``{"language", "count"}`` dicts
+    ordered by count descending.
+
+    This is the same eligibility gate ``get_recent_posts_for_seo`` applies, so a
+    language's count here is exactly the pool of posts that can populate its
+    server-rendered ``/lang/{lang}`` recent-post primer. The ``/lang`` sitemap
+    threshold and the thin-page ``noindex`` floor both read it (proposal 106) to
+    keep below-floor language pages — whose primer is the page's only unique
+    server text (``intro=''``) — out of the index and off the advertised crawl
+    set. Distinct from ``get_available_languages`` (which counts *all* posts in a
+    language, NSFW/unclassified included, for the filter UI). Cached 1h: language
+    volumes shift slowly and this is a full-table aggregate."""
+    async def _compute() -> list[dict]:
+        rows = await session.execute(
+            text(
+                "SELECT lang AS language, COUNT(*) AS count "
+                "FROM posts, unnest(language_codes) AS lang "
+                "WHERE category_ids != '{}' AND is_nsfw = false "
+                "GROUP BY lang ORDER BY count DESC"
+            )
+        )
+        return [dict(r) for r in rows.mappings()]
+
+    return await _cache.get_or_compute("seo_lang_counts", 3600, _compute)
+
+
+@retry_transient
 async def get_overview_stats(session: AsyncSession) -> dict:
     """Get overview statistics using fast approximations."""
     # O(1) approximate row count from pg_class (autovacuum keeps this fresh).

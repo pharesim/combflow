@@ -773,6 +773,33 @@ _LEAF_CATEGORY_SET = set(LEAF_CATEGORIES)
 _COMMUNITY_RE = re.compile(r"^hive-\d{6,}$")
 _LANG_RE = re.compile(r"^[a-z]{2,3}$")
 
+# A /lang/{lang} page with fewer than this many SEO-eligible posts (classified +
+# non-NSFW) carries too little unique server-side text to clear the 5 KB
+# visible-text floor proposal 100 Phase 2 requires — its recent-post primer is
+# the page's only unique content (intro=''). 14 ≈ the measured 5 KB crossover at
+# ~280-char excerpts (proposal 106). Gates both /lang sitemap inclusion and the
+# thin-page noindex,follow (mirrors the /@author thin-profile pattern, 098).
+_LANG_SEO_MIN_POSTS = 14
+
+
+async def _lang_below_seo_floor(db: AsyncSession, lang: str) -> bool:
+    """True when ``lang`` has fewer than ``_LANG_SEO_MIN_POSTS`` SEO-eligible
+    posts — i.e. its ``/lang/{lang}`` page is below the indexable-content floor
+    (proposal 106). The count is PG-derived (``get_seo_eligible_language_counts``,
+    1h-cached), *not* the HAFSQL-backed recent list, so a HAFSQL outage can't flip
+    a substantive language to noindex. On a lookup error returns False (leave the
+    page indexable) — hiding a possibly-substantive page on a transient blip is
+    worse than risking a thin one (same call as the /@author pattern, 098)."""
+    try:
+        counts = await crud.get_seo_eligible_language_counts(db)
+    except Exception as exc:
+        logger.debug("lang SEO-floor lookup failed for %s: %s", lang, exc)
+        return False
+    for entry in counts:
+        if entry.get("language") == lang:
+            return entry.get("count", 0) < _LANG_SEO_MIN_POSTS
+    return True  # no SEO-eligible posts in this language → thin by definition
+
 
 @router.get("/c/{category}", include_in_schema=False)
 async def discover_category(
@@ -823,6 +850,12 @@ async def discover_language(
         "title": f"Hive posts in {name} — HiveComb",
         "description": f"Discover Hive blockchain posts written in {name}, classified by topic, language, and sentiment.",
     }
+    # Thin language pages (below the SEO-eligible-post floor) carry too little
+    # unique server text to index — noindex,follow to dodge a Soft-404 demotion
+    # (proposal 106). Belt-and-suspenders to the sitemap threshold for pages
+    # reached by direct crawl; the page still renders 200 either way.
+    if await _lang_below_seo_floor(db, lang):
+        og["noindex"] = True
     recent = await _safe_recent_posts(db, language=lang)
     return _render("discover.html", request, og=og, recent={
         "posts": recent, "heading": f"Hive posts in {name}",
@@ -985,16 +1018,26 @@ async def _build_sitemap_xml(db: AsyncSession, site_url: str) -> str:
             f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.6</priority></url>"
         )
 
-    # Language landing pages — only languages with actual posts.
+    # Language landing pages — only languages whose SEO-eligible post count
+    # (classified + non-NSFW, the same gate the /lang recent-post primer applies)
+    # clears the 5 KB visible-text floor (proposal 106). Below the floor the page
+    # is thin content; advertising it risks a Soft-404 demotion — the exact
+    # failure mode proposal 100's Phase-2 gate exists to prevent. Counts are
+    # descending, so stop at the first sub-threshold language; capped at 100 as a
+    # defensive upper bound.
     try:
-        langs = await crud.get_available_languages(db)
-        for entry in langs[:100]:
+        langs = await crud.get_seo_eligible_language_counts(db)
+        emitted = 0
+        for entry in langs:
+            if emitted >= 100 or entry.get("count", 0) < _LANG_SEO_MIN_POSTS:
+                break
             code = entry.get("language")
             if code and _LANG_RE.match(code):
                 urls.append(
                     f"  <url><loc>{xml_escape(site_url)}/lang/{xml_escape(code)}</loc>"
                     f"<lastmod>{now}</lastmod><changefreq>daily</changefreq><priority>0.5</priority></url>"
                 )
+                emitted += 1
     except Exception as exc:
         logger.warning("sitemap language enumeration failed: %s", exc)
 

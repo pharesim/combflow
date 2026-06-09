@@ -7,6 +7,7 @@ from sqlalchemy.exc import OperationalError
 
 from tests.conftest import _TestSession
 from project.categories import CATEGORY_TREE
+from project import cache
 
 
 # ── retry_transient decorator ────────────────────────────────────────────────
@@ -729,6 +730,54 @@ async def test_get_recent_posts_for_seo_excludes_nsfw(seeded_db):
         async with _TestSession() as session:
             result = await get_recent_posts_for_seo(session)
     assert "naughty" not in {p["author"] for p in result}
+
+
+# ── get_seo_eligible_language_counts (proposal 106) ─────────────────────────
+
+async def test_get_seo_eligible_language_counts(seeded_db):
+    """Per-language SEO-eligible counts gate /lang sitemap inclusion + noindex
+    (proposal 106). Only classified + non-NSFW posts count. Seeded baseline:
+    en=2, es=1, fr=1 — an NSFW en post and an unclassified de post must NOT
+    inflate en or introduce de, and rows come back count-descending."""
+    from datetime import datetime, timezone
+    from project.db.crud import get_seo_eligible_language_counts, create_post
+
+    async with _TestSession() as session:
+        # NSFW en post — excluded, must not bump en past 2.
+        await create_post(session, {
+            "author": "naughty", "permlink": "nsfw-en",
+            "created": datetime(2026, 5, 1, tzinfo=timezone.utc),
+            "categories": [seeded_db["leaf_name"]], "languages": ["en"],
+            "sentiment": "neutral", "sentiment_score": 0.0, "is_nsfw": True,
+        })
+        # Unclassified de post (no categories → category_ids = '{}') — excluded.
+        await create_post(session, {
+            "author": "blank", "permlink": "unclassified-de",
+            "created": datetime(2026, 5, 2, tzinfo=timezone.utc),
+            "categories": [], "languages": ["de"],
+            "sentiment": "neutral", "sentiment_score": 0.0,
+        })
+
+    cache.clear()  # force a fresh aggregate over the posts just added
+    async with _TestSession() as session:
+        rows = await get_seo_eligible_language_counts(session)
+    counts = {r["language"]: r["count"] for r in rows}
+    assert counts.get("en") == 2   # NSFW en post excluded
+    assert counts.get("es") == 1
+    assert counts.get("fr") == 1
+    assert "de" not in counts      # unclassified post excluded
+    nums = [r["count"] for r in rows]
+    assert nums == sorted(nums, reverse=True)
+
+
+async def test_get_seo_eligible_language_counts_cached(seeded_db):
+    """Result is cached so per-request /lang noindex checks don't re-aggregate."""
+    from project.db.crud import get_seo_eligible_language_counts
+
+    cache.clear()
+    async with _TestSession() as session:
+        first = await get_seo_eligible_language_counts(session)
+    assert cache.get("seo_lang_counts") == first
 
 
 # The cold-cache stampede-collapse guarantee (proposal 104 #3) lives in

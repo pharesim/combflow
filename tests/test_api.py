@@ -1,6 +1,6 @@
 """Core API tests — health, schema validation, categories, middleware, SEO, OG tags."""
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
@@ -184,6 +184,46 @@ async def test_language_landing_invalid_code_returns_404(client):
     assert resp.status_code == 404
 
 
+async def test_lang_below_floor_gets_noindex(client, seeded_db):
+    """A language below the SEO-eligible floor gets noindex,follow (proposal 106).
+    Seeded en has 2 eligible posts < default floor(14) → thin → noindex. The page
+    still renders 200."""
+    cache.clear()
+    resp = await client.get("/lang/en")
+    assert resp.status_code == 200
+    assert '<meta name="robots" content="noindex,follow">' in resp.text
+
+
+async def test_lang_with_no_eligible_posts_gets_noindex(client, seeded_db):
+    """A language with zero SEO-eligible posts (absent from the count map) is thin
+    by definition → noindex,follow (proposal 106)."""
+    cache.clear()
+    resp = await client.get("/lang/de")  # not among seeded en/es/fr
+    assert resp.status_code == 200
+    assert '<meta name="robots" content="noindex,follow">' in resp.text
+
+
+async def test_lang_above_floor_no_noindex(client, seeded_db):
+    """A language at/above the floor stays indexable — no noindex tag (proposal
+    106). Floor patched to 2 so seeded en (count=2) clears it."""
+    cache.clear()
+    with patch("project.api.routes.ui._LANG_SEO_MIN_POSTS", 2):
+        resp = await client.get("/lang/en")
+    assert resp.status_code == 200
+    assert '<meta name="robots" content="noindex,follow">' not in resp.text
+
+
+async def test_lang_floor_indexes_on_count_lookup_error(client, seeded_db):
+    """If the SEO-eligible count lookup errors, the page stays indexable — never
+    hide a possibly-substantive page on a transient blip (proposal 106 / 098)."""
+    cache.clear()
+    with patch("project.api.routes.ui.crud.get_seo_eligible_language_counts",
+               side_effect=RuntimeError("db down")):
+        resp = await client.get("/lang/en")
+    assert resp.status_code == 200
+    assert '<meta name="robots" content="noindex,follow">' not in resp.text
+
+
 # ── GZip middleware ──────────────────────────────────────────────────────────
 
 async def test_gzip_large_response(client, seeded_db):
@@ -278,15 +318,71 @@ async def test_sitemap_xml_with_posts(client, seeded_db):
 
 
 async def test_sitemap_xml_includes_language_and_community_landings(client, seeded_db):
-    """Languages and communities with posts should appear as landing-page URLs."""
+    """Languages clearing the SEO-eligible floor should appear as landing-page
+    URLs; thin ones (below the floor) should not (proposal 106). Seeded counts:
+    en=2, es=1, fr=1 — with the floor patched to 2, only en qualifies."""
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]), \
+         patch("project.api.routes.ui._LANG_SEO_MIN_POSTS", 2):
+        mock_settings.site_url = "https://example.com"
+        cache.clear()
+        resp = await client.get("/sitemap.xml")
+    body = resp.text
+    # en has 2 SEO-eligible posts ≥ floor(2) → advertised
+    assert "<loc>https://example.com/lang/en</loc>" in body
+    # es/fr have 1 each < floor(2) → kept off the sitemap (Soft-404 avoidance)
+    assert "<loc>https://example.com/lang/es</loc>" not in body
+    assert "<loc>https://example.com/lang/fr</loc>" not in body
+
+
+async def test_sitemap_xml_omits_thin_languages_at_default_floor(client, seeded_db):
+    """At the production floor (14), the tiny seeded languages (≤2 posts each)
+    are all below it, so no /lang/ URLs are advertised at all (proposal 106)."""
     with patch("project.api.routes.ui.settings") as mock_settings, \
          patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]):
         mock_settings.site_url = "https://example.com"
         cache.clear()
         resp = await client.get("/sitemap.xml")
     body = resp.text
-    # seeded posts have languages en/es/fr — they should be in the sitemap
+    assert "/lang/en" not in body
+    assert "/lang/es" not in body
+    assert "/lang/fr" not in body
+
+
+async def test_sitemap_lang_threshold_caps_at_100(client, seeded_db):
+    """Defensive upper bound: even with >100 qualifying languages, the sitemap
+    advertises at most 100 /lang/ URLs (proposal 106)."""
+    import itertools
+    import string
+    codes = ["".join(c) for c in itertools.islice(
+        itertools.product(string.ascii_lowercase, repeat=3), 150)]
+    entries = [{"language": c, "count": 100} for c in codes]  # all valid, all ≥ floor
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]), \
+         patch("project.api.routes.ui.crud.get_seo_eligible_language_counts",
+               return_value=entries):
+        mock_settings.site_url = "https://example.com"
+        cache.clear()
+        resp = await client.get("/sitemap.xml")
+    assert resp.text.count("https://example.com/lang/") == 100
+
+
+async def test_sitemap_lang_skips_invalid_codes(client, seeded_db):
+    """A malformed language code from the aggregate is skipped (the _LANG_RE
+    guard) without halting enumeration of the valid ones after it — both clear
+    the floor, so this isolates the regex filter from the threshold break
+    (proposal 106)."""
+    entries = [{"language": "toolong", "count": 100}, {"language": "en", "count": 100}]
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=[]), \
+         patch("project.api.routes.ui.crud.get_seo_eligible_language_counts",
+               return_value=entries):
+        mock_settings.site_url = "https://example.com"
+        cache.clear()
+        resp = await client.get("/sitemap.xml")
+    body = resp.text
     assert "<loc>https://example.com/lang/en</loc>" in body
+    assert "/lang/toolong" not in body
 
 
 async def test_sitemap_xml_includes_active_authors(client):
@@ -1102,13 +1198,62 @@ async def test_post_page_no_body_fallback_for_reply(client):
     assert 'class="post-body-fallback"' not in resp.text
 
 
+# ── Single-pass template substitution (proposal 104 #7 / 108a) ───────────────
+
+def test_substitute_is_single_pass_not_sequential():
+    """_substitute replaces each ``{{TOKEN}}`` exactly once and never re-scans an
+    injected value (proposal 104 #7). A value substituted for an early key that
+    itself contains a *later* key's token must survive verbatim — the old
+    sequential ``.replace()`` chain would re-scan it and clobber it.
+
+    Guards against a future refactor back to that buggy chain (which ships no
+    regression test today — proposal 108a)."""
+    from project.api.routes.ui import _substitute
+
+    # A's value contains B's token; A is inserted before B, so a naive sequential
+    # chain over the dict would substitute A first, then clobber the injected
+    # ``{{B}}`` when it processes B.
+    out = _substitute("{{A}}|{{B}}", {"A": "{{B}}", "B": "X"})
+    assert out == "{{B}}|X"   # single-pass: A's injected {{B}} is NOT re-scanned
+    assert out != "X|X"       # a sequential .replace() chain would yield this
+    # Unknown tokens are left untouched (documented behavior, matches old chain).
+    assert _substitute("{{KNOWN}} {{MYSTERY}}", {"KNOWN": "v"}) == "v {{MYSTERY}}"
+
+
+async def test_post_page_literal_placeholder_title_renders_verbatim(client):
+    """End-to-end guard for proposal 104 #7 / 108a: a post whose title is a literal
+    placeholder token (``{{POST_BODY_FALLBACK_HTML}}``) surfaces verbatim in the
+    inline #hivecomb-post-data payload and is NOT clobbered by the later
+    POST_BODY_FALLBACK_HTML substitution. A sequential ``.replace()`` chain would
+    overwrite the injected token inside the JSON with the rendered <article>."""
+    with patch("project.api.routes.ui.get_post_full") as mock_get:
+        mock_get.return_value = _bridge(
+            title="{{POST_BODY_FALLBACK_HTML}}", body="Body text.", app="peakd",
+        )
+        resp = await client.get("/@alice/literal-token-title")
+    body = resp.text
+    # Isolate the inline JSON payload — the token must survive *there* (it's also
+    # html-escaped into og:title / the <h1>, so assert on the payload specifically).
+    marker = '<script id="hivecomb-post-data" type="application/json">'
+    start = body.index(marker) + len(marker)
+    payload = body[start:body.index("</script>", start)]
+    assert '"title":"{{POST_BODY_FALLBACK_HTML}}"' in payload
+
+
 async def test_post_page_suppresses_body_fallback_for_nsfw(client):
     """NSFW top-level posts get NO server-rendered <article> body fallback
     (content policy, proposal 104 #2) — but the inline #hivecomb-post-data payload
-    stays intact so the SPA modal still renders the body for human readers."""
+    stays intact so the SPA modal still renders the body for human readers.
+
+    The lookup is patched with an explicit AsyncMock so the mock unambiguously
+    matches the awaited async ``crud.get_nsfw_author_permlinks`` and exercises the
+    flagged-*success* path (membership returns the pair → suppress), rather than
+    leaning on ``patch``'s implicit async auto-detection. Paired with the not-flagged
+    and fail-closed tests below so all three branches of _safe_is_nsfw are covered
+    distinctly (proposal 108b)."""
     with patch("project.api.routes.ui.get_post_full") as mock_get, \
          patch("project.api.routes.ui.crud.get_nsfw_author_permlinks",
-               return_value={("alice", "nsfw-post")}):
+               new_callable=AsyncMock, return_value={("alice", "nsfw-post")}):
         mock_get.return_value = _bridge(
             title="Adult Post", body="Explicit body text.", app="peakd",
         )
@@ -1116,6 +1261,40 @@ async def test_post_page_suppresses_body_fallback_for_nsfw(client):
     body = resp.text
     assert 'class="post-body-fallback"' not in body
     # SPA payload preserved — the modal still renders the body for human readers.
+    assert '<script id="hivecomb-post-data" type="application/json">' in body
+
+
+async def test_post_page_renders_body_fallback_when_not_flagged(client):
+    """When the NSFW lookup *succeeds* and the post is NOT flagged, the body
+    fallback IS server-rendered. Pairs with the flagged test above so the suite
+    distinguishes flagged-success (suppressed) from not-flagged-success (rendered)
+    via the same mocked lookup — pinning the suppression to the membership result
+    rather than to the real test DB happening to return empty (proposal 108b)."""
+    with patch("project.api.routes.ui.get_post_full") as mock_get, \
+         patch("project.api.routes.ui.crud.get_nsfw_author_permlinks",
+               new_callable=AsyncMock, return_value=set()):
+        mock_get.return_value = _bridge(
+            title="Clean Post", body="Wholesome body text.", app="peakd",
+        )
+        resp = await client.get("/@alice/clean-post")
+    body = resp.text
+    assert 'class="post-body-fallback"' in body
+    assert "<h1>Clean Post</h1>" in body
+
+
+async def test_post_page_suppresses_body_fallback_on_nsfw_lookup_error(client):
+    """Fail-closed path (proposal 104 #2 / 108b): a *raising* NSFW lookup suppresses
+    the body fallback — a DB hiccup must never server-render a possibly-NSFW body to
+    crawlers. The inline SPA payload is still retained for human readers."""
+    with patch("project.api.routes.ui.get_post_full") as mock_get, \
+         patch("project.api.routes.ui.crud.get_nsfw_author_permlinks",
+               new_callable=AsyncMock, side_effect=SQLAlchemyError("db down")):
+        mock_get.return_value = _bridge(
+            title="Maybe Adult", body="Body text.", app="peakd",
+        )
+        resp = await client.get("/@alice/db-error-post")
+    body = resp.text
+    assert 'class="post-body-fallback"' not in body
     assert '<script id="hivecomb-post-data" type="application/json">' in body
 
 
