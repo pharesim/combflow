@@ -851,37 +851,38 @@ async def get_author_recent_posts(
     from PG then look the titles up in HAFSQL. HAFSQL outages degrade to []
     rather than failing the whole author page.
 
-    Cached for 6h alongside ``get_author_summary``. ``[]`` results (HAFSQL
-    down, or author legitimately has no classified posts) are cached too —
-    re-running on every hit during a HAFSQL incident would hammer it.
+    Cached for 6h alongside ``get_author_summary`` (a double-checked per-key lock
+    collapses concurrent cold-cache hits to one round-trip). A HAFSQL failure is
+    *not* swallowed here — it propagates; the route-layer
+    ``_safe_author_recent_posts`` wrapper (``ui.py``) absorbs it so the author
+    page still renders the stats summary without the post list. Only genuinely
+    empty results (no classified posts, or permlinks HAFSQL has no title for) are
+    cached as ``[]`` so a quiet author doesn't re-query on every hit.
     """
     cache_key = f"author_recent_posts:{author}:{limit}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
 
-    rows = await session.execute(
-        text(
-            "SELECT permlink, created FROM posts "
-            "WHERE author = :author AND category_ids != '{}' "
-            "ORDER BY created DESC LIMIT :lim"
-        ),
-        {"author": author, "lim": limit},
-    )
-    meta = [(r["permlink"], r["created"]) for r in rows.mappings()]
-    if not meta:
-        _cache.put(cache_key, [], ttl=21600)
-        return []
+    async def _compute() -> list[dict]:
+        rows = await session.execute(
+            text(
+                "SELECT permlink, created FROM posts "
+                "WHERE author = :author AND category_ids != '{}' "
+                "ORDER BY created DESC LIMIT :lim"
+            ),
+            {"author": author, "lim": limit},
+        )
+        meta = [(r["permlink"], r["created"]) for r in rows.mappings()]
+        if not meta:
+            return []
 
-    from ..hafsql import get_post_titles
-    titles = await asyncio.to_thread(get_post_titles, author, [p for p, _ in meta])
-    result = [
-        {"permlink": p, "title": titles[p], "created": c}
-        for p, c in meta
-        if p in titles
-    ]
-    _cache.put(cache_key, result, ttl=21600)
-    return result
+        from ..hafsql import get_post_titles
+        titles = await asyncio.to_thread(get_post_titles, author, [p for p, _ in meta])
+        return [
+            {"permlink": p, "title": titles[p], "created": c}
+            for p, c in meta
+            if p in titles
+        ]
+
+    return await _cache.get_or_compute(cache_key, 21600, _compute)
 
 
 @retry_transient
@@ -907,65 +908,70 @@ async def get_recent_posts_for_seo(
     crawler-facing surfaces). Excerpts are ``clean_post_body`` output capped at
     280 chars.
 
-    Cached for 5 minutes — fresh enough that the homepage isn't stale, long
-    enough that crawler traffic doesn't hit HAFSQL on every request. ``[]``
-    results (HAFSQL down, no matching posts) are cached too, so a HAFSQL incident
-    doesn't turn every crawl into a hammering retry.
+    Cached for 5 minutes (a double-checked per-key lock collapses a cold-cache
+    crawler stampede into a single PG+HAFSQL round-trip instead of N parallel
+    ones) — fresh enough that the homepage isn't stale, long enough that crawler
+    traffic doesn't hit HAFSQL on every request.
+
+    **Error contract (two layers).** This function does *not* self-degrade — a
+    HAFSQL failure propagates to the caller. The route-layer ``_safe_recent_posts``
+    wrapper (``ui.py``) is what absorbs it and degrades the surface to "no
+    recent-posts primer". Only a genuinely empty result (no matching posts in PG,
+    or PG rows whose titles HAFSQL can't supply) is cached as ``[]`` — so a
+    "no posts" surface doesn't re-query every crawl, while a HAFSQL incident is
+    never masked as an (cached) empty page.
     """
     cache_key = f"recent_seo:{category or ''}:{language or ''}:{community or ''}:{limit}"
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        return cached
 
-    conditions = ["category_ids != '{}'", "is_nsfw = false"]
-    params: dict = {"lim": limit}
-    if language:
-        conditions.append("language_codes && CAST(:langs AS text[])")
-        params["langs"] = [language]
-    if community:
-        conditions.append("community_id = :community")
-        params["community"] = community
-    if category:
-        cat_ids = await _resolve_category_ids(session, [category])
-        if not cat_ids:
-            _cache.put(cache_key, [], ttl=300)
+    async def _compute() -> list[dict]:
+        conditions = ["category_ids != '{}'", "is_nsfw = false"]
+        params: dict = {"lim": limit}
+        if language:
+            conditions.append("language_codes && CAST(:langs AS text[])")
+            params["langs"] = [language]
+        if community:
+            conditions.append("community_id = :community")
+            params["community"] = community
+        if category:
+            cat_ids = await _resolve_category_ids(session, [category])
+            if not cat_ids:
+                return []
+            conditions.append("category_ids && CAST(:cat_ids AS int[])")
+            params["cat_ids"] = cat_ids
+
+        where = "WHERE " + " AND ".join(conditions)
+        rows = await session.execute(
+            text(
+                f"SELECT author, permlink, created FROM posts {where} "
+                "ORDER BY created DESC, id DESC LIMIT :lim"
+            ),
+            params,
+        )
+        meta = [(r["author"], r["permlink"], r["created"]) for r in rows.mappings()]
+        if not meta:
             return []
-        conditions.append("category_ids && CAST(:cat_ids AS int[])")
-        params["cat_ids"] = cat_ids
 
-    where = "WHERE " + " AND ".join(conditions)
-    rows = await session.execute(
-        text(
-            f"SELECT author, permlink, created FROM posts {where} "
-            "ORDER BY created DESC, id DESC LIMIT :lim"
-        ),
-        params,
-    )
-    meta = [(r["author"], r["permlink"], r["created"]) for r in rows.mappings()]
-    if not meta:
-        _cache.put(cache_key, [], ttl=300)
-        return []
+        from ..hafsql import get_posts_titles_and_excerpts
+        from ..text import clean_post_body
+        info = await asyncio.to_thread(
+            get_posts_titles_and_excerpts, [(a, p) for a, p, _ in meta]
+        )
+        result: list[dict] = []
+        for author, permlink, created in meta:
+            entry = info.get((author, permlink))
+            if not entry or not entry.get("title"):
+                continue
+            excerpt = clean_post_body(entry.get("body") or "")[:280].rstrip()
+            result.append({
+                "author": author,
+                "permlink": permlink,
+                "title": entry["title"],
+                "excerpt": excerpt,
+                "created": created,
+            })
+        return result
 
-    from ..hafsql import get_posts_titles_and_excerpts
-    from ..text import clean_post_body
-    info = await asyncio.to_thread(
-        get_posts_titles_and_excerpts, [(a, p) for a, p, _ in meta]
-    )
-    result: list[dict] = []
-    for author, permlink, created in meta:
-        entry = info.get((author, permlink))
-        if not entry or not entry.get("title"):
-            continue
-        excerpt = clean_post_body(entry.get("body") or "")[:280].rstrip()
-        result.append({
-            "author": author,
-            "permlink": permlink,
-            "title": entry["title"],
-            "excerpt": excerpt,
-            "created": created,
-        })
-    _cache.put(cache_key, result, ttl=300)
-    return result
+    return await _cache.get_or_compute(cache_key, 300, _compute)
 
 
 @retry_transient
@@ -1023,19 +1029,38 @@ async def get_available_communities(session: AsyncSession) -> list[dict]:
     return [dict(r) for r in rows.mappings()]
 
 
+_COMMUNITY_NAME_TTL = 3600        # display names change rarely
+_COMMUNITY_NAME_MISS_TTL = 300    # shorter, so a freshly-mapped community shows up
+
+
 @retry_transient
 async def get_community_name(
     session: AsyncSession, community_id: str
 ) -> str | None:
     """Return the worker-denormalized display name for a community, or None if
     there's no mapping row. Used by the ``/community/{id}`` SEO page heading
-    (proposal 100); the caller falls back to the bare ``hive-NNNNNN`` id."""
+    (proposal 100); the caller falls back to the bare ``hive-NNNNNN`` id.
+
+    Cached in-process (keyed by ``community_id``) so crawler traffic to a
+    community page doesn't run a PG lookup on every load. An unmapped community
+    is cached as ``""`` (a sentinel, since ``cache.get`` can't represent a cached
+    ``None``) with a shorter TTL so a community the worker maps later picks up its
+    name within minutes rather than an hour."""
+    cache_key = f"community_name:{community_id}"
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached or None  # "" sentinel → unmapped
     row = await session.execute(
         text("SELECT community_name FROM community_mappings WHERE community_id = :cid"),
         {"cid": community_id},
     )
-    name = row.scalar()
-    return name or None
+    name = row.scalar() or None
+    _cache.put(
+        cache_key,
+        name or "",
+        ttl=_COMMUNITY_NAME_TTL if name else _COMMUNITY_NAME_MISS_TTL,
+    )
+    return name
 
 
 @retry_transient

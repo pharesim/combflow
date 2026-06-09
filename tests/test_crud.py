@@ -681,9 +681,11 @@ async def test_get_recent_posts_for_seo_drops_posts_missing_from_hafsql(seeded_d
     assert result == []
 
 
-async def test_get_recent_posts_for_seo_degrades_on_hafsql_error(seeded_db):
-    """get_posts_titles_and_excerpts raising → [] (the route then renders the
-    page without the primer rather than 500ing)."""
+async def test_get_recent_posts_for_seo_propagates_hafsql_error(seeded_db):
+    """Two-layer error contract (proposal 104 #8): get_recent_posts_for_seo does
+    NOT self-degrade — a HAFSQL failure propagates. The route-layer
+    ``_safe_recent_posts`` wrapper (ui.py) is what absorbs it and renders the page
+    without the primer (see test_homepage_degrades_when_recent_posts_unavailable)."""
     from project.db.crud import get_recent_posts_for_seo
 
     with patch("project.hafsql.get_posts_titles_and_excerpts",
@@ -729,6 +731,13 @@ async def test_get_recent_posts_for_seo_excludes_nsfw(seeded_db):
     assert "naughty" not in {p["author"] for p in result}
 
 
+# The cold-cache stampede-collapse guarantee (proposal 104 #3) lives in
+# cache.get_or_compute, which both get_recent_posts_for_seo and
+# get_author_recent_posts now route through. It's unit-tested directly (no DB
+# session) in test_cache.py::TestGetOrCompute — driving it here with concurrent
+# real asyncpg connections destabilises the suite's session-scoped event loop.
+
+
 # ── get_community_name ─────────────────────────────────────────────────────
 
 async def test_get_community_name_returns_mapped_name(setup_db):
@@ -746,3 +755,19 @@ async def test_get_community_name_none_when_unmapped(setup_db):
     async with _TestSession() as session:
         result = await get_community_name(session, "hive-000000")
     assert result is None
+
+
+async def test_get_community_name_caches_result(setup_db):
+    """The display name is cached, so a second load doesn't re-hit PG — proven by
+    mutating the row and still getting the original cached value (proposal 104 #4)."""
+    from project.db.crud import get_community_name, upsert_community_mapping
+
+    async with _TestSession() as session:
+        await upsert_community_mapping(session, "hive-777", "crypto", "First Name", 0.9)
+        first = await get_community_name(session, "hive-777")
+        # Mutate the underlying row; the cached value should still be returned.
+        await upsert_community_mapping(session, "hive-777", "crypto", "Changed Name", 0.9)
+        second = await get_community_name(session, "hive-777")
+
+    assert first == "First Name"
+    assert second == "First Name"  # served from cache, not the updated row

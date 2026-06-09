@@ -903,6 +903,17 @@ def test_build_post_list_html_intro_only_when_no_posts():
     assert "seo-post-list" not in html
 
 
+def test_build_post_list_html_escapes_heading_and_intro():
+    """heading + intro carry chain-supplied text (community name / about) and must
+    be HTML-escaped, not just the per-post fields (proposal 104 #9)."""
+    from project.api.routes.ui import _build_post_list_html
+    html = _build_post_list_html(
+        [], "<b>Comm</b> on HiveComb", intro="About <script>alert(1)</script> us",
+    )
+    assert "<b>Comm</b>" not in html and "&lt;b&gt;Comm&lt;/b&gt;" in html
+    assert "<script>alert(1)</script>" not in html and "&lt;script&gt;" in html
+
+
 def test_build_post_body_fallback_renders():
     from project.api.routes.ui import _build_post_body_fallback_html
     html = _build_post_body_fallback_html({
@@ -939,6 +950,33 @@ def test_build_post_body_fallback_empty():
     assert _build_post_body_fallback_html({"title": "", "body": ""}) == ""
 
 
+def test_build_post_body_fallback_unescapes_entities():
+    """clean_post_body leaves entities intact; the builder decodes them once so
+    the plain-text fallback shows real characters, not double-encoded ones
+    (proposal 104 #10)."""
+    from project.api.routes.ui import _build_post_body_fallback_html
+    html = _build_post_body_fallback_html(
+        {"title": "T", "body": "5 &lt; 10 &amp; rising"}
+    )
+    # &lt; → "<" → re-escaped once → "&lt;" (not the double-encoded "&amp;lt;").
+    assert "&amp;lt;" not in html and "&amp;amp;" not in html
+    assert "5 &lt; 10 &amp; rising" in html
+
+
+def test_format_bridge_date_handles_variants():
+    """Covers every branch of _format_bridge_date: datetime, ISO string (incl.
+    trailing Z), unparseable string (→ bare YYYY-MM-DD prefix), and None/""
+    (proposal 104 #12)."""
+    from project.api.routes.ui import _format_bridge_date
+    assert _format_bridge_date(datetime(2026, 5, 30, tzinfo=timezone.utc)) == "May 30, 2026"
+    assert _format_bridge_date("2026-05-30T12:00:00Z") == "May 30, 2026"
+    assert _format_bridge_date("2026-05-30T12:00:00") == "May 30, 2026"
+    # Unparseable (month 13) → ValueError → bare 10-char date prefix.
+    assert _format_bridge_date("2026-13-99 garbage") == "2026-13-99"
+    assert _format_bridge_date(None) == ""
+    assert _format_bridge_date("") == ""
+
+
 async def test_homepage_renders_recent_posts_primer(client):
     """Homepage server-renders the recent-posts list for crawlers / no-JS."""
     recent = [{"author": "alice", "permlink": "p1", "title": "Homepage Post One",
@@ -957,6 +995,43 @@ async def test_homepage_degrades_when_recent_posts_unavailable(client):
     with patch("project.api.routes.ui.crud.get_recent_posts_for_seo",
                side_effect=OSError("hafsql down")):
         resp = await client.get("/")
+    assert resp.status_code == 200
+    assert '<section class="seo-recent-posts" aria-label="Recent posts">' not in resp.text
+
+
+# Per-route degrade coverage (proposal 104 #1): every SEO surface must render
+# (200) without the recent-posts block when the data fetch fails — runtime safety
+# is already provided by _safe_recent_posts; these close proposal 100's test plan.
+
+async def test_category_page_degrades_when_recent_posts_unavailable(client):
+    """/c/ degrade: a failed recent-posts fetch renders the page without the
+    primer. No category description → no intro, so the whole block is absent."""
+    with patch("project.api.routes.ui.CATEGORY_DESCRIPTIONS", {}), \
+         patch("project.api.routes.ui.crud.get_recent_posts_for_seo",
+               side_effect=OSError("hafsql down")):
+        resp = await client.get("/c/photography")
+    assert resp.status_code == 200
+    assert '<section class="seo-recent-posts" aria-label="Recent posts">' not in resp.text
+
+
+async def test_language_page_degrades_when_recent_posts_unavailable(client):
+    """/lang/ degrade: language routes never pass an intro, so a failed fetch
+    leaves the block fully absent."""
+    with patch("project.api.routes.ui.crud.get_recent_posts_for_seo",
+               side_effect=OSError("hafsql down")):
+        resp = await client.get("/lang/pt")
+    assert resp.status_code == 200
+    assert '<section class="seo-recent-posts" aria-label="Recent posts">' not in resp.text
+
+
+async def test_community_page_degrades_when_recent_posts_unavailable(client):
+    """/community/ degrade: no mapping + no about → no intro, so a failed
+    recent-posts fetch leaves the block absent."""
+    with patch("project.api.routes.ui.crud.get_community_name", return_value=None), \
+         patch("project.api.routes.ui.get_community", return_value=None), \
+         patch("project.api.routes.ui.crud.get_recent_posts_for_seo",
+               side_effect=OSError("hafsql down")):
+        resp = await client.get("/community/hive-194913")
     assert resp.status_code == 200
     assert '<section class="seo-recent-posts" aria-label="Recent posts">' not in resp.text
 
@@ -1025,6 +1100,23 @@ async def test_post_page_no_body_fallback_for_reply(client):
         }
         resp = await client.get("/@bob/re-alice-123")
     assert 'class="post-body-fallback"' not in resp.text
+
+
+async def test_post_page_suppresses_body_fallback_for_nsfw(client):
+    """NSFW top-level posts get NO server-rendered <article> body fallback
+    (content policy, proposal 104 #2) — but the inline #hivecomb-post-data payload
+    stays intact so the SPA modal still renders the body for human readers."""
+    with patch("project.api.routes.ui.get_post_full") as mock_get, \
+         patch("project.api.routes.ui.crud.get_nsfw_author_permlinks",
+               return_value={("alice", "nsfw-post")}):
+        mock_get.return_value = _bridge(
+            title="Adult Post", body="Explicit body text.", app="peakd",
+        )
+        resp = await client.get("/@alice/nsfw-post")
+    body = resp.text
+    assert 'class="post-body-fallback"' not in body
+    # SPA payload preserved — the modal still renders the body for human readers.
+    assert '<script id="hivecomb-post-data" type="application/json">' in body
 
 
 async def test_fetch_post_includes_comments_concurrently():

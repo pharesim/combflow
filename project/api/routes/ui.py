@@ -5,7 +5,7 @@ import logging
 import pathlib
 import re
 from datetime import datetime, timezone
-from html import escape as html_escape
+from html import escape as html_escape, unescape as html_unescape
 from urllib.parse import quote
 from xml.sax.saxutils import escape as xml_escape
 
@@ -300,7 +300,7 @@ def _build_author_description(author: str, summary: dict) -> str:
 
 
 def _build_post_list_html(
-    posts: list[dict], heading: str, *, show_author: bool = True, intro: str = "",
+    posts: list[dict] | None, heading: str, *, show_author: bool = True, intro: str = "",
 ) -> str:
     """Server-render recent posts as a titled ``<ol>`` for the indexable SEO
     primers on ``/``, ``/c/{cat}``, ``/lang/{lang}``, ``/community/{id}``
@@ -375,7 +375,7 @@ def _build_post_list_html(
     )
 
 
-def _format_bridge_date(created) -> str:
+def _format_bridge_date(created: datetime | str | None) -> str:
     """Human date ("May 30, 2026") from a bridge.get_post ``created`` value
     (an ISO string) or a datetime. Falls back to the bare date portion / "" so
     a parse failure never breaks the post-body fallback meta line."""
@@ -405,7 +405,10 @@ def _build_post_body_fallback_html(post_data: dict | None) -> str:
     if not post_data or post_data.get("parent_author"):
         return ""
     title = post_data.get("title") or ""
-    body = clean_post_body(post_data.get("body") or "")[:8192]
+    # clean_post_body strips tags but leaves HTML entities (&lt; &amp; …) intact;
+    # the per-paragraph html_escape below would re-encode them (&amp;lt;). Decode
+    # once first so the plain-text fallback shows the real characters (104 #10).
+    body = html_unescape(clean_post_body(post_data.get("body") or ""))[:8192]
     if not title and not body:
         return ""
 
@@ -437,14 +440,29 @@ def _build_post_body_fallback_html(post_data: dict | None) -> str:
     )
 
 
+# Single-pass template substitution. A sequential ``.replace()`` chain had a
+# latent bug: a value substituted for an early placeholder that itself contained
+# a later placeholder token (e.g. a post titled ``{{POST_BODY_FALLBACK_HTML}}``
+# surfacing in the recent-posts list) would be clobbered by the later
+# ``.replace()`` for that token. ``re.sub`` with a dict lookup replaces each
+# ``{{TOKEN}}`` exactly once and never re-scans the injected value. Unknown
+# tokens are left untouched (identical to the old chain). (proposal 104 #7)
+_PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
+
+
+def _substitute(template: str, values: dict[str, str]) -> str:
+    return _PLACEHOLDER_RE.sub(
+        lambda m: values.get(m.group(1), m.group(0)), template
+    )
+
+
 def _render_legal(name: str) -> HTMLResponse:
     """Return a legal page template with placeholders replaced."""
     site_url = settings.site_url.rstrip("/") if settings.site_url else ""
-    html = (
-        _TEMPLATES[name]
-        .replace("{{SITE_URL}}", site_url)
-        .replace("{{LEGAL_DATE}}", "12 April 2026")
-    )
+    html = _substitute(_TEMPLATES[name], {
+        "SITE_URL": site_url,
+        "LEGAL_DATE": "12 April 2026",
+    })
     return HTMLResponse(html)
 
 
@@ -457,6 +475,7 @@ def _render(
     author_card: dict | None = None,
     author_summary: dict | None = None,
     recent: dict | None = None,
+    index_post_body: bool = True,
 ) -> HTMLResponse:
     """Render the discover template with placeholders substituted.
 
@@ -536,25 +555,30 @@ def _render(
         )
     else:
         recent_posts_html = ""
-    post_body_fallback_html = _build_post_body_fallback_html(post_data)
-
-    html = (
-        _TEMPLATES[name]
-        .replace("{{SITE_URL}}", site_url)
-        .replace("{{CANONICAL_LINK_TAG}}", canonical_tag)
-        .replace("{{ROBOTS_TAG}}", robots_tag)
-        .replace("{{OG_URL}}", own_url)
-        .replace("{{OG_TYPE}}", og_type)
-        .replace("{{OG_TITLE}}", og_title)
-        .replace("{{OG_DESCRIPTION}}", og_desc)
-        .replace("{{OG_IMAGE}}", og_image)
-        .replace("{{POST_DATA_SCRIPT}}", post_data_tag)
-        .replace("{{COMMENTS_HTML}}", comments_html)
-        .replace("{{AUTHOR_CARD_HTML}}", author_card_html)
-        .replace("{{AUTHOR_SUMMARY_HTML}}", author_summary_html)
-        .replace("{{RECENT_POSTS_HTML}}", recent_posts_html)
-        .replace("{{POST_BODY_FALLBACK_HTML}}", post_body_fallback_html)
+    # NSFW top-level posts keep the inline #hivecomb-post-data payload (the SPA
+    # modal still renders the body for human readers) but get no server-rendered
+    # body fallback — get_recent_posts_for_seo already filters NSFW, so this
+    # fallback was the one crawler-facing surface still leaking it (proposal 104 #2).
+    post_body_fallback_html = (
+        _build_post_body_fallback_html(post_data) if index_post_body else ""
     )
+
+    html = _substitute(_TEMPLATES[name], {
+        "SITE_URL": site_url,
+        "CANONICAL_LINK_TAG": canonical_tag,
+        "ROBOTS_TAG": robots_tag,
+        "OG_URL": own_url,
+        "OG_TYPE": og_type,
+        "OG_TITLE": og_title,
+        "OG_DESCRIPTION": og_desc,
+        "OG_IMAGE": og_image,
+        "POST_DATA_SCRIPT": post_data_tag,
+        "COMMENTS_HTML": comments_html,
+        "AUTHOR_CARD_HTML": author_card_html,
+        "AUTHOR_SUMMARY_HTML": author_summary_html,
+        "RECENT_POSTS_HTML": recent_posts_html,
+        "POST_BODY_FALLBACK_HTML": post_body_fallback_html,
+    })
     return HTMLResponse(html)
 
 
@@ -649,6 +673,25 @@ async def _safe_author_summary(db: AsyncSession, author: str) -> dict | None:
         return None
 
 
+async def _safe_is_nsfw(db: AsyncSession, author: str, permlink: str) -> bool:
+    """True when ``(author, permlink)`` is flagged ``is_nsfw`` in our DB — reuses
+    the worker's NSFW classification (the same source the sitemap and the SEO
+    recent-posts list already filter on). Gates the server-rendered post-body
+    fallback so NSFW bodies aren't handed to crawlers (proposal 104 #2).
+
+    Fails *closed*: a lookup error returns True, so a DB hiccup never
+    server-renders a possibly-NSFW body — the SPA modal still shows it to human
+    readers via the inline payload. A post we've never classified (absent from
+    our table) is simply not flagged, so brand-new posts still get their fallback.
+    """
+    try:
+        flagged = await crud.get_nsfw_author_permlinks(db, [(author, permlink)])
+        return (author, permlink) in flagged
+    except Exception as exc:
+        logger.debug("nsfw lookup failed for %s/%s: %s", author, permlink, exc)
+        return True
+
+
 # ── HTML pages ────────────────────────────────────────────────────────────────
 
 async def _safe_recent_posts(db: AsyncSession, **filters) -> list[dict]:
@@ -662,7 +705,19 @@ async def _safe_recent_posts(db: AsyncSession, **filters) -> list[dict]:
         return []
 
 
+async def _safe_author_recent_posts(db: AsyncSession, author: str) -> list[dict]:
+    """crud.get_author_recent_posts that swallows errors (returns []) — mirrors
+    the ``_safe_*`` siblings. A HAFSQL/DB hiccup degrades the ``/@author`` page to
+    its stats summary without the recent-posts list, rather than 500ing."""
+    try:
+        return await crud.get_author_recent_posts(db, author)
+    except Exception as exc:
+        logger.debug("recent posts lookup failed for %s: %s", author, exc)
+        return []
+
+
 _COMMUNITY_META_TTL = 3600
+_COMMUNITY_META_FAIL_TTL = 60  # short, so a Hive-API blip self-heals within a minute
 
 
 async def _safe_community_meta(db: AsyncSession, community_id: str) -> dict:
@@ -687,7 +742,12 @@ async def _safe_community_meta(db: AsyncSession, community_id: str) -> dict:
         except Exception as exc:
             logger.debug("community meta fetch failed for %s: %s", community_id, exc)
             meta = {}
-        cache.put(cache_key, meta, ttl=_COMMUNITY_META_TTL)
+        # Real metadata caches for the full hour; an empty/failed lookup caches
+        # only briefly so a transient Hive-API blip self-heals (proposal 104 #9).
+        cache.put(
+            cache_key, meta,
+            ttl=_COMMUNITY_META_TTL if meta else _COMMUNITY_META_FAIL_TTL,
+        )
     if name == community_id and meta.get("title"):
         name = meta["title"]
     return {"name": name, "about": meta.get("about") or ""}
@@ -815,11 +875,7 @@ async def discover_author(
     # unique text so Google doesn't flag Soft 404 even when prerender's
     # JS-rendered hex grid is empty/missing. HAFSQL outage \u2192 [] \u2192 we still
     # render the stats summary, just without the post list.
-    try:
-        recent_posts = await crud.get_author_recent_posts(db, author)
-    except Exception as exc:
-        logger.debug("recent posts lookup failed for %s: %s", author, exc)
-        recent_posts = []
+    recent_posts = await _safe_author_recent_posts(db, author)
     return _render(
         "discover.html", request, og=og,
         author_summary={
@@ -832,10 +888,19 @@ async def discover_author(
 async def discover_post(
     request: Request, author: str, permlink: str, db: AsyncSession = Depends(get_db)
 ):
-    # Post fetch (+ inline comments) and the author aggregation run concurrently.
-    (og, raw, comments), summary = await asyncio.gather(
+    async def _db_reads():
+        # Author aggregation + the NSFW flag share the one request session, so run
+        # them sequentially (a single AsyncSession can't run two queries at once)
+        # \u2014 still concurrent with the post RPC below, which dominates wall-clock,
+        # so the NSFW lookup adds no latency on the critical path.
+        summary = await _safe_author_summary(db, author)
+        nsfw = await _safe_is_nsfw(db, author, permlink)
+        return summary, nsfw
+
+    # Post fetch (+ inline comments) runs concurrently with the DB reads.
+    (og, raw, comments), (summary, nsfw) = await asyncio.gather(
         _fetch_post(author, permlink),
-        _safe_author_summary(db, author),
+        _db_reads(),
     )
     # Reputation for the mini-card comes free from the bridge.get_post payload
     # (no extra RPC) \u2014 bridge posts carry a pre-computed author_reputation score.
@@ -843,6 +908,7 @@ async def discover_post(
     return _render(
         "discover.html", request, og=og, post_data=raw, comments=comments,
         author_card={"author": author, "summary": summary, "reputation": reputation},
+        index_post_body=not nsfw,
     )
 
 

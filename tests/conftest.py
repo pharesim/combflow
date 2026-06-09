@@ -1,4 +1,5 @@
 """Shared test fixtures — Alembic-migrated DB per session, truncate per test, seeded data."""
+import asyncio
 import os
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.pool import NullPool
 
 from project.db.models import Base
@@ -82,27 +84,56 @@ _ALL_TABLES = [
 def _clear_global_state():
     """Clear module-level caches between tests to prevent cross-test bleed."""
     from project.worker.blacklist import _cache as blacklist_cache, _cache_lock as blacklist_lock
+    from project.api.routes.imageproxy import _reset_resolve_cache
     cache.clear()
+    _reset_resolve_cache()
     with blacklist_lock:
         blacklist_cache.clear()
     yield
     cache.clear()
+    _reset_resolve_cache()
     with blacklist_lock:
         blacklist_cache.clear()
 
 
 @pytest.fixture(autouse=True)
 async def setup_db(_apply_migrations):
-    """Truncate all tables before each test for isolation."""
-    async with _test_engine.begin() as conn:
-        # Check which tables exist before truncating (post_reports requires migration 002).
-        result = await conn.execute(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-        ))
-        existing = {row[0] for row in result.fetchall()}
-        tables = [t for t in _ALL_TABLES if t in existing]
-        if tables:
-            await conn.execute(text("TRUNCATE " + ", ".join(tables) + " CASCADE"))
+    """Truncate all tables before each test for isolation.
+
+    The multi-table ``TRUNCATE ... CASCADE`` takes AccessExclusiveLocks. A
+    connection orphaned by a prior test (asyncpg closes on the event loop a beat
+    late — see the ``loop_scope`` note above) can sit ``idle in transaction``
+    still holding an AccessShareLock on ``posts`` and deadlock the TRUNCATE.
+    Defuse it at the source — terminate any lingering in-transaction backend
+    before truncating (safe: tests run sequentially, so such a backend is always a
+    previous test's leaked session, never the running one) — then cap the lock
+    wait and retry the idempotent truncate a few times as a backstop."""
+    for attempt in range(6):
+        try:
+            async with _test_engine.begin() as conn:
+                # Evict orphaned in-transaction connections that could still hold
+                # table locks from a prior test's not-yet-GC'd session.
+                await conn.execute(text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND pid <> pg_backend_pid() "
+                    "AND state LIKE 'idle in transaction%'"
+                ))
+                # Check which tables exist before truncating (post_reports requires migration 002).
+                result = await conn.execute(text(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+                ))
+                existing = {row[0] for row in result.fetchall()}
+                tables = [t for t in _ALL_TABLES if t in existing]
+                if tables:
+                    await conn.execute(text("SET LOCAL lock_timeout = '4s'"))
+                    await conn.execute(text("TRUNCATE " + ", ".join(tables) + " CASCADE"))
+            break
+        except DBAPIError:
+            # Deadlock or lock_timeout despite the eviction — back off briefly so
+            # the straggler finishes closing, then retry on a fresh transaction.
+            if attempt == 5:
+                raise
+            await asyncio.sleep(0.3 * (attempt + 1))
     yield
     await _test_engine.dispose()
 

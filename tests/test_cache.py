@@ -1,4 +1,5 @@
 """Tests for project.cache — in-process TTL cache."""
+import asyncio
 import time
 from unittest.mock import patch
 
@@ -89,3 +90,58 @@ class TestCachedResponseDecorator:
 
         result = await add(3, 4)
         assert result == 7
+
+
+class TestGetOrCompute:
+    """The double-checked-lock cache fill behind the cache-stampede fix
+    (proposal 104 #3). Tested here, at the helper, rather than via concurrent
+    asyncpg connections in test_crud (which destabilises the session-scoped loop):
+    get_recent_posts_for_seo / get_author_recent_posts both route through this."""
+
+    def setup_method(self):
+        cache.clear()
+
+    async def test_collapses_concurrent_misses(self):
+        """N concurrent cold-cache callers run the producer exactly once, then all
+        observe the same cached value — the stampede collapses to one round-trip."""
+        calls = 0
+
+        async def producer():
+            nonlocal calls
+            calls += 1
+            await asyncio.sleep(0)  # yield so all 5 callers pile up on the lock
+            return {"n": calls}
+
+        results = await asyncio.gather(
+            *[cache.get_or_compute("stampede", 60, producer) for _ in range(5)]
+        )
+        assert calls == 1                       # one producer call, not five
+        assert all(r == {"n": 1} for r in results)
+
+    async def test_hits_cache_without_relocking(self):
+        """A warm cache returns the stored value without invoking the producer."""
+        cache.put("warm", {"v": 1}, ttl=60)
+        called = False
+
+        async def producer():
+            nonlocal called
+            called = True
+            return {"v": 2}
+
+        assert await cache.get_or_compute("warm", 60, producer) == {"v": 1}
+        assert called is False
+
+    async def test_does_not_cache_none(self):
+        """A producer returning None isn't cached (None reads back as a miss), so
+        the next caller recomputes — callers needing to cache 'absent' use a
+        non-None sentinel."""
+        calls = 0
+
+        async def producer():
+            nonlocal calls
+            calls += 1
+            return None
+
+        await cache.get_or_compute("nullable", 60, producer)
+        await cache.get_or_compute("nullable", 60, producer)
+        assert calls == 2
