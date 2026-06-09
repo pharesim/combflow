@@ -13,27 +13,37 @@ from project.hafsql import (
 
 
 class TestRawRepToScore:
-    def test_zero_returns_default(self):
-        assert _raw_rep_to_score(0) == 25.0
+    # Canonical pins (proposal 102 F2). The formula matches Hive's rep_log10:
+    # 9·log10(raw) − 56, clamped at the 25.0 floor for positive raw below 10^9
+    # and sign-flipped for downvoted accounts. These exact values are what the
+    # approved fix produces — the proposal table's "79.55"/"−27.0" examples were
+    # arithmetic slips (they used the un-clamped body and dropped the +25), so
+    # the pins below intentionally differ from those illustrative numbers.
+    @pytest.mark.parametrize("raw,expected", [
+        (0, 25.0),                       # new account / no votes
+        (1_000_000_000, 25.0),           # 10^9 — the canonical floor boundary
+        (10 ** 8, 25.0),                 # below floor → clamped to 25.0 (not 16)
+        (10 ** 15, 79.0),                # high reputation
+        (500_000_000_000_000, 76.29),    # 5×10^14
+        (-(10 ** 12), -2.0),             # downvoted → below the 20.0 ingest gate
+        (-(10 ** 15), -29.0),            # heavily downvoted
+    ])
+    def test_canonical_values(self, raw, expected):
+        assert _raw_rep_to_score(raw) == expected
 
-    def test_positive_rep(self):
-        result = _raw_rep_to_score(1_000_000_000)
-        assert 25 < result < 80
+    def test_returns_float(self):
+        # The -> float contract must hold even on the clamped path.
+        assert isinstance(_raw_rep_to_score(10 ** 8), float)
 
-    def test_very_high_rep(self):
-        result = _raw_rep_to_score(500_000_000_000_000)
-        assert result > 60
-
-    def test_negative_rep(self):
-        result = _raw_rep_to_score(-1_000_000_000)
-        assert result < 25
-
-    def test_small_positive(self):
-        result = _raw_rep_to_score(10_000_000)
-        assert result > 0
+    def test_gate_excludes_downvoted_but_not_new_accounts(self):
+        # The whole point of F2: a fresh/low account stays >= the 20.0 gate
+        # while a heavily downvoted one drops below it.
+        from project.worker.classify import MIN_AUTHOR_REPUTATION
+        assert _raw_rep_to_score(10 ** 8) >= MIN_AUTHOR_REPUTATION
+        assert _raw_rep_to_score(-(10 ** 12)) < MIN_AUTHOR_REPUTATION
 
     def test_monotonic(self):
-        """Higher raw rep should give higher score."""
+        """Higher raw rep should give higher (or equal, while clamped) score."""
         scores = [_raw_rep_to_score(10 ** exp) for exp in range(7, 16)]
         for i in range(len(scores) - 1):
             assert scores[i] <= scores[i + 1]
@@ -137,6 +147,57 @@ class TestCursorContextManager:
         with patch("project.hafsql._get_pool", return_value=mock_pool):
             with _cursor() as cur:
                 assert cur is not None
+        mock_pool.putconn.assert_called_once_with(mock_conn)
+
+    def test_cursor_resets_statement_timeout_on_release(self):
+        """Proposal 102 F6: a per-call statement_timeout is cleared before the
+        connection returns to the pool, so it can't leak into a later checkout."""
+        mock_pool = MagicMock()
+        mock_conn = MagicMock()
+        reset_cur = MagicMock()
+        ctx = mock_conn.cursor.return_value
+        ctx.__enter__ = lambda s: reset_cur
+        ctx.__exit__ = MagicMock(return_value=False)
+        mock_pool.getconn.return_value = mock_conn
+        with patch("project.hafsql._get_pool", return_value=mock_pool):
+            with _cursor():
+                pass
+        reset_cur.execute.assert_called_once_with("RESET statement_timeout")
+        mock_pool.putconn.assert_called_once_with(mock_conn)
+
+    def test_cursor_release_survives_reset_failure(self):
+        """If RESET fails (broken conn) the connection is still returned; the
+        pool discards broken connections on its own."""
+        mock_pool = MagicMock()
+        mock_conn = MagicMock()
+        # Second cursor() call (the RESET) blows up; the first (yielded) is fine.
+        good_cur = MagicMock()
+        reset_ctx = MagicMock()
+        reset_ctx.__enter__ = MagicMock(side_effect=Exception("conn broken"))
+        mock_conn.cursor.side_effect = [good_cur, reset_ctx]
+        mock_pool.getconn.return_value = mock_conn
+        with patch("project.hafsql._get_pool", return_value=mock_pool):
+            with _cursor() as cur:
+                assert cur is good_cur
+        mock_pool.putconn.assert_called_once_with(mock_conn)
+
+    def test_cursor_propagates_caller_exception_unmasked(self):
+        """Proposal 102 F6 path 3: a non-Operational error raised by the caller
+        must propagate unmasked while the connection is still RESET and returned
+        exactly once (without close=True) — the finally block must not swallow
+        the original exception."""
+        mock_pool = MagicMock()
+        mock_conn = MagicMock()
+        reset_cur = MagicMock()
+        ctx = mock_conn.cursor.return_value
+        ctx.__enter__ = lambda s: reset_cur
+        ctx.__exit__ = MagicMock(return_value=False)
+        mock_pool.getconn.return_value = mock_conn
+        with patch("project.hafsql._get_pool", return_value=mock_pool):
+            with pytest.raises(ValueError, match="boom"):
+                with _cursor():
+                    raise ValueError("boom")
+        reset_cur.execute.assert_called_once_with("RESET statement_timeout")
         mock_pool.putconn.assert_called_once_with(mock_conn)
 
     def test_cursor_releases_on_operational_error(self):
@@ -435,6 +496,36 @@ class TestGetReputationsViaApi:
         with patch("project.hafsql.requests.post", side_effect=Exception("all down")):
             result = get_reputations_via_api(["alice"])
         assert result == {}
+
+    def test_uses_short_timeout(self):
+        """Proposal 102 F1: per-node timeout halved 4 -> 2 to stay under the
+        120s stream watchdog during a Hive API outage."""
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {"reputation": 30.0}}
+        with patch("project.hafsql.requests.post", return_value=mock_resp) as mock_post:
+            get_reputations_via_api(["alice"])
+        assert mock_post.call_args.kwargs["timeout"] == 2
+
+    def test_caps_author_list(self):
+        """Proposal 102 F1: the author list is bounded (was 1000) so one
+        fallback pass can't fan out into a watchdog-tripping number of RPCs."""
+        from project.hafsql import _API_REP_BATCH_CAP
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {"reputation": 42.0}}
+        authors = [f"user{i}" for i in range(_API_REP_BATCH_CAP + 25)]
+        with patch("project.hafsql.requests.post", return_value=mock_resp) as mock_post:
+            result = get_reputations_via_api(authors)
+        # Each capped author succeeds on the first node -> one POST per author.
+        assert mock_post.call_count == _API_REP_BATCH_CAP
+        assert len(result) == _API_REP_BATCH_CAP
+
+    def test_cap_tracks_stream_batch_size(self):
+        """The cap is derived as stream._BATCH_SIZE * 2 (proposal 102 F1). Keep
+        them in lockstep so a future batch-size bump can't silently widen the
+        fallback fan-out past the watchdog budget."""
+        from project.hafsql import _API_REP_BATCH_CAP
+        from project.worker.stream import _BATCH_SIZE
+        assert _API_REP_BATCH_CAP == _BATCH_SIZE * 2
 
 
 # ── get_reputation_via_api (async wrapper) ──────────────────────────────────

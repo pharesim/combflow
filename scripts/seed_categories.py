@@ -30,6 +30,7 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -438,7 +439,13 @@ def fetcher_thread(
 
     fetched = 0
     batch_size = 200
-    offset = 0
+    # Keyset pagination cursor (proposal 102 F10). ``None`` on the first batch
+    # means "no lower bound yet"; afterwards it holds the oldest fetched row's
+    # (created, author, permlink) so we walk strictly downward in a single index
+    # pass instead of re-scanning a growing prefix on every OFFSET.
+    cursor_dt = None
+    cursor_author = ""
+    cursor_permlink = ""
     conn = None
     retries = 0
     max_retries = 5
@@ -463,9 +470,10 @@ def fetcher_thread(
         status["fetch_done"] = True
         return
 
-    # Snapshot a created upper bound at the start of the run so OFFSET pagination
-    # is stable — without this, new posts arriving mid-run shift every row down
-    # and cause us to skip/duplicate rows across batches.
+    # Snapshot a created upper bound at the start of the run so the scan stays
+    # stable — without it, posts arriving mid-run (created > start_ts) could slip
+    # into the first batch. Keyset pagination (below) then walks strictly downward
+    # from this bound, keeping the run reproducible.
     start_ts = None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -490,10 +498,14 @@ def fetcher_thread(
                 WHERE c.parent_author = ''
                   AND LENGTH(c.body) >= 80
                   AND (%s::timestamp IS NULL OR c.created <= %s)
-                ORDER BY c.created DESC
-                LIMIT %s OFFSET %s
+                  AND (%s::timestamp IS NULL
+                       OR (c.created, c.author, c.permlink) < (%s, %s, %s))
+                ORDER BY c.created DESC, c.author DESC, c.permlink DESC
+                LIMIT %s
                 """,
-                (start_ts, start_ts, batch_size, offset),
+                (start_ts, start_ts,
+                 cursor_dt, cursor_dt, cursor_author, cursor_permlink,
+                 batch_size),
             )
             rows = cur.fetchall()
             cur.close()
@@ -513,6 +525,26 @@ def fetcher_thread(
 
         if not rows:
             log.info("[FETCH] No more posts from HAFSQL")
+            break
+
+        # Advance the keyset cursor to the oldest row in this batch (the tail,
+        # since rows are ordered created/author/permlink DESC). Proposal 102 F10
+        # mirrors backfill.py's row-value keyset: a same-second group split by
+        # LIMIT is no longer dropped on the next round (the bug F8 fixed for the
+        # live worker). We advance past the *full* fetched batch — not just the
+        # rep-passing rows — preserving the old ``offset += batch_size`` reach.
+        tail_created = rows[-1].get("created")
+        if isinstance(tail_created, datetime):
+            # Keep the cursor naive (psycopg2 returns naive for the bare
+            # ``timestamp`` column). Unlike backfill.py we never persist it or
+            # compare it against a tz-aware frontier, so a naive↔naive round-trip
+            # is type-aligned and avoids any aware/naive comparison error.
+            cursor_dt = tail_created
+            cursor_author = rows[-1].get("author") or ""
+            cursor_permlink = rows[-1].get("permlink") or ""
+        else:
+            log.warning("[FETCH] batch tail has non-datetime 'created': %r — stopping",
+                        tail_created)
             break
 
         for row in rows:
@@ -550,7 +582,6 @@ def fetcher_thread(
             })
             fetched += 1
 
-        offset += batch_size
         status["fetched"] = fetched
         log.info("[FETCH] %d/%d posts fetched", fetched, n_posts)
 

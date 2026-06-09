@@ -1,6 +1,6 @@
 """Tests for worker backfill module — _backfill_thread logic."""
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 
 import psycopg2
@@ -115,8 +115,13 @@ class TestBackfillThread:
         self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
         mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
     ):
-        """Posts from authors with low reputation are skipped."""
-        mock_connect.return_value = _mock_conn([[_row(reputation=-1_000_000_000)], []])
+        """Posts from authors with low reputation are skipped.
+
+        Uses a heavily downvoted raw rep (-10^12 → score -2.0 under the
+        canonical formula): -10^9 now maps to the 25.0 floor (proposal 102 F2),
+        which would pass the gate.
+        """
+        mock_connect.return_value = _mock_conn([[_row(reputation=-1_000_000_000_000)], []])
         stop = threading.Event()
         _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
         mock_classify.assert_not_called()
@@ -273,3 +278,145 @@ class TestBackfillThread:
         stop.wait.return_value = False  # Don't actually wait
         with pytest.raises(TypeError, match="schema mismatch"):
             _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill._BACKFILL_BATCH", 2)
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_keyset_pagination_no_same_second_skip(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """Proposal 102 F8: when LIMIT bisects a same-second group, the keyset
+        tuple cursor must carry (created, author, permlink) so the rest of the
+        second is fetched next round instead of being skipped forever.
+
+        The mock HONORS the keyset WHERE/LIMIT params (it filters a candidate
+        corpus exactly like Postgres would), so the "no post dropped" assertion
+        genuinely fails on a revert to a bare `created < cursor` filter — under
+        that revert the same-second tail (alice/a here) is excluded forever.
+        """
+        T = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+        older = T - timedelta(seconds=5)
+        # A 3-post same-second group at T — bisected by the patched LIMIT=2 —
+        # plus two older posts. ORDER BY created/author/permlink DESC means the
+        # batch-1 tail is bob/b; the old bare-timestamp code would then skip
+        # alice/a (created == T is not < T).
+        corpus = [
+            _row(author="carol", permlink="c", created=T),
+            _row(author="bob", permlink="b", created=T),
+            _row(author="alice", permlink="a", created=T),
+            _row(author="zed", permlink="z", created=older),
+            _row(author="yan", permlink="y", created=older),
+        ]
+        key = lambda r: (r["created"], r["author"], r["permlink"])
+
+        executed = []
+        state = {"batch": []}
+
+        def run_query(sql, params=None):
+            executed.append((sql, params))
+            cur_created, cur_author, cur_permlink, limit = params
+            bound = (cur_created, cur_author, cur_permlink)
+            matches = sorted((r for r in corpus if key(r) < bound), key=key, reverse=True)
+            state["batch"] = matches[:limit]
+
+        mock_cur = MagicMock()
+        mock_cur.execute.side_effect = run_query
+        mock_cur.fetchall.side_effect = lambda: state["batch"]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+        mock_connect.return_value = mock_conn
+
+        stop = threading.Event()
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+
+        # No post is dropped — all five distinct posts are classified.
+        classified = {
+            (c.kwargs["author"], c.kwargs["permlink"])
+            for c in mock_classify.call_args_list
+        }
+        assert classified == {
+            ("carol", "c"), ("bob", "b"), ("alice", "a"),
+            ("zed", "z"), ("yan", "y"),
+        }
+
+        # Lock the load-bearing SQL: the row-value comparison and the 3-column
+        # DESC ordering (an ORDER-BY revert or an AND-chain rewrite must fail).
+        sql0 = " ".join(executed[0][0].split())
+        assert "(c.created, c.author, c.permlink) < (%s, %s, %s)" in sql0
+        assert "ORDER BY c.created DESC, c.author DESC, c.permlink DESC" in sql0
+        # First query seeds empty tiebreakers (== `created < NOW`).
+        assert executed[0][1][1] == ""
+        assert executed[0][1][2] == ""
+        # Second query advances to the batch-1 tail's full keyset tuple, not the
+        # bare timestamp — this is what stops alice/a from being skipped.
+        assert executed[1][1][:3] == (T, "bob", "b")
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_persists_cursor_as_int_timestamp(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """Proposal 102 F8: the persisted frontier stays a plain int epoch
+        (stream_cursors.block_num is an Integer column) — the keyset tuple lives
+        only in memory, so no schema migration is needed."""
+        T = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_connect.return_value = _mock_conn([[_row(created=T)], []])
+        stop = threading.Event()
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+        # _set_cursor(db, key, value) — value must be the int epoch, never a
+        # tuple/datetime/JSON (which the integer column could not hold).
+        value = mock_set_cursor.call_args.args[2]
+        assert value == int(T.timestamp())
+        assert isinstance(value, int)
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor")
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_catchup_reads_legacy_int_and_seeds_empty_tiebreakers(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """Proposal 102 F8 lock: a saved legacy-int frontier is read as the
+        catch-up boundary, while the first query still seeds empty (NOW, '', '')
+        tiebreakers — i.e. legacy int read as (ts, '', '') needs no migration."""
+        from project.worker.backfill import _CATCHUP_BATCH
+        mock_get_cursor.return_value = int(
+            datetime(2026, 2, 1, tzinfo=timezone.utc).timestamp()
+        )
+        old = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        executed = []
+        mock_cur = MagicMock()
+        mock_cur.fetchall.side_effect = [[_row(created=old)], []]
+        mock_cur.execute.side_effect = lambda sql, params=None: executed.append((sql, params))
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+        mock_connect.return_value = mock_conn
+        stop = threading.Event()
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+        # First query seeds empty tiebreakers regardless of the persisted frontier.
+        assert executed[0][1][1] == ""
+        assert executed[0][1][2] == ""
+        # Catch-up mode (frontier present) uses the larger catch-up batch limit.
+        assert executed[0][1][3] == _CATCHUP_BATCH

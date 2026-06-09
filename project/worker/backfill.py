@@ -76,7 +76,19 @@ def _backfill_thread(
         frontier = None  # first run — no frontier yet
 
     # Always start scanning from NOW so recent posts are classified first.
+    #
+    # Proposal 102 F8: paginate by the row-value keyset (created, author,
+    # permlink), not by ``created`` alone. Hive blocks are 3s and many
+    # top-level posts share a created-second; with a bare ``created < cursor``
+    # filter, whenever LIMIT bisected a same-second group the remainder was
+    # excluded forever (strict ``<`` on the next round skipped the whole
+    # second). The tuple tiebreaker walks *within* a second without dropping
+    # rows. ``cursor_author``/``cursor_permlink`` start empty so the first
+    # query is exactly ``created < NOW`` (empty strings sort lowest, so no real
+    # row equals the seed) — identical to the previous first-batch behaviour.
     cursor_dt = datetime.now(timezone.utc)
+    cursor_author = ""
+    cursor_permlink = ""
     catching_up = frontier is not None
     if catching_up:
         logger.info("BACKFILL catch-up: NOW -> %s, then explore further back",
@@ -98,11 +110,12 @@ def _backfill_thread(
                     WHERE c.parent_author = ''
                       AND c.deleted = false
                       AND LENGTH(c.body) >= 80
-                      AND c.created < %s
-                    ORDER BY c.created DESC
+                      AND (c.created, c.author, c.permlink) < (%s, %s, %s)
+                    ORDER BY c.created DESC, c.author DESC, c.permlink DESC
                     LIMIT %s
                     """,
-                    (cursor_dt, _CATCHUP_BATCH if catching_up else _BACKFILL_BATCH),
+                    (cursor_dt, cursor_author, cursor_permlink,
+                     _CATCHUP_BATCH if catching_up else _BACKFILL_BATCH),
                 )
                 rows = cur.fetchall()
             finally:
@@ -133,12 +146,15 @@ def _backfill_thread(
             logger.info("BACKFILL reached end of HAFSQL posts — done")
             break
 
-        # Advance cursor to the oldest post in this batch.
+        # Advance the keyset cursor to the oldest post in this batch (the tail,
+        # since rows are ordered created/author/permlink DESC).
         oldest = rows[-1].get("created")
         if isinstance(oldest, datetime):
             if not oldest.tzinfo:
                 oldest = oldest.replace(tzinfo=timezone.utc)
             cursor_dt = oldest
+            cursor_author = rows[-1].get("author") or ""
+            cursor_permlink = rows[-1].get("permlink") or ""
         else:
             # Skip batch if we can't extract a valid cursor
             logger.warning("BACKFILL batch has non-datetime 'created': %r — skipping", oldest)
@@ -196,6 +212,14 @@ def _backfill_thread(
                 logger.exception("BACKFILL error on %s/%s", row["author"], row["permlink"])
 
         # Save cursor AFTER batch processing to avoid data loss on crash.
+        # The persisted frontier stays a plain timestamp (the stream_cursors
+        # column is an integer): it's only the catch-up stop boundary, never the
+        # explore resume point. Each restart re-walks from NOW back to the
+        # frontier with the keyset tuple above and dedups via
+        # _existing_author_permlinks, so the author/permlink tiebreakers don't
+        # need persisting — the in-memory tuple already prevents same-second
+        # gaps within and across runs. Reading the legacy int as (ts, '', '')
+        # (proposal 102 F8 lock) needs no migration.
         _set_cursor(db, _BACKFILL_CURSOR_KEY, int(cursor_dt.timestamp()))
 
         phase = "CATCHUP" if catching_up else "BACKFILL"

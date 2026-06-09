@@ -58,23 +58,55 @@ def _cursor():
         raise
     finally:
         if conn is not None:
+            # Proposal 102 F6: clear any per-call ``SET statement_timeout`` before
+            # returning the connection to the pool, so a leaked value can't
+            # silently cap a later checkout that never SET its own. autocommit is
+            # on, so RESET takes effect immediately on this session.
+            try:
+                with conn.cursor() as reset_cur:
+                    reset_cur.execute("RESET statement_timeout")
+            except Exception:
+                pass  # connection may be broken; the pool will discard it
             pool.putconn(conn)
 
 
 # ── Reputation ────────────────────────────────────────────────────────────────
 
+# Reputation API fallback bounds (proposal 102 F1). The live-stream caller
+# (`_process_batch`) only ever passes a single stream batch of unique authors
+# (`stream._BATCH_SIZE` = 10); cap at 2× as a safety bound and halve the
+# per-node timeout so one fallback pass during a Hive API outage can't fan out
+# into enough slow RPCs to trip the stream watchdog (`stream._STREAM_TIMEOUT` =
+# 120s). Realistic worst case is 10 × len(nodes)=3 × 2s = 60s (50% margin). NB:
+# at the cap the worst case is 20 × 3 × 2 = 120s — exactly the watchdog budget,
+# zero headroom — but no caller passes >10 authors. If `_BATCH_SIZE` or the node
+# count grows, revisit this cap / timeout. (Was 1000 × 3 × 4s = 200 minutes.)
+_API_REP_BATCH_CAP = 20
+_API_REP_TIMEOUT = 2  # seconds per node
+
+
 def _raw_rep_to_score(raw: int) -> float:
-    """Convert Hive raw reputation integer to human-readable score."""
+    """Convert a Hive raw reputation integer to its human-readable score.
+
+    Mirrors Hive's canonical ``rep_log10`` exactly: ``9·log10(raw) − 56``,
+    clamped at the 25.0 floor for positive raw below 10^9 and sign-flipped for
+    downvoted (negative-reputation) accounts.
+
+    Proposal 102 F2 replaced a previous implementation that simplified to
+    ``9·log10(raw) − 29`` — a constant +27 inflation that let near-zero and
+    negative-reputation accounts slip past the worker's
+    ``MIN_AUTHOR_REPUTATION`` ingest gate (it mapped the 20.0 threshold back to
+    raw ≈ 2.75×10^5, below virtually every real account, making the gate a
+    near-no-op). Used by both the live-stream and backfill classification paths.
+    """
     if raw == 0:
         return 25.0  # Hive default for new accounts with no votes
     neg = raw < 0
     raw_abs = abs(raw)
-    leading = int(math.log10(raw_abs))
-    top = raw_abs / (10 ** (leading - 3))
-    score = (leading - 9) * 9 + math.log10(top) * 9
+    score = max(math.log10(raw_abs) - 9.0, 0.0) * 9.0
     if neg:
         score = -score
-    return round(score + 25, 2)
+    return round(score + 25.0, 2)
 
 
 
@@ -120,7 +152,7 @@ def get_reputations_via_api(authors: list[str]) -> dict[str, float]:
     if not authors:
         return {}
     result: dict[str, float] = {}
-    for author in authors[:1000]:
+    for author in authors[:_API_REP_BATCH_CAP]:
         for node in settings.hive_api_nodes:
             try:
                 resp = requests.post(
@@ -131,7 +163,7 @@ def get_reputations_via_api(authors: list[str]) -> dict[str, float]:
                         "params": {"account": author},
                         "id": 1,
                     },
-                    timeout=4,
+                    timeout=_API_REP_TIMEOUT,
                 )
                 data = resp.json()
                 profile = data.get("result")
