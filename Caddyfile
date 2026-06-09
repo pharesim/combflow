@@ -94,6 +94,22 @@ Preferred-Languages: en
 			lb_try_interval 250ms
 		}
 	}
+	# Legal pages (/privacy, /terms, /takedown) load only same-origin assets
+	# (theme.js, shared.css, legal.css, favicons) — no inline script, no Alpine,
+	# no CDN libs, no fetch. So they get a strict CSP that drops both
+	# 'unsafe-inline' and 'unsafe-eval' from script-src (proposal 103, Phase 1).
+	# This handle-level header replaces the site-level CSP above (verified: single
+	# header, no duplicate); must stay ordered before the catch-all handle below.
+	# style-src keeps 'unsafe-inline' (harmless here; consistent with the main UI).
+	@legal path /privacy /terms /takedown
+	handle @legal {
+		header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+		encode zstd gzip
+		reverse_proxy combflow-app:8000 {
+			lb_try_duration 10s
+			lb_try_interval 250ms
+		}
+	}
 	handle {
 		encode zstd gzip
 		reverse_proxy combflow-app:8000 {
