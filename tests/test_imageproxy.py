@@ -539,3 +539,176 @@ async def test_imageproxy_redirect_logs_warning(client, caplog):
     finally:
         if original_client is not None:
             app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+async def test_imageproxy_unparseable_resolved_address(client):
+    """A resolver returning a non-numeric sockaddr[0] fails closed with 400, not
+    500 (proposal 105a). Not reachable via a normal Linux resolver (numeric IP
+    strings only; scope ids live in sockaddr[3]), but the SSRF guard must reject
+    what ipaddress can't classify rather than let ValueError surface as a 500."""
+    addr = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("garbage", 443))]
+    with patch("project.api.routes.imageproxy.socket.getaddrinfo", return_value=addr):
+        resp = await client.get("/api/imageproxy", params={"url": "https://weird.example.com/x.png"})
+    assert resp.status_code == 400
+    assert "Host resolution failed" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resolved_ip", [
+    "::ffff:100.64.0.1",   # IPv4-mapped CGNAT
+    "64:ff9b::ac13:4",     # NAT64 of 172.19.0.4 (RFC1918)
+    "::127.0.0.1",         # IPv4-compatible (deprecated ::/96) loopback
+])
+async def test_imageproxy_embedded_ipv4_private_rejected(client, resolved_ip):
+    """The three embedded-IPv4 IPv6 forms whose embedded v4 is private all report
+    is_global=True at the IPv6 layer but route to a non-global IPv4 — `_ip_allowed`
+    unwraps the embedded v4 and rejects them (proposal 105b + the IPv4-compatible
+    completion). A mock http_client is installed so that if the filter were
+    reverted/widened the request would reach the fetch and return 200, giving a
+    crisp `400 != 200` rather than an incidental AttributeError. The reject must
+    happen BEFORE any fetch and must NOT poison the validated-host cache."""
+    from project.api.routes import imageproxy
+
+    image_response = MagicMock(spec=httpx.Response)
+    image_response.status_code = 200
+    image_response.headers = {"content-type": "image/png"}
+
+    async def _aiter_bytes():
+        yield b"\x89PNG\r\n\x1a\n"
+
+    image_response.aiter_bytes = _aiter_bytes
+    image_response.aclose = AsyncMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(return_value=image_response)
+
+    addr = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (resolved_ip, 443, 0, 0))]
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    with patch("project.api.routes.imageproxy.socket.getaddrinfo", return_value=addr):
+        try:
+            resp = await client.get("/api/imageproxy", params={"url": "https://embed.example.com/x.png"})
+            assert resp.status_code == 400  # would be 200 if _ip_allowed wrongly permitted it
+            assert "Address not allowed" in resp.json()["detail"]
+            mock_client.send.assert_not_called()  # rejected before any upstream fetch
+            assert ("embed.example.com", 443) not in imageproxy._resolve_cache  # reject ⇒ not cached
+        finally:
+            if original_client is not None:
+                app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resolved_ip", [
+    "64:ff9b::808:808",   # NAT64 of 8.8.8.8 (public) — locks the int(ip)&0xFFFFFFFF derivation
+    "::8.8.8.8",          # IPv4-compatible of 8.8.8.8 (public)
+])
+async def test_imageproxy_embedded_ipv4_public_allowed(client, resolved_ip):
+    """The embedded-IPv4 unwrap must ALLOW forms whose embedded v4 is public — a
+    derivation-mask bug (or an over-broad reject) would otherwise silently block
+    legitimate NAT64/dual-stack traffic with no failing test, since the reject-side
+    tests can't catch an allow-side regression. Complements the mapped-public
+    `::ffff:8.8.8.8` allow test (proposal 105b allow-side coverage)."""
+    addr = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (resolved_ip, 443, 0, 0))]
+    image_bytes = b"\x00" * 16
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "image/png"}
+
+    async def _aiter_bytes():
+        yield image_bytes
+
+    mock_response.aiter_bytes = _aiter_bytes
+    mock_response.aclose = AsyncMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(return_value=mock_response)
+
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    with patch("project.api.routes.imageproxy.socket.getaddrinfo", return_value=addr):
+        try:
+            resp = await client.get("/api/imageproxy", params={"url": "https://embedpub.example.com/x.png"})
+            assert resp.status_code == 200
+            assert resp.content == image_bytes
+        finally:
+            if original_client is not None:
+                app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+async def test_imageproxy_serves_normalized_mime(client):
+    """The 200 path serves the normalized essence type (`mime`), stripping
+    attacker-controlled content-type parameter junk / leading whitespace / casing
+    rather than echoing the raw upstream header (proposal 105d)."""
+    image_bytes = b"\x89PNG\r\n\x1a\n"
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "IMAGE/PNG; charset=utf-8 "}
+
+    async def _aiter_bytes():
+        yield image_bytes
+
+    mock_response.aiter_bytes = _aiter_bytes
+    mock_response.aclose = AsyncMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(return_value=mock_response)
+
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    try:
+        resp = await client.get("/api/imageproxy", params={"url": "https://example.com/x.png"})
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"  # not the raw "IMAGE/PNG; charset=utf-8 "
+        assert resp.content == image_bytes
+    finally:
+        if original_client is not None:
+            app.state.http_client = original_client
+
+
+def test_resolve_cache_eviction():
+    """The validated-host cache is bounded — past `_RESOLVE_CACHE_MAX` entries the
+    oldest are evicted FIFO, so attacker-driven distinct-host churn can't grow it
+    without bound (proposal 105c). Replaces 101's unbounded shared-cache keys."""
+    from project.api.routes import imageproxy
+
+    imageproxy._reset_resolve_cache()
+    try:
+        for i in range(imageproxy._RESOLVE_CACHE_MAX + 50):
+            imageproxy._resolve_cache_put((f"h{i}.example.com", 443))
+        assert len(imageproxy._resolve_cache) == imageproxy._RESOLVE_CACHE_MAX
+        # Earliest insertions evicted; the most recent are retained.
+        assert imageproxy._resolve_cache_get(("h0.example.com", 443)) is False
+        last = imageproxy._RESOLVE_CACHE_MAX + 49
+        assert imageproxy._resolve_cache_get((f"h{last}.example.com", 443)) is True
+    finally:
+        imageproxy._reset_resolve_cache()
+
+
+def test_resolve_cache_expiry():
+    """A validated-host entry past its TTL is treated as a miss and lazily
+    dropped from the cache (proposal 105c)."""
+    import time as _time
+
+    from project.api.routes import imageproxy
+
+    imageproxy._reset_resolve_cache()
+    try:
+        # Seed an already-expired entry directly (expires_at in the past).
+        imageproxy._resolve_cache[("stale.example.com", 443)] = _time.monotonic() - 1
+        assert imageproxy._resolve_cache_get(("stale.example.com", 443)) is False
+        assert ("stale.example.com", 443) not in imageproxy._resolve_cache
+        # A fresh put is a hit.
+        imageproxy._resolve_cache_put(("fresh.example.com", 443))
+        assert imageproxy._resolve_cache_get(("fresh.example.com", 443)) is True
+    finally:
+        imageproxy._reset_resolve_cache()

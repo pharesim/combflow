@@ -4,14 +4,14 @@ import functools
 import ipaddress
 import logging
 import socket
+import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-
-from ... import cache
 
 logger = logging.getLogger(__name__)
 
@@ -35,30 +35,106 @@ _ALLOWED_CONTENT_TYPES = frozenset({
 # 200 path) then can't starve unrelated to_thread work elsewhere in the process.
 # Validated (host, port) outcomes are cached briefly so a page-load burst
 # resolves each distinct host once.
-_RESOLVE_TTL = 60.0      # seconds — cache a validated host resolution
-_RESOLVE_TIMEOUT = 5.0   # seconds — cap per-request DNS latency
+_RESOLVE_TTL = 60.0          # seconds — cache a validated host resolution
+_RESOLVE_TIMEOUT = 5.0       # seconds — cap per-request DNS latency
+_RESOLVE_CACHE_MAX = 4096    # max validated-host entries (proposal 105c)
+_NAT64_WKP = ipaddress.ip_network("64:ff9b::/96")  # NAT64 well-known prefix
+_V4_COMPAT = ipaddress.ip_network("::/96")         # deprecated IPv4-compatible IPv6
 _resolver_executor = ThreadPoolExecutor(
     max_workers=8, thread_name_prefix="imgproxy-dns"
 )
 
+# Validated-host cache. Proposal 101 keyed this into the shared, unbounded
+# ``project.cache``, mixing an attacker-influenced key (the request's hostname)
+# with precious, expensive-to-recompute entries (overview stats, language
+# names). Sustained distinct-host churn could both grow the shared store and,
+# because that store never evicts, never reclaim it (proposal 105c). A dedicated
+# bounded OrderedDict isolates the churn: FIFO eviction past ``_RESOLVE_CACHE_MAX``
+# caps the footprint, the TTL bounds staleness, and the shared cache no longer
+# carries request-derived keys. Mirrors the worker's bounded community/blacklist
+# caches. Single-threaded event-loop access only (no await inside the helpers),
+# so plain dict ops are race-free.
+_resolve_cache: "OrderedDict[tuple[str, int], float]" = OrderedDict()
+
+
+def _reset_resolve_cache() -> None:
+    """Clear the validated-host cache. Test-only (see tests/conftest.py)."""
+    _resolve_cache.clear()
+
+
+def _resolve_cache_get(key: tuple[str, int]) -> bool:
+    """True iff ``key`` is a still-valid validated-host entry (lazy-expiring)."""
+    expires_at = _resolve_cache.get(key)
+    if expires_at is None:
+        return False
+    if expires_at <= time.monotonic():
+        del _resolve_cache[key]
+        return False
+    _resolve_cache.move_to_end(key)
+    return True
+
+
+def _resolve_cache_put(key: tuple[str, int]) -> None:
+    """Record ``key`` as validated for ``_RESOLVE_TTL``; evict oldest past cap."""
+    _resolve_cache[key] = time.monotonic() + _RESOLVE_TTL
+    _resolve_cache.move_to_end(key)
+    while len(_resolve_cache) > _RESOLVE_CACHE_MAX:
+        _resolve_cache.popitem(last=False)
+
+
+def _ip_allowed(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
+    """True iff ``ip`` is safe to fetch: globally routable, and — for the three
+    IPv6 forms that embed an IPv4 — whose embedded IPv4 is *also* globally
+    routable. The embedded forms unwrapped here are:
+
+    - IPv4-mapped       ``::ffff:0:0/96``  (``ip.ipv4_mapped``)
+    - NAT64 well-known  ``64:ff9b::/96``   (low 32 bits)
+    - IPv4-compatible   ``::/96``          (low 32 bits; deprecated RFC4291)
+
+    ``is_global`` alone is necessary but not sufficient: on CPython 3.12 the
+    mapped form ``::ffff:100.64.0.1``, the NAT64 form ``64:ff9b::ac13:4``, and
+    the IPv4-compatible form ``::127.0.0.1`` all report ``is_global=True`` while
+    the address they actually route to (100.64.0.0/10 CGNAT, 172.19.0.4 RFC1918,
+    127.0.0.1 loopback) is non-global — so they would slip a bare ``is_global``
+    filter (proposal 105b, extended to the IPv4-compatible form for completeness:
+    all three embedded-IPv4 representations are now handled symmetrically). No
+    live reach in the single-bridge topology (no CGNAT/NAT64 interface, no IPv6
+    default route to auto-tunnel the embedded v4), so this is defense-in-depth;
+    the tests lock it so a future ``is_global`` change can't silently widen reach.
+    6to4 ``2002::/16`` and Teredo ``2001::/32`` need no special-casing — CPython
+    already reports them ``is_global=False``.
+    """
+    if not ip.is_global:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address):
+        embedded = ip.ipv4_mapped
+        if embedded is None and (ip in _NAT64_WKP or ip in _V4_COMPAT):
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        if embedded is not None and not embedded.is_global:
+            return False
+    return True
+
 
 async def _assert_host_is_global(host: str, port: int) -> None:
-    """Resolve ``host:port`` and reject any non-globally-routable address.
+    """Resolve ``host:port`` and reject any address that isn't safe to fetch.
 
     SSRF guard (proposal 101, H2): rejects loopback, RFC1918, link-local
     (including the 169.254.169.254 cloud-metadata IP), ULA, CGNAT 100.64.0.0/10,
-    and unspecified addresses, plus their IPv4-mapped-IPv6 forms. ``not
-    ip.is_global`` is strictly stronger than the explicit private/loopback/...
-    disjunction — notably it also catches CGNAT, which all of is_private/
-    is_loopback/is_link_local/is_reserved/is_multicast/is_unspecified miss.
+    and unspecified addresses. The per-record predicate is ``_ip_allowed``, which
+    is strictly stronger than ``not ip.is_global``: besides catching CGNAT (which
+    is_private/is_loopback/is_link_local/is_reserved/is_multicast/is_unspecified
+    all miss), it unwraps the three embedded-IPv4 IPv6 forms (IPv4-mapped, NAT64,
+    IPv4-compatible) and rejects those whose embedded IPv4 is non-global — forms a
+    bare ``is_global`` reports as global (proposal 105b).
 
-    Raises ``HTTPException(400)`` on resolution failure or a disallowed address.
-    A successful validation is cached ``(host, port) -> True`` for
-    ``_RESOLVE_TTL`` so a burst of fetches from one host resolves it once;
-    resolution runs on a dedicated thread pool, bounded by ``_RESOLVE_TIMEOUT``.
+    Raises ``HTTPException(400)`` on resolution failure, an unparseable resolved
+    address (fail-closed — proposal 105a), or a disallowed address. A successful
+    validation is cached on ``(host, port)`` for ``_RESOLVE_TTL`` in a bounded
+    OrderedDict so a burst of fetches from one host resolves it once; resolution
+    runs on a dedicated thread pool, bounded by ``_RESOLVE_TIMEOUT``.
     """
-    cache_key = f"imgproxy_dns:{host}:{port}"
-    if cache.get(cache_key) is True:
+    cache_key = (host, port)
+    if _resolve_cache_get(cache_key):
         return
     loop = asyncio.get_running_loop()
     try:
@@ -83,10 +159,18 @@ async def _assert_host_is_global(host: str, port: int) -> None:
         # reach the fetch (proposal 101, 4c).
         raise HTTPException(status_code=400, detail="Host resolution failed")
     for *_, sockaddr in infos:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if not ip.is_global:
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            # Fail closed (proposal 105a): a resolver returning a non-numeric
+            # sockaddr[0] is a quirk we don't trust. Not attacker-reachable on a
+            # normal Linux resolver (numeric IP strings only; scope ids live in
+            # sockaddr[3]), but a hardened SSRF guard must reject what it can't
+            # classify rather than let ValueError surface as a 500.
+            raise HTTPException(status_code=400, detail="Host resolution failed")
+        if not _ip_allowed(ip):
             raise HTTPException(status_code=400, detail="Address not allowed")
-    cache.put(cache_key, True, ttl=_RESOLVE_TTL)
+    _resolve_cache_put(cache_key)
 
 
 @router.get(
@@ -169,7 +253,11 @@ async def imageproxy(
 
     return StreamingResponse(
         _stream(),
-        media_type=content_type,
+        # Serve the normalized essence type, not the raw upstream header, so
+        # attacker-controlled content-type parameter junk / leading whitespace /
+        # casing never reaches the response (proposal 105d). `nosniff` already
+        # pins it, but `mime` is the value we actually validated above.
+        media_type=mime,
         headers={
             "Cache-Control": "public, max-age=86400",
             "X-Content-Type-Options": "nosniff",
