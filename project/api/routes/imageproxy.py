@@ -40,6 +40,7 @@ _RESOLVE_TIMEOUT = 5.0       # seconds — cap per-request DNS latency
 _RESOLVE_CACHE_MAX = 4096    # max validated-host entries (proposal 105c)
 _NAT64_WKP = ipaddress.ip_network("64:ff9b::/96")  # NAT64 well-known prefix
 _V4_COMPAT = ipaddress.ip_network("::/96")         # deprecated IPv4-compatible IPv6
+_V4_TRANSLATED = ipaddress.ip_network("::ffff:0:0:0/96")  # IPv4-translated SIIT (RFC 8215)
 _resolver_executor = ThreadPoolExecutor(
     max_workers=8, thread_name_prefix="imgproxy-dns"
 )
@@ -83,32 +84,38 @@ def _resolve_cache_put(key: tuple[str, int]) -> None:
 
 
 def _ip_allowed(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
-    """True iff ``ip`` is safe to fetch: globally routable, and — for the three
+    """True iff ``ip`` is safe to fetch: globally routable, and — for the four
     IPv6 forms that embed an IPv4 — whose embedded IPv4 is *also* globally
     routable. The embedded forms unwrapped here are:
 
-    - IPv4-mapped       ``::ffff:0:0/96``  (``ip.ipv4_mapped``)
-    - NAT64 well-known  ``64:ff9b::/96``   (low 32 bits)
-    - IPv4-compatible   ``::/96``          (low 32 bits; deprecated RFC4291)
+    - IPv4-mapped       ``::ffff:0:0/96``     (``ip.ipv4_mapped``)
+    - NAT64 well-known  ``64:ff9b::/96``      (low 32 bits)
+    - IPv4-compatible   ``::/96``             (low 32 bits; deprecated RFC4291)
+    - IPv4-translated   ``::ffff:0:0:0/96``   (low 32 bits; SIIT, RFC 8215)
 
     ``is_global`` alone is necessary but not sufficient: on CPython 3.12 the
-    mapped form ``::ffff:100.64.0.1``, the NAT64 form ``64:ff9b::ac13:4``, and
-    the IPv4-compatible form ``::127.0.0.1`` all report ``is_global=True`` while
-    the address they actually route to (100.64.0.0/10 CGNAT, 172.19.0.4 RFC1918,
-    127.0.0.1 loopback) is non-global — so they would slip a bare ``is_global``
-    filter (proposal 105b, extended to the IPv4-compatible form for completeness:
-    all three embedded-IPv4 representations are now handled symmetrically). No
-    live reach in the single-bridge topology (no CGNAT/NAT64 interface, no IPv6
-    default route to auto-tunnel the embedded v4), so this is defense-in-depth;
-    the tests lock it so a future ``is_global`` change can't silently widen reach.
-    6to4 ``2002::/16`` and Teredo ``2001::/32`` need no special-casing — CPython
-    already reports them ``is_global=False``.
+    mapped form ``::ffff:100.64.0.1``, the NAT64 form ``64:ff9b::ac13:4``, the
+    IPv4-compatible form ``::127.0.0.1``, and the IPv4-translated/SIIT form
+    ``::ffff:0:a13:6`` all report ``is_global=True`` while the address they
+    actually route to (100.64.0.0/10 CGNAT, 172.19.0.4 RFC1918, 127.0.0.1
+    loopback, 10.19.0.6 RFC1918) is non-global — so they would slip a bare
+    ``is_global`` filter (proposal 105b, extended to the IPv4-compatible form for
+    completeness and to the IPv4-translated/SIIT form by proposal 109: all four
+    embedded-IPv4 representations are now handled symmetrically). No live reach in
+    the single-bridge topology (no CGNAT/NAT64 interface, no IPv6 default route to
+    auto-tunnel the embedded v4; the SIIT form ``connect()``s to ``ENETUNREACH``),
+    so this is defense-in-depth; the tests lock it so a future ``is_global``
+    change can't silently widen reach. 6to4 ``2002::/16`` and Teredo
+    ``2001::/32`` need no special-casing — CPython already reports them
+    ``is_global=False``.
     """
     if not ip.is_global:
         return False
     if isinstance(ip, ipaddress.IPv6Address):
         embedded = ip.ipv4_mapped
-        if embedded is None and (ip in _NAT64_WKP or ip in _V4_COMPAT):
+        if embedded is None and (
+            ip in _NAT64_WKP or ip in _V4_COMPAT or ip in _V4_TRANSLATED
+        ):
             embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
         if embedded is not None and not embedded.is_global:
             return False
@@ -123,9 +130,10 @@ async def _assert_host_is_global(host: str, port: int) -> None:
     and unspecified addresses. The per-record predicate is ``_ip_allowed``, which
     is strictly stronger than ``not ip.is_global``: besides catching CGNAT (which
     is_private/is_loopback/is_link_local/is_reserved/is_multicast/is_unspecified
-    all miss), it unwraps the three embedded-IPv4 IPv6 forms (IPv4-mapped, NAT64,
-    IPv4-compatible) and rejects those whose embedded IPv4 is non-global — forms a
-    bare ``is_global`` reports as global (proposal 105b).
+    all miss), it unwraps the four embedded-IPv4 IPv6 forms (IPv4-mapped, NAT64,
+    IPv4-compatible, IPv4-translated/SIIT) and rejects those whose embedded IPv4
+    is non-global — forms a bare ``is_global`` reports as global (proposal 105b,
+    109).
 
     Raises ``HTTPException(400)`` on resolution failure, an unparseable resolved
     address (fail-closed — proposal 105a), or a disallowed address. A successful

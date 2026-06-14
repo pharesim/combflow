@@ -642,6 +642,93 @@ async def test_imageproxy_embedded_ipv4_public_allowed(client, resolved_ip):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("resolved_ip", [
+    "::ffff:0:7f00:1",   # IPv4-translated/SIIT of 127.0.0.1 (loopback)
+    "::ffff:0:a13:6",    # IPv4-translated/SIIT of 10.19.0.6 (RFC1918)
+])
+async def test_imageproxy_siit_translated_ipv4_private_rejected(client, resolved_ip):
+    """The IPv4-translated/SIIT form ``::ffff:0:0:0/96`` (RFC 8215) — the fourth
+    embedded-IPv4 IPv6 representation — reports is_global=True at the IPv6 layer
+    but routes to a non-global IPv4. `_ip_allowed` unwraps the low 32 bits and
+    rejects a private/loopback embed (proposal 109; completes the 105b symmetry
+    claim of handling "all embedded-IPv4 representations"). A mock http_client is
+    installed so a reverted/widened filter would reach the fetch and return 200,
+    giving a crisp `400 != 200` rather than an incidental AttributeError. The
+    reject must happen BEFORE any fetch and must NOT poison the validated-host
+    cache.
+
+    Mutation check: dropping ``or ip in _V4_TRANSLATED`` from `_ip_allowed` turns
+    this red (200 instead of 400)."""
+    from project.api.routes import imageproxy
+
+    image_response = MagicMock(spec=httpx.Response)
+    image_response.status_code = 200
+    image_response.headers = {"content-type": "image/png"}
+
+    async def _aiter_bytes():
+        yield b"\x89PNG\r\n\x1a\n"
+
+    image_response.aiter_bytes = _aiter_bytes
+    image_response.aclose = AsyncMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(return_value=image_response)
+
+    addr = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (resolved_ip, 443, 0, 0))]
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    with patch("project.api.routes.imageproxy.socket.getaddrinfo", return_value=addr):
+        try:
+            resp = await client.get("/api/imageproxy", params={"url": "https://siit.example.com/x.png"})
+            assert resp.status_code == 400  # would be 200 if _ip_allowed wrongly permitted it
+            assert "Address not allowed" in resp.json()["detail"]
+            mock_client.send.assert_not_called()  # rejected before any upstream fetch
+            assert ("siit.example.com", 443) not in imageproxy._resolve_cache  # reject ⇒ not cached
+        finally:
+            if original_client is not None:
+                app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+async def test_imageproxy_siit_translated_ipv4_public_allowed(client):
+    """The SIIT unwrap must ALLOW a form whose embedded v4 is public — locks the
+    ``int(ip) & 0xFFFFFFFF`` derivation on the allow side so an over-broad reject
+    (or a bad mask) can't silently block legitimate SIIT/dual-stack traffic with
+    no failing test (proposal 109 allow-side coverage). ``::ffff:0:808:808`` is
+    the IPv4-translated form of public 8.8.8.8."""
+    addr = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::ffff:0:808:808", 443, 0, 0))]
+    image_bytes = b"\x00" * 16
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "image/png"}
+
+    async def _aiter_bytes():
+        yield image_bytes
+
+    mock_response.aiter_bytes = _aiter_bytes
+    mock_response.aclose = AsyncMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(return_value=mock_response)
+
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    with patch("project.api.routes.imageproxy.socket.getaddrinfo", return_value=addr):
+        try:
+            resp = await client.get("/api/imageproxy", params={"url": "https://siitpub.example.com/x.png"})
+            assert resp.status_code == 200
+            assert resp.content == image_bytes
+        finally:
+            if original_client is not None:
+                app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
 async def test_imageproxy_serves_normalized_mime(client):
     """The 200 path serves the normalized essence type (`mime`), stripping
     attacker-controlled content-type parameter junk / leading whitespace / casing
