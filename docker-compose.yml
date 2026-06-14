@@ -79,6 +79,16 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       HF_HUB_DISABLE_TELEMETRY: "1"
       HF_HUB_VERBOSITY: critical
+      # The embedding model is baked into $HF_HOME (/combflow/.cache) at build time,
+      # but the rootfs is read-only at runtime (read_only: true below). Newer
+      # huggingface_hub rewrites hub/.../refs/main when resolving an already-cached
+      # model, which fails with "[Errno 30] Read-only file system" and crash-loops
+      # the worker (stream disconnect → reconnect every 10s → model never loads →
+      # heartbeat never refreshed → unhealthy). Offline mode loads the baked snapshot
+      # as-is with no hub resolution / ref writes — the model is pinned and never
+      # changes, so there is nothing to refresh.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
       HOME: /tmp
     depends_on:
       db:
