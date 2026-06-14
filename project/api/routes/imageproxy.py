@@ -7,7 +7,7 @@ import socket
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -19,6 +19,7 @@ router = APIRouter()
 
 _MAX_URL_LENGTH = 2048
 _MAX_BODY_SIZE = 50 * 1024 * 1024  # 50 MB
+_MAX_REDIRECTS = 3  # hops chased per request before giving up (302-based hosts)
 
 # Strict raster allowlist. Excludes image/svg+xml: browsers execute <script>
 # and event handlers inside an SVG loaded as a top-level document, which would
@@ -207,27 +208,69 @@ async def imageproxy(
 
     client: httpx.AsyncClient = request.app.state.http_client
 
-    try:
-        upstream = await client.send(
-            client.build_request("GET", url),
-            stream=True,
-            follow_redirects=False,
-        )
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=502, detail="Upstream timeout")
-    except httpx.HTTPError as exc:
-        logger.warning("Image proxy connection error for %s: %s", url, exc)
-        raise HTTPException(status_code=502, detail="Upstream connection error")
+    # Follow redirects manually, re-running the full SSRF guard on every hop.
+    # httpx's own redirect-following stays OFF: were it on, httpx would chase a
+    # 30x without _assert_host_is_global ever seeing the target, so an upstream
+    # 302 -> internal address (169.254.169.254, 10.0.0.0/8, ::1, ...) would
+    # bypass the guard entirely — the classic redirect-based SSRF (proposal 101,
+    # M1 kept redirects off for exactly this reason). Validating each Location
+    # exactly like the original URL — HTTPS-only, host resolves globally — keeps
+    # that protection while restoring redirect support, which the no-thumbnail
+    # fallback avatar in every grid view needs: images.hive.blog/u/<acct>/avatar
+    # answers 302 to the stored image (a *relative* Location), so without this
+    # the proxy 502s and the <img> onerror swaps every avatar for plain text.
+    fetch_url = url
+    for hop in range(_MAX_REDIRECTS + 1):
+        try:
+            upstream = await client.send(
+                client.build_request("GET", fetch_url),
+                stream=True,
+                follow_redirects=False,
+            )
+        except httpx.InvalidURL:
+            # build_request constructs httpx.URL, whose stricter IDNA encoder
+            # rejects some hosts that urlparse + getaddrinfo accept (e.g. an
+            # underscore or over-long label). InvalidURL is NOT an httpx.HTTPError
+            # subclass, so without this it would escape the clauses below as a 500;
+            # fail closed with the same 400 every other malformed-host path uses.
+            raise HTTPException(status_code=400, detail="Invalid URL")
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=502, detail="Upstream timeout")
+        except httpx.HTTPError as exc:
+            logger.warning("Image proxy connection error for %s: %s", fetch_url, exc)
+            raise HTTPException(status_code=502, detail="Upstream connection error")
 
-    # follow_redirects=False (M1) means a host that 301/302s its primary image
-    # URL now fails the content-type check below with the same 502 an SVG would.
-    # Log redirects distinctly so first-hour deploy monitoring can tell an
-    # un-followed-redirect 502 apart from an SVG-rejection 502 (proposal 101, 4d).
-    if 300 <= upstream.status_code < 400:
-        logger.warning(
-            "image proxy got un-followed redirect %s -> %s",
-            url, upstream.headers.get("location", ""),
-        )
+        if not (300 <= upstream.status_code < 400):
+            break  # terminal response — fall through to content-type validation
+
+        # Redirect: validate the next hop, then loop. The body is never read; close
+        # this hop's stream before issuing the next request so the connection is
+        # released back to the pool.
+        status = upstream.status_code
+        location = upstream.headers.get("location", "")
+        await upstream.aclose()
+        if hop >= _MAX_REDIRECTS:
+            logger.warning("image proxy exceeded redirect limit for %s", url)
+            raise HTTPException(status_code=502, detail="Too many redirects")
+        if not location:
+            logger.warning("image proxy got %s with no Location for %s", status, fetch_url)
+            raise HTTPException(status_code=502, detail="Upstream redirect without Location")
+        # Relative Locations (the hive.blog avatar 302 is one) resolve against the
+        # current URL; then the target is re-validated identically to the input.
+        fetch_url = urljoin(fetch_url, location)
+        if len(fetch_url) > _MAX_URL_LENGTH:
+            raise HTTPException(status_code=400, detail="Redirect target too long")
+        if not fetch_url.startswith("https://"):
+            raise HTTPException(status_code=400, detail="Only HTTPS URLs are allowed")
+        try:
+            r_parsed = urlparse(fetch_url)
+            r_host = r_parsed.hostname
+            r_port = r_parsed.port or 443
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid URL")
+        if not r_host:
+            raise HTTPException(status_code=400, detail="Invalid URL")
+        await _assert_host_is_global(r_host, r_port)
 
     content_type = upstream.headers.get("content-type", "")
     mime = content_type.split(";", 1)[0].strip().lower()

@@ -1,5 +1,4 @@
 """Tests for GET /api/imageproxy endpoint."""
-import logging
 import socket
 
 import httpx
@@ -209,17 +208,18 @@ async def test_imageproxy_svg_rejected(client):
 
 
 @pytest.mark.asyncio
-async def test_imageproxy_redirect_not_followed(client):
-    """A 30x is not followed; its non-image body is rejected and the redirect
-    target is never fetched (M1 — follow_redirects=False).
+async def test_imageproxy_redirect_to_private_host_rejected(client):
+    """A 30x to an internal address is rejected by re-running the SSRF guard on
+    the redirect target — the redirect-based SSRF bypass that kept httpx's own
+    follow_redirects OFF (proposal 101, M1). httpx never chases the hop itself;
+    the proxy validates the Location host and refuses before any second fetch.
 
     `send` is wired with a two-element side_effect: the 302 first, then a *valid*
-    image. If the code wrongly followed the redirect it would call `send` again,
-    get the image, and return 200 — so asserting 502 + call_count==1 genuinely
-    proves the second hop is never issued (proposal 101, 4e.5)."""
+    image. Asserting 400 + call_count==1 proves the private target is rejected
+    pre-fetch (the image hop is never issued)."""
     redirect_response = MagicMock(spec=httpx.Response)
     redirect_response.status_code = 302
-    redirect_response.headers = {"content-type": "text/html", "location": "https://10.0.0.1/x.png"}
+    redirect_response.headers = {"content-type": "text/html", "location": "https://internal.invalid/x.png"}
     redirect_response.aclose = AsyncMock()
 
     image_response = MagicMock(spec=httpx.Response)
@@ -236,17 +236,107 @@ async def test_imageproxy_redirect_not_followed(client):
     mock_client.build_request.return_value = MagicMock()
     mock_client.send = AsyncMock(side_effect=[redirect_response, image_response])
 
+    # Initial host resolves public; the redirect target resolves to RFC1918.
+    def _resolve(host, *a, **k):
+        if host == "internal.invalid":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 443))]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.20.23.154", 443))]
+
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    try:
+        with patch("project.api.routes.imageproxy.socket.getaddrinfo", side_effect=_resolve):
+            resp = await client.get("/api/imageproxy", params={"url": "https://example.com/redirector"})
+        assert resp.status_code == 400
+        assert "Address not allowed" in resp.json()["detail"]
+        assert mock_client.send.call_count == 1  # image hop never fetched
+        _, kwargs = mock_client.send.call_args
+        assert kwargs.get("follow_redirects") is False
+        assert kwargs.get("stream") is True
+        redirect_response.aclose.assert_awaited()  # 302 stream closed before refusal
+    finally:
+        if original_client is not None:
+            app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+async def test_imageproxy_build_request_invalid_url(client):
+    """A host that passes the SSRF guard (urlparse + getaddrinfo) but httpx's
+    stricter IDNA encoder rejects at build_request must fail closed with 400, not
+    surface as a 500. httpx.InvalidURL is NOT an httpx.HTTPError subclass, so it
+    would otherwise escape the per-hop try/except (regression guard)."""
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.side_effect = httpx.InvalidURL("malformed host")
+    mock_client.send = AsyncMock()
+
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    try:
+        resp = await client.get("/api/imageproxy", params={"url": "https://example.com/x.png"})
+        assert resp.status_code == 400
+        assert "Invalid URL" in resp.json()["detail"]
+        assert mock_client.send.call_count == 0  # never reached the network
+    finally:
+        if original_client is not None:
+            app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+async def test_imageproxy_redirect_to_non_https_rejected(client):
+    """A 30x downgrading to http:// (or any non-HTTPS scheme) is refused, so a
+    redirect can't smuggle the request off the HTTPS-only contract."""
+    redirect_response = MagicMock(spec=httpx.Response)
+    redirect_response.status_code = 302
+    redirect_response.headers = {"content-type": "text/html", "location": "http://cdn.example.com/real.png"}
+    redirect_response.aclose = AsyncMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(return_value=redirect_response)
+
     from project.api.main import app
     original_client = getattr(app.state, "http_client", None)
     app.state.http_client = mock_client
     try:
         resp = await client.get("/api/imageproxy", params={"url": "https://example.com/redirector"})
+        assert resp.status_code == 400
+        assert "HTTPS" in resp.json()["detail"]
+        assert mock_client.send.call_count == 1
+    finally:
+        if original_client is not None:
+            app.state.http_client = original_client
+
+
+@pytest.mark.asyncio
+async def test_imageproxy_redirect_chain_limit(client):
+    """A redirect loop is bounded: after _MAX_REDIRECTS hops the proxy gives up
+    with a 502 rather than chasing forever."""
+    from project.api.routes import imageproxy as ip
+
+    def _make_redirect():
+        r = MagicMock(spec=httpx.Response)
+        r.status_code = 302
+        r.headers = {"content-type": "text/html", "location": "https://cdn.example.com/next.png"}
+        r.aclose = AsyncMock()
+        return r
+
+    # One initial fetch + _MAX_REDIRECTS follows = _MAX_REDIRECTS + 1 sends, all 302.
+    hops = [_make_redirect() for _ in range(ip._MAX_REDIRECTS + 1)]
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send = AsyncMock(side_effect=hops)
+
+    from project.api.main import app
+    original_client = getattr(app.state, "http_client", None)
+    app.state.http_client = mock_client
+    try:
+        resp = await client.get("/api/imageproxy", params={"url": "https://example.com/loop"})
         assert resp.status_code == 502
-        assert "Unsupported image type" in resp.json()["detail"]
-        assert mock_client.send.call_count == 1  # second hop (image_response) never fetched
-        _, kwargs = mock_client.send.call_args
-        assert kwargs.get("follow_redirects") is False
-        assert kwargs.get("stream") is True
+        assert "Too many redirects" in resp.json()["detail"]
+        assert mock_client.send.call_count == ip._MAX_REDIRECTS + 1
     finally:
         if original_client is not None:
             app.state.http_client = original_client
@@ -516,26 +606,46 @@ async def test_imageproxy_malformed_content_length_ignored(client):
 
 
 @pytest.mark.asyncio
-async def test_imageproxy_redirect_logs_warning(client, caplog):
-    """An un-followed 3xx is logged distinctly so deploy monitoring can tell a
-    redirect-host 502 apart from an SVG-rejection 502 (proposal 101, 4d)."""
-    mock_response = MagicMock(spec=httpx.Response)
-    mock_response.status_code = 301
-    mock_response.headers = {"content-type": "text/html", "location": "https://cdn.example.com/real.png"}
-    mock_response.aclose = AsyncMock()
+async def test_imageproxy_relative_redirect_followed_to_image(client):
+    """The real-world avatar case: images.hive.blog/u/<acct>/avatar answers 302
+    with a *relative* Location to the stored image. The proxy resolves it against
+    the request URL (same host), re-validates, fetches the target, and streams the
+    image back — restoring the no-thumbnail fallback avatar in every grid view."""
+    redirect_response = MagicMock(spec=httpx.Response)
+    redirect_response.status_code = 302
+    redirect_response.headers = {"content-type": "text/html", "location": "/p/abc123?width=128&height=128"}
+    redirect_response.aclose = AsyncMock()
+
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    image_response = MagicMock(spec=httpx.Response)
+    image_response.status_code = 200
+    image_response.headers = {"content-type": "image/webp"}
+
+    async def _aiter_bytes():
+        yield image_bytes
+
+    image_response.aiter_bytes = _aiter_bytes
+    image_response.aclose = AsyncMock()
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.build_request.return_value = MagicMock()
-    mock_client.send = AsyncMock(return_value=mock_response)
+    mock_client.send = AsyncMock(side_effect=[redirect_response, image_response])
 
     from project.api.main import app
     original_client = getattr(app.state, "http_client", None)
     app.state.http_client = mock_client
     try:
-        with caplog.at_level(logging.WARNING, logger="project.api.routes.imageproxy"):
-            resp = await client.get("/api/imageproxy", params={"url": "https://example.com/redirector"})
-        assert resp.status_code == 502
-        assert any("un-followed redirect" in r.getMessage() for r in caplog.records)
+        resp = await client.get(
+            "/api/imageproxy", params={"url": "https://images.hive.blog/u/alice/avatar"}
+        )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/webp"
+        assert resp.content == image_bytes
+        assert mock_client.send.call_count == 2  # 302, then the resolved image
+        # Second hop fetched the Location resolved against the original host.
+        second_url = mock_client.build_request.call_args_list[1].args[1]
+        assert second_url == "https://images.hive.blog/p/abc123?width=128&height=128"
+        redirect_response.aclose.assert_awaited()  # 302 stream closed before refetch
     finally:
         if original_client is not None:
             app.state.http_client = original_client
