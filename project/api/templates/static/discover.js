@@ -17,6 +17,14 @@ async function init() {
     document.getElementById('recent-posts-seo')?.remove();
   }
 
+  // Drop the server-rendered author recent-posts list (proposal 100's Soft-404
+  // fix, embedded in .author-summary). On /@author the live hex grid below renders
+  // the same author's posts, so for a JS reader this list is pure duplication.
+  // Crawlers / no-JS never run this, so the server copy + ItemList JSON-LD stay as
+  // the indexable floor. Keep the rest of .author-summary (098 stats) visible.
+  // .author-recent-posts is emitted only on /@author, so this no-ops elsewhere.
+  document.querySelector('.author-recent-posts')?.remove();
+
   loadVotedPosts();
   loadMutedUsers();
   loadFollowedUsers();
