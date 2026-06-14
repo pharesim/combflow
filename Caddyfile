@@ -134,7 +134,9 @@ Preferred-Languages: en
 		# reverse_proxy fails too. Caddy does not re-enter handle_errors for an
 		# error raised inside handle_errors (no infinite loop), so the crawler gets
 		# Caddy's synthetic 502 after the prerender timeout + this lb_try_duration
-		# (~35s worst case). Acceptable: a total app+prerender outage is not a
+		# (~40s worst case — the prerender-5xx path dials the app twice: the inner
+		# @prerender_err re-proxy, then this handle_errors re-proxy). Acceptable: a
+		# total app+prerender outage is not a
 		# soft-404 case, and it surfaces the outage rather than masking it.
 		rewrite * {http.request.orig_uri.path}
 		encode zstd gzip
