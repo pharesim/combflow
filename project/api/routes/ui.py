@@ -44,6 +44,19 @@ router = APIRouter()
 _TEMPLATE_DIR = pathlib.Path(__file__).resolve().parent.parent / "templates"
 _STATIC_DIR = _TEMPLATE_DIR / "static"
 
+# Hive username + permlink path-param validation (proposal 110 B4). Defined up
+# here (not next to the routes) because a ``Path(..., pattern=...)`` default is
+# evaluated at import, before the route functions below. The public ``/@author``
+# and ``/@author/permlink`` HTML routes feed these straight into a cache key
+# (``top_comments:{author}/{permlink}``), so bound + shape them at the edge.
+_USERNAME_PATTERN = r"^[a-z0-9][a-z0-9.\-]{0,15}$"
+# Permlinks are the canonical lowercase Hive charset (a-z 0-9 . -) bounded to
+# 256 chars. NB: a leading hyphen is common and valid — ~18.7k of our own
+# classified posts have one (e.g. ``-elegance-is-a-quiet-kind-of-power-2yb``),
+# linked from our server-rendered author lists + sitemap — so the first char is
+# NOT restricted to alphanumeric (that would 422 every such deep-link).
+_PERMLINK_PATTERN = r"^[a-z0-9.\-]{1,256}$"
+
 
 def _compute_asset_version() -> str:
     """Combined sha256 of every static file (sorted), used as a cache buster
@@ -876,7 +889,9 @@ _AUTHOR_INDEX_MIN_POSTS = 10
 
 @router.get("/@{author}", include_in_schema=False)
 async def discover_author(
-    request: Request, author: str, db: AsyncSession = Depends(get_db)
+    request: Request,
+    author: str = Path(..., max_length=16, pattern=_USERNAME_PATTERN),
+    db: AsyncSession = Depends(get_db),
 ):
     # Default shell: also the graceful fallback on DB error \u2014 render WITHOUT
     # noindex, since hiding a possibly-substantive profile on a transient error
@@ -919,7 +934,10 @@ async def discover_author(
 
 @router.get("/@{author}/{permlink}", include_in_schema=False)
 async def discover_post(
-    request: Request, author: str, permlink: str, db: AsyncSession = Depends(get_db)
+    request: Request,
+    author: str = Path(..., max_length=16, pattern=_USERNAME_PATTERN),
+    permlink: str = Path(..., max_length=256, pattern=_PERMLINK_PATTERN),
+    db: AsyncSession = Depends(get_db),
 ):
     async def _db_reads():
         # Author aggregation + the NSFW flag share the one request session, so run
@@ -1059,13 +1077,23 @@ async def _build_sitemap_xml(db: AsyncSession, site_url: str) -> str:
     # copies as "Duplicate, Google chose different canonical" — wasted crawl budget
     # and a low-quality signal on our sitemap.
     posts = await asyncio.to_thread(get_hivecomb_posts, 1000)
+    candidate_pairs = [(a, p) for a, p, _ in posts]
+    # B17: only list posts we actually ingested into the local ``posts`` table.
+    # ``get_hivecomb_posts`` comes straight from HAFSQL, so it includes posts the
+    # worker rejected (low rep / blacklist / clean-body < 80 / alpha-ratio) that
+    # never reached ``posts`` — listing those advertises pages with no indexable
+    # primer. Positive existence-join against ``posts`` (the same helper backfill
+    # dedup uses) keeps the sitemap in sync with what we ingested. (Existence, not
+    # category count: an ingested-but-uncategorised post is still a real, rendered
+    # page and stays listed; only worker-rejected posts are dropped.)
+    ingested_pairs = await crud.existing_author_permlinks(db, candidate_pairs)
     # Drop NSFW posts so Google doesn't index them — reuse the worker's
     # already-applied NSFW classification from our own posts table.
-    nsfw_pairs = await crud.get_nsfw_author_permlinks(
-        db, [(a, p) for a, p, _ in posts]
-    )
+    nsfw_pairs = await crud.get_nsfw_author_permlinks(db, candidate_pairs)
     author_lastmod: dict[str, str] = {}
     for author, permlink, created in posts:
+        if (author, permlink) not in ingested_pairs:
+            continue
         if (author, permlink) in nsfw_pairs:
             continue
         lastmod = created.strftime("%Y-%m-%d") if created else now
@@ -1296,10 +1324,6 @@ async def overview_stats(db: AsyncSession = Depends(get_db)):
     result = await crud.get_overview_stats(db)
     result["api_base_url"] = settings.api_base_url
     return result
-
-
-# Hive username pattern (matches the post/report routes' author validation).
-_USERNAME_PATTERN = r"^[a-z0-9][a-z0-9.\-]{0,15}$"
 
 
 @router.get("/api/authors/{author}/summary", tags=["discovery"],

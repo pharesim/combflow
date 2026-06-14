@@ -1358,3 +1358,58 @@ async def test_author_summary_endpoint_rejects_malformed_username(client):
     assert resp.status_code == 422
 
 
+
+
+async def test_sitemap_excludes_unclassified_hivecomb_posts(client, seeded_db):
+    """Proposal 110 B17: a HiveComb-published post the worker never classified
+    (absent from the local posts table — low rep / blacklist / short body) is
+    excluded from the sitemap even though get_hivecomb_posts returns it."""
+    fake_posts = [
+        ("alice", "test-post-one", datetime(2026, 5, 1, tzinfo=timezone.utc)),       # in seeded posts
+        ("mallory", "never-classified", datetime(2026, 5, 2, tzinfo=timezone.utc)),  # NOT in posts
+    ]
+    with patch("project.api.routes.ui.settings") as mock_settings, \
+         patch("project.api.routes.ui.get_hivecomb_posts", return_value=fake_posts):
+        mock_settings.site_url = "https://example.com"
+        cache.clear()
+        resp = await client.get("/sitemap.xml")
+    body = resp.text
+    assert "@alice/test-post-one" in body              # classified → listed
+    assert "mallory/never-classified" not in body      # unclassified → excluded
+    assert "<loc>https://example.com/@mallory</loc>" not in body
+
+
+async def test_discover_author_rejects_overlong_username(client):
+    """Proposal 110 B4: a malformed/over-long username is rejected at the edge
+    (422) before it reaches the DB / a cache key."""
+    resp = await client.get("/@" + "a" * 20)  # > 16 chars
+    assert resp.status_code == 422
+
+
+async def test_discover_post_rejects_invalid_permlink(client):
+    """B4: the post deep-link route validates the permlink (length + lowercase)
+    before it becomes the top_comments cache key."""
+    resp = await client.get("/@alice/" + "A" * 300)  # uppercase + over length
+    assert resp.status_code == 422
+
+
+def test_permlink_pattern_accepts_real_hive_permlinks():
+    """B4 regression guard: real classified Hive permlinks commonly START with a
+    hyphen (~18.7k in our own posts table). The validation pattern must accept
+    them — an alphanumeric-first-char rule would 422 every such deep-link."""
+    import re
+    from project.api.routes.ui import _PERMLINK_PATTERN
+    assert re.match(_PERMLINK_PATTERN, "-elegance-is-a-quiet-kind-of-power-2yb")
+    assert re.match(_PERMLINK_PATTERN, "normal-permlink-123")
+    assert re.match(_PERMLINK_PATTERN, "a.b.c-2yb")
+    # Still bounds length + charset (the cache-key guard).
+    assert not re.match(_PERMLINK_PATTERN, "a" * 300)
+    assert not re.match(_PERMLINK_PATTERN, "Has Spaces")
+
+
+async def test_discover_post_accepts_leading_hyphen_permlink(client):
+    """B4 regression guard at the route level: a leading-hyphen permlink must
+    NOT be rejected (it reproduced as 422 before the fix; was 200)."""
+    with patch("project.api.routes.ui.get_post_full", return_value=None):
+        resp = await client.get("/@melyna/-elegance-is-a-quiet-kind-of-power-2yb")
+    assert resp.status_code == 200

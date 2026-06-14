@@ -420,3 +420,78 @@ class TestBackfillThread:
         assert executed[0][1][2] == ""
         # Catch-up mode (frontier present) uses the larger catch-up batch limit.
         assert executed[0][1][3] == _CATCHUP_BATCH
+
+    # ── Proposal 110 ────────────────────────────────────────────────────────
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_query_bounds_body_length(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """B9: the backfill SELECT bounds each body (LEFT(c.body, 16000)) so it
+        doesn't pull whole multi-megabyte bodies for up-to-1000-row catch-up
+        batches, most of which get discarded before the body is used."""
+        executed = []
+        mock_cur = MagicMock()
+        mock_cur.execute.side_effect = lambda sql, params=None: executed.append(sql)
+        mock_cur.fetchall.side_effect = [[_row()], []]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+        mock_connect.return_value = mock_conn
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", threading.Event())
+        select_sql = next(s for s in executed if "FROM hafsql.comments" in s)
+        assert "LEFT(c.body, 16000)" in " ".join(select_sql.split())
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.touch_heartbeat")
+    @patch("project.worker.backfill._classify_and_save")
+    @patch("project.worker.backfill._existing_author_permlinks", return_value=set())
+    @patch("project.worker.backfill._set_cursor")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.is_blacklisted", return_value=False)
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill.time.sleep")
+    def test_connect_sets_statement_timeout(
+        self, mock_sleep, mock_dsn, mock_blacklist, mock_get_cursor,
+        mock_set_cursor, mock_existing, mock_classify, mock_heartbeat, mock_connect,
+    ):
+        """B13: _connect issues SET statement_timeout (via `with conn.cursor()`)
+        so a query stuck in libpq can be interrupted — build_dsn only sets the
+        TCP connect_timeout."""
+        mock_conn = _mock_conn([[], []])  # empty batch → loop ends immediately
+        mock_connect.return_value = mock_conn
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", threading.Event())
+        child = mock_conn.cursor.return_value.__enter__.return_value
+        executed = [c.args[0] for c in child.execute.call_args_list]
+        assert any("statement_timeout" in s for s in executed)
+
+    @patch("psycopg2.connect")
+    @patch("project.worker.backfill.build_dsn", return_value="host=test dbname=test")
+    @patch("project.worker.backfill._get_cursor", return_value=None)
+    @patch("project.worker.backfill.time.sleep")
+    def test_op_errors_dont_trip_generic_kill(
+        self, mock_sleep, mock_get_cursor, mock_dsn, mock_connect,
+    ):
+        """B12: connection errors retry indefinitely and must NOT count toward the
+        >3 non-transient kill. 4 OperationalErrors then a query error must not
+        kill the thread (the old shared counter would have raised)."""
+        op = psycopg2.OperationalError("conn lost")
+        mock_cur = MagicMock()
+        mock_cur.fetchall.side_effect = [op, op, op, op, TypeError("transient"), []]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+        mock_connect.return_value = mock_conn
+        stop = MagicMock()
+        stop.is_set.return_value = False
+        stop.wait.return_value = False
+        # Completes without raising (reaches the empty batch → clean break).
+        _backfill_thread("db", "emb", {}, 0.3, "pos", "neg", stop)
+        assert mock_connect.call_count >= 2  # reconnected on the connection errors

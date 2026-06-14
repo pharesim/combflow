@@ -324,19 +324,30 @@ def _classify_and_save(
 
         # Apply community boost if the post belongs to a topic-specific community.
         if community_id and centroids:
-            comm_cat, comm_name, comm_score = _resolve_community(community_id, embedder, centroids)
-            # Persist mapping to DB on first resolve (cache means this runs once per community).
-            with _cache_lock:
-                already_persisted = community_id in _persisted_communities
-                _persisted_communities.add(community_id)
-            if not already_persisted:
-                _persist_community_mapping(db, community_id, comm_cat, comm_name, comm_score)
-            if comm_cat and comm_score >= _COMMUNITY_MAP_THRESHOLD:
-                categories = _classify_from_embedding(
-                    emb, centroids, threshold, comm_cat, _COMMUNITY_BOOST,
-                )
-            else:
+            resolved = _resolve_community(community_id, embedder, centroids)
+            if resolved is None:
+                # B0: transient get_community() failure — do NOT mark the
+                # community persisted or write a poisoned (NULL category, ''
+                # name) row to community_mappings, and skip the boost. The
+                # mapping self-heals on a later post once the lookup succeeds.
                 categories = _classify_from_embedding(emb, centroids, threshold)
+            else:
+                comm_cat, comm_name, comm_score = resolved
+                # Persist on the first *successful* resolve (cache + the set mean
+                # this runs once per community). A legitimate low-score resolve
+                # (None category, real name) still persists — only the transient
+                # failure above is withheld.
+                with _cache_lock:
+                    already_persisted = community_id in _persisted_communities
+                    _persisted_communities.add(community_id)
+                if not already_persisted:
+                    _persist_community_mapping(db, community_id, comm_cat, comm_name, comm_score)
+                if comm_cat and comm_score >= _COMMUNITY_MAP_THRESHOLD:
+                    categories = _classify_from_embedding(
+                        emb, centroids, threshold, comm_cat, _COMMUNITY_BOOST,
+                    )
+                else:
+                    categories = _classify_from_embedding(emb, centroids, threshold)
         else:
             categories = _classify_from_embedding(emb, centroids, threshold)
 

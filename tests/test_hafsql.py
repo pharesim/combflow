@@ -96,10 +96,30 @@ class TestGetReputations:
         assert "bob" in result
         assert result["bob"] > result["alice"]
 
-    def test_returns_empty_on_exception(self):
+    def test_returns_none_on_exception(self):
+        # Proposal 110 B10: a query failure (outage) returns None, distinct from
+        # a genuine empty-but-successful {} — the stream caller only fires the
+        # slow API fallback on the None sentinel.
         with patch("project.hafsql._cursor", side_effect=Exception("down")):
             result = get_reputations(["alice"])
-        assert result == {}
+        assert result is None
+
+    def test_skips_unparseable_reputation_row(self):
+        # Proposal 110 B14: one NULL/garbage reputation skips only that row
+        # instead of dropping the whole batch (the old dict-comp raised under the
+        # broad except and returned {}).
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = [
+            {"account_name": "alice", "reputation": 1_000_000_000},
+            {"account_name": "bob", "reputation": None},      # NULL
+            {"account_name": "carol", "reputation": "garbage"},  # unparseable
+        ]
+        with patch("project.hafsql._cursor") as mock_ctx:
+            mock_ctx.return_value.__enter__ = lambda s: mock_cur
+            mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_reputations(["alice", "bob", "carol"])
+        assert set(result) == {"alice"}
+        assert result["alice"] == 25.0
 
 
 # ── get_community (mocked Hive API) ────────────────────────────────────────
@@ -211,6 +231,26 @@ class TestCursorContextManager:
                 with _cursor():
                     pass
         mock_pool.putconn.assert_called_once_with(mock_conn, close=True)
+
+    def test_cursor_closed_when_caller_raises(self):
+        """Proposal 110 B15: the yielded cursor is closed in finally even when
+        the caller raises a non-Operational exception (the old success-path
+        ``cur.close()`` was skipped on that path)."""
+        mock_pool = MagicMock()
+        mock_conn = MagicMock()
+        yielded_cur = MagicMock()
+        reset_ctx = MagicMock()  # the RESET statement_timeout cursor (2nd cursor() call)
+        reset_ctx.__enter__ = MagicMock(return_value=MagicMock())
+        reset_ctx.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.side_effect = [yielded_cur, reset_ctx]
+        mock_pool.getconn.return_value = mock_conn
+        with patch("project.hafsql._get_pool", return_value=mock_pool):
+            with pytest.raises(ValueError, match="boom"):
+                with _cursor() as cur:
+                    assert cur is yielded_cur
+                    raise ValueError("boom")
+        yielded_cur.close.assert_called_once()
+        mock_pool.putconn.assert_called_once_with(mock_conn)
 
     def test_get_pool_creates_and_reuses(self):
         with patch("project.hafsql.psycopg2.pool.ThreadedConnectionPool") as mock_cls:
@@ -652,3 +692,166 @@ class TestGetTopComments:
     def test_returns_empty_on_network_error(self):
         with patch("project.hafsql.requests.post", side_effect=Exception("down")):
             assert get_top_comments("alice", "err-post") == []
+
+
+# ── Proposal 110 additions ──────────────────────────────────────────────────
+
+class TestGetTopCommentsFailover:
+    """B2: an empty/error node response must fail over and must not be cached."""
+
+    def _resp(self, result):
+        m = MagicMock()
+        m.json.return_value = {"result": result}
+        return m
+
+    def test_empty_dict_falls_over_to_next_node(self):
+        from project import cache
+        cache.clear()
+        good = {
+            "alice/p": {"author": "alice", "permlink": "p", "parent_author": "",
+                        "parent_permlink": "t", "body": "post", "stats": {}},
+            "bob/c": {"author": "bob", "permlink": "c", "parent_author": "alice",
+                      "parent_permlink": "p", "body": "comment", "created": "2026-01-01",
+                      "payout": 1.0, "children": 0, "stats": {}},
+        }
+        # First node returns {} (bad/incomplete), second returns the real thread.
+        with patch("project.hafsql.requests.post",
+                   side_effect=[self._resp({}), self._resp(good)]) as mock_post:
+            result = get_top_comments("alice", "p")
+        assert [c["author"] for c in result] == ["bob"]
+        assert mock_post.call_count == 2  # failed over instead of stopping at {}
+
+    def test_empty_response_not_cached(self):
+        from project import cache
+        cache.clear()
+        # All nodes return {} → [] returned but NOT cached, so a later healthy
+        # call re-fetches rather than serving a stale empty list for 1h.
+        with patch("project.hafsql.requests.post", return_value=self._resp({})):
+            assert get_top_comments("alice", "nope") == []
+        assert cache.get("top_comments:alice/nope") is None
+
+    def test_childless_post_is_cached(self):
+        from project import cache
+        cache.clear()
+        # A real post with no replies still returns the focal-post entry → a
+        # non-empty dict → an empty children list that IS cached.
+        thread = {"alice/p": {"author": "alice", "permlink": "p", "parent_author": "",
+                              "parent_permlink": "t", "body": "post", "stats": {}}}
+        with patch("project.hafsql.requests.post", return_value=self._resp(thread)):
+            assert get_top_comments("alice", "p") == []
+        assert cache.get("top_comments:alice/p") == []
+
+    def test_truthy_non_dict_result_falls_over(self):
+        from project import cache
+        cache.clear()
+        good = {
+            "alice/p": {"author": "alice", "permlink": "p", "parent_author": "",
+                        "parent_permlink": "t", "body": "post", "stats": {}},
+            "bob/c": {"author": "bob", "permlink": "c", "parent_author": "alice",
+                      "parent_permlink": "p", "body": "comment", "created": "2026-01-01",
+                      "payout": 1.0, "children": 0, "stats": {}},
+        }
+        # A malformed node response (truthy but not a dict — e.g. a list) must
+        # fail over to the next node, not be treated as a thread.
+        with patch("project.hafsql.requests.post",
+                   side_effect=[self._resp(["junk"]), self._resp(good)]) as mock_post:
+            result = get_top_comments("alice", "p")
+        assert [c["author"] for c in result] == ["bob"]
+        assert mock_post.call_count == 2
+
+
+class TestQueryGuards:
+    """B5/B6/B7/B16: SQL guards (deleted/parent filters, timeouts, both schemes)."""
+
+    def _capture(self):
+        executed = []
+        mock_cur = MagicMock()
+        mock_cur.execute.side_effect = lambda sql, params=None: executed.append(sql)
+        mock_cur.fetchone.return_value = None
+        mock_cur.fetchall.return_value = []
+        ctx = MagicMock()
+        ctx.__enter__ = lambda s: mock_cur
+        ctx.__exit__ = MagicMock(return_value=False)
+        return executed, patch("project.hafsql._cursor", return_value=ctx)
+
+    def _joined(self, executed):
+        return " ".join(" ".join(s.split()) for s in executed)
+
+    def test_get_post_body_filters_and_timeout(self):
+        executed, p = self._capture()
+        with p:
+            get_post_body("alice", "p")
+        joined = self._joined(executed)
+        assert "deleted = false" in joined          # B6
+        assert "parent_author = ''" in joined        # B6
+        # B7: the timeout must be SET *before* the SELECT, or it's ineffective.
+        set_idx = next(i for i, s in enumerate(executed) if "statement_timeout" in s)
+        select_idx = next(i for i, s in enumerate(executed) if "SELECT" in s.upper())
+        assert set_idx < select_idx
+
+    def test_get_post_titles_excludes_deleted(self):
+        executed, p = self._capture()
+        with p:
+            get_post_titles("alice", ["p1"])
+        assert "deleted = false" in self._joined(executed)  # B5
+
+    def test_get_posts_titles_and_excerpts_excludes_deleted(self):
+        executed, p = self._capture()
+        with p:
+            get_posts_titles_and_excerpts([("alice", "p1")])
+        assert "c.deleted = false" in self._joined(executed)  # B5
+
+    def test_get_hivecomb_posts_matches_both_schemes(self):
+        from project.hafsql import get_hivecomb_posts
+        executed, p = self._capture()
+        with p:
+            get_hivecomb_posts(10)
+        joined = " ".join(executed)
+        assert "https://hivecomb.net/" in joined     # B16
+        assert "http://hivecomb.net/" in joined      # B16
+
+
+class TestPoolInitRace:
+    """B11: concurrent cold _get_pool() calls build exactly one pool."""
+
+    def test_concurrent_init_builds_one_pool(self):
+        import threading
+        import time as _time
+        import project.hafsql as mod
+        old = mod._pool
+        construct_count = [0]
+
+        def _slow_pool(*a, **k):
+            construct_count[0] += 1
+            _time.sleep(0.05)  # widen the race window
+            m = MagicMock()
+            m.closed = False
+            return m
+
+        try:
+            mod._pool = None
+            with patch("project.hafsql.psycopg2.pool.ThreadedConnectionPool",
+                       side_effect=_slow_pool):
+                threads = [threading.Thread(target=_get_pool) for _ in range(8)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            assert construct_count[0] == 1
+        finally:
+            mod._pool = old
+
+
+class TestWarnDegraded:
+    """B1: HAFSQL/API degradation is WARNed once per interval, then suppressed."""
+
+    def test_rate_limited_warning(self, caplog):
+        import logging
+        import project.hafsql as mod
+        with mod._degrade_warn_lock:
+            mod._last_degrade_warn.clear()
+        with caplog.at_level(logging.WARNING, logger="project.hafsql"):
+            mod._warn_degraded("op", RuntimeError("x"))
+            mod._warn_degraded("op", RuntimeError("x"))  # within interval → suppressed
+        warns = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warns) == 1

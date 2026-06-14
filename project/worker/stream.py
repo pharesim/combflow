@@ -44,7 +44,12 @@ def _process_batch(
     unique_authors = list({op["author"] for op in batch})
     blacklisted = check_authors(unique_authors)
     reps = get_reputations(unique_authors)
-    hafsql_available = len(reps) > 0 or len(unique_authors) == 0
+    # Proposal 110 B10: get_reputations returns None only on a HAFSQL *outage*
+    # (an empty dict now means "queried fine, no reputation rows" — all new
+    # accounts). Gate the slow Hive-API fallback on the outage sentinel so a
+    # successful-but-empty lookup no longer fires it spuriously; unknown authors
+    # fall through to the 25.0 new-account default below.
+    hafsql_available = reps is not None
 
     if not hafsql_available:
         reps = get_reputations_via_api(unique_authors)

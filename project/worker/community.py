@@ -43,11 +43,18 @@ def _extract_community_id(parent_permlink: str | None) -> str | None:
 
 def _resolve_community(
     community_id: str, embedder, centroids: dict[str, "np.ndarray"]
-) -> tuple[str | None, str, float]:
+) -> tuple[str | None, str, float] | None:
     """Resolve a community to its best-matching category.
 
-    Returns (category_slug | None, community_name, score).
-    Results are cached for the worker's lifetime.
+    Returns (category_slug | None, community_name, score) on a real resolution,
+    or ``None`` on a transient ``get_community()`` failure. Results are cached
+    for the worker's lifetime.
+
+    Proposal 110 B0: the transient-failure signal is a distinct ``None`` return
+    (not the ``(None, "", 0.0)`` tuple) so the caller can withhold *both* the
+    in-memory cache write and the DB persist — a real but empty-title community
+    also resolves to ``(None, "", 0.0)`` and must stay persistable, so value
+    alone can't distinguish the two.
     """
     with _cache_lock:
         cached = _community_cache.get(community_id)
@@ -56,8 +63,9 @@ def _resolve_community(
 
     meta = get_community(community_id)
     if meta is None:
-        # Transient lookup failure — don't poison the cache; retry on the next post.
-        return (None, "", 0.0)
+        # Transient lookup failure — don't cache and don't persist; the community
+        # self-heals on the next post once get_community() succeeds.
+        return None
     name = meta.get("title") or ""
     about = meta.get("about") or ""
 

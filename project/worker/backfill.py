@@ -52,6 +52,12 @@ def _backfill_thread(
             pass
         conn = psycopg2.connect(build_dsn())
         conn.autocommit = True
+        # B13: build_dsn only sets connect_timeout (the TCP handshake). Without a
+        # server-side statement_timeout a query stuck in libpq can't be
+        # interrupted — the daemon join(timeout=10) on shutdown then abandons an
+        # orphaned connection. autocommit is on, so this SET is session-scoped.
+        with conn.cursor() as c:
+            c.execute("SET statement_timeout = '60s'")
 
     # Retry initial connection with exponential backoff.
     while not stop_event.is_set():
@@ -96,21 +102,38 @@ def _backfill_thread(
     else:
         logger.info("BACKFILL first run: starting from NOW")
 
+    # B12: split the retry counter. Connection errors (OperationalError) retry
+    # indefinitely with backoff and must NOT count toward the permanent-error
+    # limit; only genuinely non-transient query errors (gen_retries) trip the
+    # >3 kill. With a single shared counter, 3 connection blips followed by one
+    # query error killed the thread early.
+    op_retries = 0
+    gen_retries = 0
+
     while not stop_event.is_set():
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             try:
                 cur.execute(
                     """
-                    SELECT c.author, c.permlink, c.title, c.body, c.created,
+                    SELECT c.author, c.permlink, c.title,
+                           LEFT(c.body, 16000) AS body, c.created,
                            c.json_metadata, c.parent_permlink,
                            r.reputation
                     FROM hafsql.comments c
                     LEFT JOIN hafsql.reputations r ON c.author = r.account_name
                     WHERE c.parent_author = ''
                       AND c.deleted = false
+                      -- A1: cheap raw-length PREFILTER only. The authoritative
+                      -- check is classify.py's _MIN_CLEAN_BODY (80 chars AFTER
+                      -- markdown/HTML stripping); raw length >= cleaned length, so
+                      -- this never drops a post the downstream check would keep.
                       AND LENGTH(c.body) >= 80
                       AND (c.created, c.author, c.permlink) < (%s, %s, %s)
+                    -- B9: bound each body to 16k chars. The classifier consumes at
+                    -- most ~8k cleaned chars (language detection) / 2k (topic), so
+                    -- pulling whole multi-megabyte bodies — for up to 1000 rows a
+                    -- catch-up batch, most then discarded — wasted HAFSQL bandwidth.
                     ORDER BY c.created DESC, c.author DESC, c.permlink DESC
                     LIMIT %s
                     """,
@@ -120,12 +143,13 @@ def _backfill_thread(
                 rows = cur.fetchall()
             finally:
                 cur.close()
-            retries = 0
+            op_retries = 0
+            gen_retries = 0
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
-            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
-            retries += 1
+            delay = min(_BACKOFF_MIN * (2 ** op_retries), _BACKOFF_MAX)
+            op_retries += 1
             logger.warning("BACKFILL connection failed (retry %d, next in %ds): %s",
-                           retries, delay, exc)
+                           op_retries, delay, exc)
             stop_event.wait(delay)
             try:
                 _connect()
@@ -133,12 +157,12 @@ def _backfill_thread(
                 pass
             continue
         except Exception as exc:
-            retries += 1
-            if retries > 3:
-                logger.error("BACKFILL permanent error after %d retries: %s", retries, exc)
+            gen_retries += 1
+            if gen_retries > 3:
+                logger.error("BACKFILL permanent error after %d retries: %s", gen_retries, exc)
                 raise
-            delay = min(_BACKOFF_MIN * (2 ** retries), _BACKOFF_MAX)
-            logger.warning("BACKFILL error (retry %d): %s — waiting %.0fs", retries, exc, delay)
+            delay = min(_BACKOFF_MIN * (2 ** gen_retries), _BACKOFF_MAX)
+            logger.warning("BACKFILL error (retry %d): %s — waiting %.0fs", gen_retries, exc, delay)
             stop_event.wait(delay)
             continue
 

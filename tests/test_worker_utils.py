@@ -320,9 +320,12 @@ class TestResolveCommunity:
         assert result == ("photography", "Cached Community", 0.55)
 
     def test_no_metadata(self):
+        # Proposal 110 B0: a transient get_community() failure now returns the
+        # None sentinel (not the (None, "", 0.0) tuple) so the caller can
+        # distinguish it from a real but empty-title resolve and withhold persist.
         with patch("project.worker.community.get_community", return_value=None):
             result = _resolve_community("hive-888", None, {})
-        assert result == (None, "", 0.0)
+        assert result is None
 
     def test_no_embedder(self):
         with patch("project.worker.community.get_community", return_value={"title": "Test", "about": "desc"}):
@@ -682,6 +685,60 @@ class TestClassifyAndSave:
             )
         mock_fetch.assert_called_once_with("bob", "original-permlink")
         mock_save.assert_called_once()
+
+    def test_community_transient_failure_does_not_persist(self):
+        """B0: a transient _resolve_community failure (None) must NOT mark the
+        community persisted or write a poisoned (NULL category, '' name) row."""
+        mock_db = MagicMock()
+        body = "Long enough body for the community transient-failure test here. " * 3
+        mock_embedder = MagicMock()
+        mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._resolve_community", return_value=None), \
+             patch("project.worker.classify._persist_community_mapping") as mock_persist, \
+             patch("project.worker.classify._classify_from_embedding", return_value=[]):
+            _classify_and_save(
+                mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
+                np.zeros(384), np.zeros(384),
+                author="alice", permlink="transient",
+                title="Post", body=body,
+                parent_permlink="hive-900",
+            )
+        mock_persist.assert_not_called()
+        assert "hive-900" not in _persisted_communities
+
+    def test_community_self_heals_after_failure(self):
+        """B0: after a transient failure (no persist), a later successful resolve
+        for the same community persists the real mapping (the old code poisoned
+        the DB row and short-circuited every later post until worker restart)."""
+        mock_db = MagicMock()
+        body = "Long enough body for the community self-heal test content here. " * 3
+        mock_embedder = MagicMock()
+        mock_embedder.encode.return_value = np.ones(384, dtype=np.float32) / np.sqrt(384)
+        # First post for hive-901: transient get_community failure → no persist.
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._resolve_community", return_value=None), \
+             patch("project.worker.classify._persist_community_mapping") as mock_persist, \
+             patch("project.worker.classify._classify_from_embedding", return_value=[]):
+            _classify_and_save(
+                mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
+                np.zeros(384), np.zeros(384),
+                author="alice", permlink="p1", title="Post", body=body,
+                parent_permlink="hive-901",
+            )
+        assert mock_persist.call_count == 0
+        # Second post for hive-901: resolve now succeeds → real mapping persisted.
+        with patch("project.worker.classify._save_post"), \
+             patch("project.worker.classify._resolve_community", return_value=("crypto", "Real", 0.55)), \
+             patch("project.worker.classify._persist_community_mapping") as mock_persist2, \
+             patch("project.worker.classify._classify_from_embedding", return_value=["crypto"]):
+            _classify_and_save(
+                mock_db, mock_embedder, {"crypto": np.ones(384)}, 0.30,
+                np.zeros(384), np.zeros(384),
+                author="bob", permlink="p2", title="Post", body=body,
+                parent_permlink="hive-901",
+            )
+        mock_persist2.assert_called_once()
 
 
 # ── _persist_community_mapping ──────────────────────────────────────────────

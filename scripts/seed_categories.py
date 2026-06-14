@@ -461,6 +461,17 @@ def fetcher_thread(
             pass
         conn = psycopg2.connect(HAFSQL_DSN)
         conn.autocommit = True
+        # Proposal 110 S2 (finding #30): bound a server-side hang so a stuck
+        # query trips the retry loop below instead of blocking the fetcher
+        # indefinitely (stop_event is only checked between batches). 60s matches
+        # the backfill batch-scan workload; healthy keyset batches return in well
+        # under a second. Set here so every reconnect re-applies it. A SET hiccup
+        # degrades to the prior no-timeout behaviour rather than aborting connect.
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET statement_timeout = '60s'")
+        except Exception as exc:
+            log.warning("[FETCH] Could not set statement_timeout: %s", exc)
 
     try:
         _connect()
@@ -488,6 +499,11 @@ def fetcher_thread(
     while fetched < n_posts and not stop_event.is_set():
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # ``LENGTH(c.body) >= 80`` is a cheap raw-markdown prefilter (mirrors
+            # backfill.py), not an authoritative minimum-body gate: raw length is
+            # always >= the markdown/HTML-stripped length, so it never drops a
+            # valid post. The real topic decision is made downstream by the LLM
+            # classifier on the cleaned body. See architecture.md §7 / A1.
             cur.execute(
                 """
                 SELECT c.author, c.permlink, c.title, c.body, c.created,
@@ -496,6 +512,7 @@ def fetcher_thread(
                 FROM hafsql.comments c
                 LEFT JOIN hafsql.reputations r ON c.author = r.account_name
                 WHERE c.parent_author = ''
+                  AND c.deleted = false
                   AND LENGTH(c.body) >= 80
                   AND (%s::timestamp IS NULL OR c.created <= %s)
                   AND (%s::timestamp IS NULL

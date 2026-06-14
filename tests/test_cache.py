@@ -1,6 +1,9 @@
 """Tests for project.cache — in-process TTL cache."""
 import asyncio
+import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 from project import cache
@@ -145,3 +148,92 @@ class TestGetOrCompute:
         await cache.get_or_compute("nullable", 60, producer)
         await cache.get_or_compute("nullable", 60, producer)
         assert calls == 2
+
+
+class TestCacheBound:
+    """B4 (proposal 110): the store is capped so unbounded keys (per-post
+    top_comments, per-author summaries) can't grow for the worker's lifetime."""
+
+    def setup_method(self):
+        cache._store.clear()
+        cache._locks.clear()
+
+    def test_caps_entry_count(self):
+        from project.cache import _MAX_ENTRIES
+        for i in range(_MAX_ENTRIES + 500):
+            cache.put(f"k{i}", i, ttl=3600)
+        assert len(cache._store) <= _MAX_ENTRIES
+        # FIFO drops the oldest-inserted; the newest key survives.
+        assert cache.get(f"k{_MAX_ENTRIES + 499}") == _MAX_ENTRIES + 499
+
+    def test_evict_reclaims_expired_first(self):
+        # _evict purges expired entries before resorting to FIFO eviction.
+        now = time.monotonic()
+        cache._store["old"] = (now - 1, "x")     # already expired
+        cache._store["live"] = (now + 100, "y")  # still valid
+        cache._evict()
+        assert "old" not in cache._store
+        assert "live" in cache._store
+
+
+class TestCacheConcurrency:
+    """Proposal 111: ``_store`` is mutated off the event loop. ``get_top_comments``
+    (hafsql.py) runs ``cache.get``/``cache.put`` directly inside ``asyncio.to_thread``
+    workers on the post path (ui.py), concurrently with the event-loop thread. Once the
+    store is over ``_MAX_ENTRIES`` — the steady state under a crawler sweep, i.e. exactly
+    the condition 110 B4's cap was added for — every ``put`` runs ``_evict``, whose
+    iteration of ``_store`` races those cross-thread mutations. Without the
+    ``threading.Lock`` guard this raises ``RuntimeError: dictionary changed size during
+    iteration`` (and occasionally ``KeyError`` from a doubly-deleted key), which propagates
+    to an HTTP 500 on the SEO crawler path. Mutation-verified: deleting ``_store_lock``
+    (or its ``with`` guards) makes this test fail."""
+
+    def setup_method(self):
+        cache.clear()
+        # Force frequent thread switches so _evict's iteration of _store is reliably
+        # preempted mid-pass by another thread's mutation. Otherwise CPython's GIL can
+        # run the whole sub-millisecond iteration within a single time slice and the
+        # race never surfaces — making the mutation-verification flaky. Restored in
+        # teardown so the rest of the suite keeps the default scheduling.
+        self._switch_interval = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)
+
+    def teardown_method(self):
+        sys.setswitchinterval(self._switch_interval)
+        cache.clear()
+
+    def test_concurrent_put_get_over_cap_never_raises(self):
+        """Many threads hammering put/get while the store sits over the cap must never
+        raise, and the cap must hold throughout."""
+        from project.cache import _MAX_ENTRIES
+
+        # Prime the store to the cap with live entries, so every worker put tips len
+        # past _MAX_ENTRIES and triggers _evict's full-store iteration — the exact
+        # window that races a concurrent put/get from another thread.
+        for i in range(_MAX_ENTRIES):
+            cache.put(f"seed{i}", i, ttl=3600)
+
+        workers, iterations = 8, 300
+        barrier = threading.Barrier(workers)
+        errors: list[BaseException] = []
+
+        def hammer(worker_id: int) -> None:
+            barrier.wait()  # release all workers at once to maximise overlap
+            try:
+                for n in range(iterations):
+                    key = f"w{worker_id}:{n}"
+                    cache.put(key, n, ttl=3600)
+                    cache.get(key)
+                    cache.get(f"seed{n % _MAX_ENTRIES}")
+            except BaseException as exc:  # noqa: BLE001 — capture for the assertion
+                errors.append(exc)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for future in [pool.submit(hammer, w) for w in range(workers)]:
+                future.result()  # re-raise anything hammer didn't catch
+
+        assert not errors, (
+            f"concurrent cache access raised {type(errors[0]).__name__}: {errors[0]}"
+        )
+        # Eviction kept the store bounded throughout the concurrent hammering.
+        assert len(cache._store) <= _MAX_ENTRIES

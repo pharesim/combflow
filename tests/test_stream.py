@@ -85,9 +85,9 @@ class TestProcessBatch:
     @patch("project.worker.stream.get_reputations")
     @patch("project.worker.stream.check_authors")
     def test_both_rep_sources_down_skips_batch(self, mock_blacklist, mock_reps, mock_api_reps, mock_classify):
-        """When both HAFSQL and Hive API return empty, batch is skipped (fail-closed)."""
+        """When both HAFSQL and Hive API are down, batch is skipped (fail-closed)."""
         mock_blacklist.return_value = set()
-        mock_reps.return_value = {}  # HAFSQL unreachable
+        mock_reps.return_value = None  # B10: HAFSQL outage sentinel
         mock_api_reps.return_value = {}  # API also unreachable
         batch = [{"author": "alice", "permlink": "p1", "title": "T", "body": "B"}]
         result = _process_batch(batch, "db", "emb", {}, 0.3, "pos", "neg", "TEST")
@@ -98,10 +98,25 @@ class TestProcessBatch:
     @patch("project.worker.stream.get_reputations_via_api")
     @patch("project.worker.stream.get_reputations")
     @patch("project.worker.stream.check_authors")
+    def test_hafsql_up_empty_does_not_fall_back(self, mock_blacklist, mock_reps, mock_api_reps, mock_classify):
+        """Proposal 110 B10: an empty-but-successful HAFSQL result ({}, not None)
+        means 'all new accounts', NOT an outage — so the slow API fallback must
+        NOT fire, and the author falls through to the 25.0 new-account default."""
+        mock_blacklist.return_value = set()
+        mock_reps.return_value = {}            # HAFSQL up, no reputation rows
+        batch = [{"author": "newbie", "permlink": "p1", "title": "T", "body": "B"}]
+        result = _process_batch(batch, "db", "emb", {}, 0.3, "pos", "neg", "TEST")
+        assert result == 1                     # classified at the 25.0 default
+        mock_api_reps.assert_not_called()      # no spurious fallback
+
+    @patch("project.worker.stream._classify_and_save")
+    @patch("project.worker.stream.get_reputations_via_api")
+    @patch("project.worker.stream.get_reputations")
+    @patch("project.worker.stream.check_authors")
     def test_hafsql_down_api_fallback_classifies(self, mock_blacklist, mock_reps, mock_api_reps, mock_classify):
         """When HAFSQL is down but API fallback works, posts are classified."""
         mock_blacklist.return_value = set()
-        mock_reps.return_value = {}  # HAFSQL unreachable
+        mock_reps.return_value = None  # B10: HAFSQL outage sentinel triggers fallback
         mock_api_reps.return_value = {"alice": 50.0}  # API works
         batch = [{"author": "alice", "permlink": "p1", "title": "T", "body": "B"}]
         result = _process_batch(batch, "db", "emb", {}, 0.3, "pos", "neg", "TEST")
