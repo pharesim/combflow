@@ -13,12 +13,13 @@ from project.api.routes.ui import _OG_DEFAULT_TITLE, _OG_DEFAULT_DESC
 
 @pytest.fixture(autouse=True)
 def _stub_inline_comments(monkeypatch):
-    """Post pages fetch inline comments via bridge.get_discussion (proposal 095)
-    and community pages fetch about-text via bridge.get_community (proposal 100).
-    Stub both so the suite never makes a live RPC; tests that exercise them patch
-    the specific function explicitly."""
+    """Post pages fetch inline comments via bridge.get_discussion (095), community
+    pages fetch about-text via bridge.get_community (100), and author pages fetch
+    the bio via bridge.get_profile (112). Stub all three so the suite never makes a
+    live RPC; tests that exercise them patch the specific function explicitly."""
     monkeypatch.setattr("project.api.routes.ui.get_top_comments", lambda *a, **k: [])
     monkeypatch.setattr("project.api.routes.ui.get_community", lambda *a, **k: None)
+    monkeypatch.setattr("project.api.routes.ui.get_profile", lambda *a, **k: None)
 
 
 def _author_summary(total, cats=("photography",), langs=("en",)):
@@ -606,9 +607,7 @@ async def test_author_with_many_posts_does_not_get_noindex(client):
     """Active author profiles (>= 10 lifetime classified posts) are
     indexable — no robots meta added, dynamic title/description instead."""
     with patch("project.api.routes.ui.crud.get_author_summary",
-               return_value=_author_summary(50)), \
-         patch("project.api.routes.ui.crud.get_author_recent_posts",
-               return_value=[]):
+               return_value=_author_summary(50)):
         resp = await client.get("/@activeauthor")
     body = resp.text
     assert '<meta name="robots"' not in body
@@ -616,48 +615,49 @@ async def test_author_with_many_posts_does_not_get_noindex(client):
     assert "Browse 50 classified posts by @activeauthor" in body
 
 
-async def test_author_page_renders_recent_posts(client):
-    """Active author page server-renders the recent-posts list — text Google
-    needs to escape Soft-404 even when prerender drops a hex grid render."""
-    recent = [
-        {"permlink": "first-post", "title": "First Post Title",
-         "created": datetime(2026, 5, 1, tzinfo=timezone.utc)},
-        {"permlink": "second-post", "title": "Second Post Title",
-         "created": datetime(2026, 4, 1, tzinfo=timezone.utc)},
-    ]
+async def test_author_page_renders_profile_header(client):
+    """Active author page server-renders a profile header carrying the Hive bio —
+    unique, JS-survivable text so Google doesn't flag Soft-404 (proposal 112,
+    reverses 110). The redundant recent-posts list is gone."""
+    profile = {"display_name": "Anne Porter",
+               "about": "Photographer documenting the Azores.",
+               "reputation": 68.5}
     with patch("project.api.routes.ui.crud.get_author_summary",
                return_value=_author_summary(50)), \
-         patch("project.api.routes.ui.crud.get_author_recent_posts",
-               return_value=recent):
-        resp = await client.get("/@activeauthor")
+         patch("project.api.routes.ui.get_profile", return_value=profile):
+        resp = await client.get("/@anneporter")
     body = resp.text
-    assert 'class="author-recent-posts"' in body
-    assert ">First Post Title<" in body
-    assert ">Second Post Title<" in body
-    assert 'href="/@activeauthor/first-post"' in body
-    assert 'href="/@activeauthor/second-post"' in body
+    assert 'class="author-summary"' in body
+    assert "Anne Porter" in body
+    assert "Photographer documenting the Azores." in body
+    assert "rep 68" in body
+    assert "/api/imageproxy?url=" in body            # avatar via proxy (CSP-safe)
+    # The redundant recent-posts list is removed entirely (proposal 112).
+    assert 'class="author-recent-posts"' not in body
+    assert 'class="recent-posts-list"' not in body
 
 
-async def test_author_page_degrades_when_recent_posts_unavailable(client):
-    """HAFSQL outage → recent_posts query raises → page still renders the
-    stats summary, no recent-posts block. Better than 500."""
+async def test_author_page_degrades_when_profile_unavailable(client):
+    """Hive-API outage → profile fetch raises → page still renders the stats
+    header with the generated bio-less fallback prose, 200, no 500 (proposal
+    112)."""
+    def _boom(*a, **k):
+        raise OSError("hive api down")
     with patch("project.api.routes.ui.crud.get_author_summary",
                return_value=_author_summary(50)), \
-         patch("project.api.routes.ui.crud.get_author_recent_posts",
-               side_effect=OSError("hafsql down")):
+         patch("project.api.routes.ui.get_profile", side_effect=_boom):
         resp = await client.get("/@activeauthor")
     assert resp.status_code == 200
     body = resp.text
     assert 'class="author-summary"' in body
-    assert 'class="author-recent-posts"' not in body
+    # Bio-less fallback prose still gives the header unique text.
+    assert "has published 50 classified posts on Hive" in body
 
 
 async def test_author_at_exactly_threshold_is_indexable(client):
     """Boundary check: exactly 10 posts → indexable (>= threshold)."""
     with patch("project.api.routes.ui.crud.get_author_summary",
-               return_value=_author_summary(10)), \
-         patch("project.api.routes.ui.crud.get_author_recent_posts",
-               return_value=[]):
+               return_value=_author_summary(10)):
         resp = await client.get("/@borderlineauthor")
     body = resp.text
     assert '<meta name="robots"' not in body
@@ -895,53 +895,68 @@ def test_build_author_summary_html_blank_without_summary():
     assert _build_author_summary_html("alice", None, "") == ""
 
 
-def test_build_author_summary_html_embeds_recent_posts():
+def test_build_author_summary_html_renders_profile():
+    """With a profile, the header shows display name, reputation, the bio, the
+    proxied avatar, and puts the bio in the Person JSON-LD description (112)."""
     from project.api.routes.ui import _build_author_summary_html
     summary = {
         "total_posts": 42,
-        "top_categories": [], "top_languages": [], "top_community": None,
-        "first_seen": None, "last_seen": None,
+        "top_categories": [{"id": "photography", "name": "photography", "count": 10}],
+        "top_languages": [{"code": "en", "count": 30}],
+        "top_community": None,
+        "first_seen": datetime(2019, 5, 1, tzinfo=timezone.utc),
+        "last_seen": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
-    recent = [{"permlink": "p1", "title": "Hello World",
-               "created": datetime(2026, 5, 30, tzinfo=timezone.utc)}]
+    profile = {"display_name": "Anne Porter",
+               "about": "Photographer and traveler.", "reputation": 68.9}
     html = _build_author_summary_html(
-        "alice", summary, "https://example.com", recent_posts=recent,
+        "alice", summary, "https://example.com", profile=profile,
     )
-    assert 'class="author-recent-posts"' in html
-    assert ">Hello World<" in html
-    assert 'href="/@alice/p1"' in html
+    assert "Anne Porter" in html
+    assert "@alice" in html                                   # handle still present
+    assert "Photographer and traveler." in html               # visible bio
+    assert '"description":"Photographer and traveler."' in html  # bio in JSON-LD
+    assert "rep 68" in html
+    assert "/api/imageproxy?url=" in html                     # avatar via proxy
+    # No recent-posts list anymore (proposal 112).
+    assert 'class="author-recent-posts"' not in html
 
 
-def test_build_author_recent_posts_html_empty_returns_blank():
-    from project.api.routes.ui import _build_author_recent_posts_html
-    assert _build_author_recent_posts_html("alice", None, "") == ""
-    assert _build_author_recent_posts_html("alice", [], "") == ""
+def test_build_author_summary_html_bioless_uses_generated_summary():
+    """A prolific author with no Hive bio still gets unique header text via the
+    generated one-line prose summary (proposal 112 bio-less fallback)."""
+    from project.api.routes.ui import _build_author_summary_html
+    summary = {
+        "total_posts": 74,
+        "top_categories": [{"id": "photography", "name": "photography", "count": 31}],
+        "top_languages": [{"code": "en", "count": 60}],
+        "top_community": None,
+        "first_seen": datetime(2021, 3, 1, tzinfo=timezone.utc),
+        "last_seen": datetime(2026, 1, 1, tzinfo=timezone.utc),
+    }
+    # profile=None → bio-less → generated prose
+    html = _build_author_summary_html("anneporter", summary, "https://example.com")
+    assert "@anneporter has published 74 classified posts on Hive since 2021" in html
+    assert "writing mostly about photography" in html
 
 
-def test_build_author_recent_posts_html_escapes_user_content():
-    """Titles and permlinks come from HAFSQL — must be HTML-escaped to keep
-    them from injecting markup into the server-rendered list."""
-    from project.api.routes.ui import _build_author_recent_posts_html
-    recent = [{"permlink": "p1", "title": "<script>x</script>",
-               "created": datetime(2026, 1, 1, tzinfo=timezone.utc)}]
-    html = _build_author_recent_posts_html("alice", recent, "https://example.com")
-    assert "<script>x</script>" not in html
-    assert "&lt;script&gt;" in html
-
-
-def test_build_author_recent_posts_html_includes_itemlist_jsonld():
-    from project.api.routes.ui import _build_author_recent_posts_html
-    recent = [
-        {"permlink": "p1", "title": "T1",
-         "created": datetime(2026, 1, 1, tzinfo=timezone.utc)},
-        {"permlink": "p2", "title": "T2",
-         "created": datetime(2026, 1, 2, tzinfo=timezone.utc)},
-    ]
-    html = _build_author_recent_posts_html("alice", recent, "https://example.com")
-    assert '"@type":"ItemList"' in html
-    assert '"position":1' in html
-    assert '"position":2' in html
-    assert '"url":"https://example.com/@alice/p1"' in html
+def test_build_author_summary_html_escapes_bio():
+    """The bio comes from user-controlled Hive profile metadata — the visible
+    paragraph must be HTML-escaped (proposal 112)."""
+    from project.api.routes.ui import _build_author_summary_html
+    summary = {
+        "total_posts": 12, "top_categories": [], "top_languages": [],
+        "top_community": None, "first_seen": None, "last_seen": None,
+    }
+    profile = {"display_name": "<b>x</b>",
+               "about": "<script>alert(1)</script>", "reputation": None}
+    html = _build_author_summary_html(
+        "alice", summary, "https://example.com", profile=profile,
+    )
+    assert "<script>alert(1)</script>" not in html   # no unescaped script tag
+    assert "&lt;script&gt;" in html                   # escaped in visible bio
+    assert "<b>x</b>" not in html                     # display name escaped too
+    assert "&lt;b&gt;x&lt;/b&gt;" in html             # display name escaped (positive)
 
 
 def test_build_author_description_caps_at_155():
@@ -1356,6 +1371,32 @@ async def test_author_summary_endpoint_rejects_malformed_username(client):
     # Uppercase fails the lowercase Hive username pattern → path validation 422.
     resp = await client.get("/api/authors/Alice/summary")
     assert resp.status_code == 422
+
+
+# ── _safe_author_profile (proposal 112) ──────────────────────────────────────
+
+async def test_safe_author_profile_degrades_on_error():
+    """A Hive-API failure is swallowed into the empty-profile dict so the author
+    page never 500s on a profile-fetch hiccup."""
+    from project.api.routes.ui import _safe_author_profile
+    def _boom(*a, **k):
+        raise OSError("hive down")
+    with patch("project.api.routes.ui.get_profile", side_effect=_boom):
+        result = await _safe_author_profile("alice")
+    assert result == {"display_name": "", "about": "", "reputation": None}
+
+
+async def test_safe_author_profile_caches_success():
+    """A successful lookup is cached, so a second hit for the same author skips
+    the RPC (6h TTL)."""
+    from project.api.routes.ui import _safe_author_profile
+    profile = {"display_name": "A", "about": "bio", "reputation": 50.0}
+    with patch("project.api.routes.ui.get_profile", return_value=profile) as mock:
+        first = await _safe_author_profile("aliceprof")
+        second = await _safe_author_profile("aliceprof")
+    assert first == profile
+    assert second == profile
+    assert mock.call_count == 1  # second served from cache
 
 
 

@@ -99,7 +99,7 @@ class TestGetOrCompute:
     """The double-checked-lock cache fill behind the cache-stampede fix
     (proposal 104 #3). Tested here, at the helper, rather than via concurrent
     asyncpg connections in test_crud (which destabilises the session-scoped loop):
-    get_recent_posts_for_seo / get_author_recent_posts both route through this."""
+    get_recent_posts_for_seo routes through this."""
 
     def setup_method(self):
         cache.clear()

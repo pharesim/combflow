@@ -6,7 +6,7 @@ import pytest
 from project.hafsql import (
     _raw_rep_to_score, build_dsn, get_reputations,
     get_reputations_via_api, get_reputation_via_api, shutdown,
-    get_community, get_post_body, get_post_metadata, get_post_titles,
+    get_community, get_profile, get_post_body, get_post_metadata, get_post_titles,
     get_posts_titles_and_excerpts, get_top_comments, _parse_payout,
     _cursor, _get_pool,
 )
@@ -303,6 +303,84 @@ class TestGetCommunityEdgeCases:
             result = get_community("hive-empty")
         assert result["title"] == ""
         assert result["about"] == ""
+
+
+# ── get_profile (mocked Hive API, proposal 112) ─────────────────────────────
+
+class TestGetProfile:
+    def test_returns_profile_fields(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {
+            "name": "anneporter", "reputation": 68.9,
+            "metadata": {"profile": {"name": "Anne Porter", "about": "Photographer."}},
+        }}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_profile("anneporter")
+        assert result == {
+            "display_name": "Anne Porter", "about": "Photographer.", "reputation": 68.9,
+        }
+
+    def test_returns_none_on_miss(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": None}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            assert get_profile("ghost") is None
+
+    def test_missing_metadata_degrades_to_empty_strings(self):
+        # A real account with no profile metadata is a success, not a failure —
+        # returns a dict with empty strings (distinct from the None sentinel).
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {"reputation": 40}}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_profile("nobio")
+        assert result == {"display_name": "", "about": "", "reputation": 40.0}
+
+    def test_string_metadata_degrades_to_empty_strings(self):
+        # Some nodes return json_metadata as an unparsed string; don't crash.
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {
+            "reputation": 55, "metadata": "not-a-dict"}}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_profile("weird")
+        assert result == {"display_name": "", "about": "", "reputation": 55.0}
+
+    def test_non_numeric_reputation_degrades_to_none(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {
+            "metadata": {"profile": {"name": "X", "about": "y"}}}}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_profile("norep")
+        assert result["reputation"] is None
+        assert result["display_name"] == "X"
+
+    @pytest.mark.parametrize("rep", [float("inf"), float("-inf"), float("nan")])
+    def test_non_finite_reputation_degrades_to_none(self, rep):
+        # stdlib json (used by requests.Response.json) parses Infinity/NaN and
+        # over-large exponents (e.g. 1e400) into inf/nan floats, which pass the
+        # isinstance check. Reject them at the source so they never enter the
+        # 6h profile cache and blow up int(reputation) in the UI renderer.
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {
+            "reputation": rep,
+            "metadata": {"profile": {"name": "Anne", "about": "Photographer."}}}}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_profile("badrep")
+        assert result["reputation"] is None
+        assert result["display_name"] == "Anne"
+        assert result["about"] == "Photographer."
+
+    def test_none_fields_coerced_to_empty(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": {
+            "reputation": None,
+            "metadata": {"profile": {"name": None, "about": None}}}}
+        with patch("project.hafsql.requests.post", return_value=mock_resp):
+            result = get_profile("nulls")
+        assert result == {"display_name": "", "about": "", "reputation": None}
+
+    def test_all_nodes_error_returns_none(self):
+        with patch("project.hafsql.requests.post", side_effect=Exception("down")):
+            assert get_profile("x") is None
 
 
 # ── get_post_body (mocked DB) ────────────────────────────────────────────

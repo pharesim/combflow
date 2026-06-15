@@ -864,57 +864,6 @@ async def get_author_summary(session: AsyncSession, author: str) -> dict | None:
 
 
 @retry_transient
-async def get_author_recent_posts(
-    session: AsyncSession, author: str, limit: int = 20
-) -> list[dict]:
-    """Return the author's N most recent classified posts with titles.
-
-    Server-rendered on ``/@author`` pages so Google sees substantive unique
-    text (titles + links) even when prerender intermittently fails — without
-    this, the only unique server-rendered text is the ~150-char stats block,
-    which the rest of the page (template chrome + JS-rendered hex grid)
-    trivially dominates → Google flags Soft 404.
-
-    Two-step fetch: our ``posts`` table has author/permlink/created but no
-    title (it's not part of classification), so we read the recent permlinks
-    from PG then look the titles up in HAFSQL. HAFSQL outages degrade to []
-    rather than failing the whole author page.
-
-    Cached for 6h alongside ``get_author_summary`` (a double-checked per-key lock
-    collapses concurrent cold-cache hits to one round-trip). A HAFSQL failure is
-    *not* swallowed here — it propagates; the route-layer
-    ``_safe_author_recent_posts`` wrapper (``ui.py``) absorbs it so the author
-    page still renders the stats summary without the post list. Only genuinely
-    empty results (no classified posts, or permlinks HAFSQL has no title for) are
-    cached as ``[]`` so a quiet author doesn't re-query on every hit.
-    """
-    cache_key = f"author_recent_posts:{author}:{limit}"
-
-    async def _compute() -> list[dict]:
-        rows = await session.execute(
-            text(
-                "SELECT permlink, created FROM posts "
-                "WHERE author = :author AND category_ids != '{}' "
-                "ORDER BY created DESC LIMIT :lim"
-            ),
-            {"author": author, "lim": limit},
-        )
-        meta = [(r["permlink"], r["created"]) for r in rows.mappings()]
-        if not meta:
-            return []
-
-        from ..hafsql import get_post_titles
-        titles = await asyncio.to_thread(get_post_titles, author, [p for p, _ in meta])
-        return [
-            {"permlink": p, "title": titles[p], "created": c}
-            for p, c in meta
-            if p in titles
-        ]
-
-    return await _cache.get_or_compute(cache_key, 21600, _compute)
-
-
-@retry_transient
 async def get_recent_posts_for_seo(
     session: AsyncSession,
     *,
@@ -930,9 +879,9 @@ async def get_recent_posts_for_seo(
     Returns up to ``limit`` posts matching the optional filter, newest first.
     Each entry is ``{"author", "permlink", "title", "excerpt", "created"}``.
 
-    Two-step (PG → HAFSQL), mirroring ``get_author_recent_posts``: our ``posts``
-    table holds author/permlink/created/category_ids/language_codes/community_id
-    but not titles/bodies, so we read the recent matching permlinks from PG then
+    Two-step (PG → HAFSQL): our ``posts`` table holds
+    author/permlink/created/category_ids/language_codes/community_id but not
+    titles/bodies, so we read the recent matching permlinks from PG then
     look titles + bodies up in HAFSQL. NSFW posts are excluded (these are public
     crawler-facing surfaces). Excerpts are ``clean_post_body`` output capped at
     280 chars.

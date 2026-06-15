@@ -23,6 +23,7 @@ from ...hafsql import (
     get_community,
     get_hivecomb_posts,
     get_post_full,
+    get_profile,
     get_top_comments,
 )
 from ...lang_names import language_display_name
@@ -196,21 +197,47 @@ def _build_author_card_html(card: dict | None, site_url: str) -> str:
     )
 
 
+# Hive ``about`` bios are short by on-chain convention; cap defensively so a
+# pathological profile can't bloat the server-rendered header (proposal 112).
+_AUTHOR_BIO_MAX = 500
+
+
+def _author_prose_summary(author: str, summary: dict) -> str:
+    """One-line prose "who is this author" summary, built from the aggregates
+    already in ``summary`` (098). Stands in as the header's load-bearing text
+    when the author has no Hive bio, so prolific bio-less authors still carry
+    unique, JS-survivable visible text and clear the Soft-404 floor (proposal
+    112). Prose form of ``_build_author_description``."""
+    total = summary["total_posts"]
+    first_seen = summary.get("first_seen")
+    since = f" since {first_seen.year}" if first_seen else ""
+    sentence = f"@{author} has published {total} classified posts on Hive{since}"
+    cats = [c["name"] for c in summary.get("top_categories", [])[:3]]
+    if cats:
+        sentence += f", writing mostly about {', '.join(cats)}"
+    langs = [l["code"] for l in summary.get("top_languages", [])[:1]]
+    if langs:
+        sentence += f", primarily in {language_display_name(langs[0])}"
+    return sentence + "."
+
+
 def _build_author_summary_html(
     author: str, summary: dict | None, site_url: str,
-    recent_posts: list[dict] | None = None,
+    profile: dict | None = None,
 ) -> str:
-    """Server-render the author profile summary block for ``/@author`` pages
-    (proposal 098). Unique-per-page content above the post grid, plus a Person
-    JSON-LD blob.
+    """Server-render the ``/@author`` profile header (proposals 098 + 112).
 
-    ``recent_posts`` (Soft-404 fix): titles + permlinks of the author's recent
-    classified posts, rendered as a visible ``<ol>`` of `/@author/permlink`
-    links. These become the page's dominant unique-text signal — without
-    them the only server-rendered uniqueness is ~150 chars of stats, drowned
-    in ~9KB of template chrome and JS-only hex tiles → Google flags Soft 404.
+    The header's load-bearing, JS-survivable content is the author's Hive bio
+    (``profile["about"]`` from ``bridge.get_profile``) plus display name,
+    reputation, avatar, and the 098 activity stats — unique "who is this person"
+    text that is *not* a re-rendering of the post grid below it. So the page is
+    indexable on its own merits and never goes Soft-404 once JS runs (nothing
+    strips this block). When the author has no bio, a generated one-line prose
+    summary stands in. The old recent-posts list (proposals 110/112) is gone —
+    it duplicated the live hex grid, which is now the only post list.
 
-    Returns the full ``<section>`` or "" when no summary.
+    ``profile`` is ``{"display_name", "about", "reputation"}`` (or ``None`` →
+    bio-less). Returns the full ``<section>`` or "" when no summary.
     """
     if not summary:
         return ""
@@ -218,6 +245,29 @@ def _build_author_summary_html(
     total = summary["total_posts"]
     first_seen = summary.get("first_seen")
     since = f" · Active since {first_seen.year}" if first_seen else ""
+
+    profile = profile or {}
+    display_name = (profile.get("display_name") or "").strip()
+    about = (profile.get("about") or "").strip()[:_AUTHOR_BIO_MAX]
+    reputation = profile.get("reputation")
+
+    # Heading is the display name when set, else the handle. A second line carries
+    # the handle (only when a display name already occupies the h1) + reputation.
+    heading = html_escape(display_name) if display_name else f"@{a}"
+    handle_bits: list[str] = []
+    if display_name:
+        handle_bits.append(f"@{a}")
+    if isinstance(reputation, (int, float)):
+        handle_bits.append(f"rep {int(reputation)}")
+    handle_html = (
+        f'<p class="author-handle">{" · ".join(handle_bits)}</p>' if handle_bits else ""
+    )
+
+    # The bio is the unique indexable text; fall back to a generated prose summary
+    # so bio-less authors still clear the Soft-404 floor (proposal 112).
+    bio_text = about or _author_prose_summary(author, summary)
+    bio_html = f'<p class="author-bio">{html_escape(bio_text)}</p>'
+
     cat_html = "".join(
         f'<a href="/c/{html_escape(c["id"])}">{html_escape(c["name"])}</a> ({c["count"]}) '
         for c in summary.get("top_categories", [])
@@ -236,64 +286,26 @@ def _build_author_summary_html(
     ld = _json.dumps(
         {"@context": "https://schema.org", "@type": "Person", "name": f"@{author}",
          "url": f"{site_url}/@{author}",
+         "description": bio_text,
          "knowsAbout": [c["name"] for c in summary.get("top_categories", [])]},
         separators=(",", ":"),
     ).replace("</", "<\\/")
-    recent_html = _build_author_recent_posts_html(author, recent_posts, site_url)
     return (
         '<section class="author-summary" aria-label="Author profile">'
-        f"<header><h1>@{a}</h1>"
-        f'<p class="lede">{total} posts on Hive{since}</p></header>'
+        '<header class="author-header">'
+        f'<img class="author-avatar" src="{_proxied_avatar(author)}" alt="@{a}" '
+        'width="64" height="64" loading="lazy">'
+        '<div class="author-identity">'
+        f"<h1>{heading}</h1>"
+        f"{handle_html}"
+        f"{bio_html}"
+        f'<p class="lede">{total} posts on Hive{since}</p>'
+        "</div></header>"
         '<dl class="author-stats">'
         f"<div><dt>Top categories</dt><dd>{cat_html}</dd></div>"
         f"<div><dt>Languages</dt><dd>{lang_html}</dd></div>"
         f"{comm_html}"
         "</dl>"
-        f"{recent_html}"
-        f'<script type="application/ld+json">{ld}</script>'
-        "</section>"
-    )
-
-
-def _build_author_recent_posts_html(
-    author: str, recent_posts: list[dict] | None, site_url: str
-) -> str:
-    """Render the author's recent posts as ``<ol>`` of titled links + ItemList
-    JSON-LD. Returns "" when empty so absent HAFSQL data degrades cleanly to
-    the stats-only summary (still indexable, just less dense)."""
-    if not recent_posts:
-        return ""
-    a = html_escape(author)
-    items_html: list[str] = []
-    ld_items: list[dict] = []
-    for i, p in enumerate(recent_posts, start=1):
-        permlink = p["permlink"]
-        title = p["title"]
-        created = p.get("created")
-        href = f"/@{a}/{html_escape(permlink)}"
-        time_html = ""
-        if created:
-            iso = created.isoformat()
-            human = created.strftime("%b %d, %Y")
-            time_html = f' <time datetime="{html_escape(iso)}">{html_escape(human)}</time>'
-        items_html.append(
-            f'<li><a href="{href}">{html_escape(title)}</a>{time_html}</li>'
-        )
-        ld_items.append({
-            "@type": "ListItem",
-            "position": i,
-            "url": f"{site_url}/@{author}/{permlink}",
-            "name": title,
-        })
-    ld = _json.dumps(
-        {"@context": "https://schema.org", "@type": "ItemList",
-         "itemListElement": ld_items},
-        separators=(",", ":"),
-    ).replace("</", "<\\/")
-    return (
-        '<section class="author-recent-posts" aria-label="Recent posts">'
-        "<h2>Recent posts</h2>"
-        f'<ol class="recent-posts-list">{"".join(items_html)}</ol>'
         f'<script type="application/ld+json">{ld}</script>'
         "</section>"
     )
@@ -550,7 +562,7 @@ def _render(
     if author_summary:
         author_summary_html = _build_author_summary_html(
             author_summary["author"], author_summary.get("summary"), site_url,
-            recent_posts=author_summary.get("recent_posts"),
+            profile=author_summary.get("profile"),
         )
     else:
         author_summary_html = ""
@@ -718,15 +730,35 @@ async def _safe_recent_posts(db: AsyncSession, **filters) -> list[dict]:
         return []
 
 
-async def _safe_author_recent_posts(db: AsyncSession, author: str) -> list[dict]:
-    """crud.get_author_recent_posts that swallows errors (returns []) — mirrors
-    the ``_safe_*`` siblings. A HAFSQL/DB hiccup degrades the ``/@author`` page to
-    its stats summary without the recent-posts list, rather than 500ing."""
+_AUTHOR_PROFILE_TTL = 21600  # 6h — author bios change slowly
+_AUTHOR_PROFILE_FAIL_TTL = 60  # short, so a Hive-API blip self-heals within a minute
+
+
+async def _safe_author_profile(author: str) -> dict:
+    """Return ``{"display_name", "about", "reputation"}`` for the ``/@author``
+    profile header (proposal 112). Bio + display name + reputation come from a
+    cached ``bridge.get_profile`` lookup. A real profile caches for 6h; a
+    failed/not-found lookup caches only briefly so a transient Hive-API blip
+    self-heals within a minute (mirrors ``_safe_community_meta`` / proposal 110
+    B0 — never poison the cache with a swallowed failure for the full TTL).
+    Degrades to empty strings / ``None`` on any error so the author page renders
+    the stats-only header (still indexable via the generated bio-less fallback)
+    rather than 500ing."""
+    cache_key = f"author_profile:{author}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        return await crud.get_author_recent_posts(db, author)
+        profile = await asyncio.to_thread(get_profile, author)
     except Exception as exc:
-        logger.debug("recent posts lookup failed for %s: %s", author, exc)
-        return []
+        logger.debug("author profile fetch failed for %s: %s", author, exc)
+        profile = None
+    result = profile or {"display_name": "", "about": "", "reputation": None}
+    cache.put(
+        cache_key, result,
+        ttl=_AUTHOR_PROFILE_TTL if profile else _AUTHOR_PROFILE_FAIL_TTL,
+    )
+    return result
 
 
 _COMMUNITY_META_TTL = 3600
@@ -900,10 +932,24 @@ async def discover_author(
         "title": f"@{author} \u2014 HiveComb",
         "description": f"Posts by @{author} on HiveComb",
     }
-    try:
-        summary = await crud.get_author_summary(db, author)
-    except Exception as exc:
-        logger.debug("author summary lookup failed for %s: %s", author, exc)
+
+    async def _fetch_summary():
+        # Catch here so the concurrent gather never aborts the profile fetch; a
+        # summary error degrades to the default (indexable) shell, same as before.
+        try:
+            return await crud.get_author_summary(db, author), None
+        except Exception as exc:
+            return None, exc
+
+    # Author aggregation (DB) + profile bio (Hive API) run concurrently to keep
+    # author-page latency flat under Googlebot sweeps (proposal 112). Only the
+    # summary touches the request session, so they don't contend; the profile
+    # fetch always swallows its own errors (``_safe_author_profile``).
+    (summary, summary_err), profile = await asyncio.gather(
+        _fetch_summary(), _safe_author_profile(author),
+    )
+    if summary_err is not None:
+        logger.debug("author summary lookup failed for %s: %s", author, summary_err)
         return _render("discover.html", request, og=default_og)
 
     total = summary["total_posts"] if summary else 0
@@ -919,16 +965,13 @@ async def discover_author(
         "title": f"@{author} \u2014 {total} posts on Hive" + (f" \u00b7 {cats}" if cats else ""),
         "description": _build_author_description(author, summary),
     }
-    # Recent post titles enrich the server-rendered page with substantive
-    # unique text so Google doesn't flag Soft 404 even when prerender's
-    # JS-rendered hex grid is empty/missing. HAFSQL outage \u2192 [] \u2192 we still
-    # render the stats summary, just without the post list.
-    recent_posts = await _safe_author_recent_posts(db, author)
+    # The profile header (avatar + display name + bio + 098 stats) is the page's
+    # load-bearing unique text, and it survives JS execution (nothing strips it) \u2014
+    # so the page stays indexable on the prerender/WRS path that flagged Soft-404
+    # when the recent-posts list was the only floor (proposal 112 reverses 110).
     return _render(
         "discover.html", request, og=og,
-        author_summary={
-            "author": author, "summary": summary, "recent_posts": recent_posts,
-        },
+        author_summary={"author": author, "summary": summary, "profile": profile},
     )
 
 

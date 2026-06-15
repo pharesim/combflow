@@ -30,7 +30,6 @@ body{overflow-x:hidden}
 .mute-btn, .follow-btn, .report-char-count, .notif-time,
 .author-stats dt, .author-card .reputation,
 .author-card .post-count, .author-card .top-cats,
-.author-recent-posts li time,
 .seo-post-meta, .post-body-fallback .post-meta,
 .settings-section-title, .report-btn
 { font-size:12px; color:var(--text-dim) }
@@ -40,7 +39,7 @@ body{overflow-x:hidden}
 .loading-more, .list-meta, .modal-date, .cross-post-banner,
 .comment-form-login, .settings-tab, .settings-nsfw-fieldset legend,
 .settings-slider-row label, .report-box p, .notif-empty,
-.author-summary .lede, .inline-comment-body
+.author-summary .lede, .author-summary .author-handle, .inline-comment-body
 { font-size:13px; color:var(--text-dim) }
 
 /* Uppercase dim labels */
@@ -397,24 +396,43 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
    Text sizing/colour for .author-stats dt, .lede, .author-card meta and
    .inline-comment-body lives in the shared dim-12 / dim-13 / uppercase groups. */
 
-/* Author summary above the grid on /@author (098) — readers see this, not just crawlers. */
+/* Author profile header above the grid on /@author — 098 stats + 112 avatar & bio.
+   Readers see this, not just crawlers: it is the page's load-bearing unique text
+   (the hex grid below is now the ONLY post list — there is no recent-posts <ol>).
+
+   HTML contract _build_author_summary_html must emit:
+     <section class="author-summary" aria-label="Author profile">
+       <header>
+         <img src="/api/imageproxy?url=…" alt="@{author}" width="64" height="64" loading="lazy">
+         <div class="author-identity">
+           <h1>{display name — or @{author} when there is no display name}</h1>
+           <p class="author-handle">[@{author}][ · ][rep {N}]</p>   <!-- emit @{author}
+                only when the <h1> does NOT already show it (i.e. there is a display name);
+                emit "rep {N}" only when reputation is not None; join the present tokens
+                with " · " (no leading/trailing separator); drop the whole <p> when no
+                token remains -->
+           <p class="author-bio">{Hive bio (profile.about) — or the generated one-line
+                activity summary fallback when about is empty}</p>
+           <p class="lede">{total} posts on Hive[ · Active since {year}]</p>
+         </div>
+       </header>
+       <dl class="author-stats">…098 top categories / languages / top community…</dl>
+       <script type="application/ld+json">…Person, with the bio as `description`…</script>
+     </section> */
 .author-summary{max-width:1280px;margin:16px auto 0;padding:20px 24px;background:var(--bg2);border:1px solid var(--border);border-radius:16px}
-.author-summary header{margin-bottom:14px}
-.author-summary h1{font-size:24px;color:var(--text-bright);margin:0}
-.author-summary .lede{margin:4px 0 0}
+.author-summary header{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px}
+.author-summary header img{width:64px;height:64px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.author-summary .author-identity{min-width:0}
+.author-summary h1{font-size:24px;color:var(--text-bright);margin:0;line-height:1.2;overflow-wrap:break-word}
+.author-summary .author-handle{margin:2px 0 0}
+.author-summary .author-bio{margin:8px 0 0;font-size:15px;line-height:1.6;color:var(--text);max-width:70ch;white-space:pre-line;overflow-wrap:break-word}
+.author-summary .lede{margin:8px 0 0}
 .author-stats{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}
 .author-stats > div{margin:0}
 .author-stats dt{margin-bottom:4px}
 .author-stats dd{margin:0;font-size:14px;color:var(--text);line-height:1.7}
 .author-stats dd a{color:var(--hive-red);text-decoration:none}
 .author-stats dd a:hover{text-decoration:underline}
-.author-recent-posts{margin-top:16px;border-top:1px solid var(--border);padding-top:16px}
-.author-recent-posts h2{font-size:14px;color:var(--text-bright);font-weight:700;margin:0 0 10px;text-transform:uppercase;letter-spacing:1px}
-.recent-posts-list{margin:0;padding-left:20px;color:var(--text);font-size:14px;line-height:1.7}
-.recent-posts-list li{margin-bottom:2px}
-.recent-posts-list a{color:var(--hive-red);text-decoration:none}
-.recent-posts-list a:hover{text-decoration:underline}
-.author-recent-posts li time{margin-left:8px}
 
 /* Post-page primer — author mini-card (096) + inline top comments (095).
    Removed by discover.js once the SPA modal takes over; styled for the brief
@@ -706,6 +724,8 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
   .notif-dropdown{position:fixed;left:16px;right:16px;width:auto;top:56px}
   /* Author summary stays compact so it doesn't push the post grid off-screen (098). */
   .author-summary{margin:12px;padding:14px 16px;border-radius:12px}
+  .author-summary header{gap:12px}
+  .author-summary header img{width:52px;height:52px}
   .author-summary h1{font-size:20px}
   .author-stats{gap:10px 20px}
   #post-seo-enrichments{padding:0 16px}

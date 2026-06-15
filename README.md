@@ -157,7 +157,7 @@ Visit **http://localhost:8000/ui** to browse posts in a honeycomb grid.
 - **Layout toggle** — switch between hex grid and card view (auto-selects cards on mobile)
 - **Live polling** — visibility-aware, only polls when the tab is active; scales fetch limit based on time away (up to 200 posts on return); notification count and open panel also refreshed on tab return
 - **Toast notifications** — non-blocking feedback for saves, errors, etc.
-- **Author profile URLs** — `/@username` shows posts filtered by that author; also triggered by clicking any username
+- **Author profiles** — `/@username` shows a profile header (avatar, display name, reputation, Hive bio, and activity stats — top categories, languages, community) above that author's post feed; also triggered by clicking any username
 
 - **Curation mode** — advanced filter panel for manual curators (toggle visible when manual voting is enabled in settings). Post age slider (1h–7d with hourly/daily steps and +/- buttons), vote count dropdown, max payout $ input, and sort order (newest/oldest). Age and sort filters are server-side; vote count and payout filters apply client-side from cached Hive post metadata. Curation filter values persist per session; mode toggle persists across sessions in localStorage.
 - **Keyboard navigation** — arrow keys, J/K to navigate posts, Enter/Space to open, H to vote, C to comment

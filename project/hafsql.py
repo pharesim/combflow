@@ -642,3 +642,50 @@ def get_community(community_id: str) -> dict | None:
         _warn_degraded("get_community", RuntimeError(f"all {node_errors} Hive API nodes failed"))
     return None
 
+
+def get_profile(account: str) -> dict | None:
+    """Fetch an author's display name, bio, and reputation via Hive API
+    bridge.get_profile (proposal 112).
+
+    Returns ``{"display_name": str, "about": str, "reputation": float | None}``
+    or ``None`` when every node errored (a total failure) or the account isn't
+    found. Missing fields degrade to empty strings / ``None`` so a real but
+    bio-less profile still returns a dict (distinct from the ``None`` failure
+    sentinel — the caller caches the two differently). Mirrors ``get_community``'s
+    multi-node failover; feeds the server-rendered ``/@author`` profile header.
+    """
+    node_errors = 0
+    for node in settings.hive_api_nodes:
+        try:
+            resp = requests.post(
+                node,
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "bridge.get_profile",
+                    "params": {"account": account},
+                    "id": 1,
+                },
+                timeout=4,
+            )
+            data = resp.json().get("result")
+            if data is not None:
+                meta = data.get("metadata")
+                profile = meta.get("profile") if isinstance(meta, dict) else None
+                if not isinstance(profile, dict):
+                    profile = {}
+                rep = data.get("reputation")
+                return {
+                    "display_name": profile.get("name") or "",
+                    "about": profile.get("about") or "",
+                    "reputation": float(rep) if isinstance(rep, (int, float)) and math.isfinite(rep) else None,
+                }
+        except Exception as exc:
+            node_errors += 1
+            logger.debug("profile lookup failed on %s for %s: %s", node, account, exc)
+            continue
+    # B1 (mirrored): every node erroring is an outage worth a WARN; a not-found
+    # (None result from a working node) stays quiet.
+    if node_errors and node_errors == len(settings.hive_api_nodes):
+        _warn_degraded("get_profile", RuntimeError(f"all {node_errors} Hive API nodes failed"))
+    return None
+

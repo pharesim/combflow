@@ -502,85 +502,6 @@ async def test_get_author_summary_includes_top_community(seeded_db):
     assert summary["top_community"] == {"id": "hive-999", "name": "Test Community", "count": 1}
 
 
-# ── get_author_recent_posts (Soft-404 fix) ─────────────────────────────────
-
-async def test_get_author_recent_posts_returns_titled_classified_posts(seeded_db):
-    """Joins classified posts (from PG) with titles (from HAFSQL stub)."""
-    from project.db.crud import get_author_recent_posts
-
-    titles = {"test-post-one": "Alice's First Post"}
-    with patch("project.hafsql.get_post_titles", return_value=titles):
-        async with _TestSession() as session:
-            result = await get_author_recent_posts(session, "alice")
-
-    assert result == [
-        {
-            "permlink": "test-post-one",
-            "title": "Alice's First Post",
-            "created": result[0]["created"],
-        }
-    ]
-
-
-async def test_get_author_recent_posts_empty_for_unknown_author(seeded_db):
-    """Author with no classified posts → []. HAFSQL not even consulted."""
-    from project.db.crud import get_author_recent_posts
-
-    with patch("project.hafsql.get_post_titles") as titles_mock:
-        async with _TestSession() as session:
-            result = await get_author_recent_posts(session, "nobody-here")
-    assert result == []
-    titles_mock.assert_not_called()
-
-
-async def test_get_author_recent_posts_drops_permlinks_missing_from_hafsql(seeded_db):
-    """HAFSQL might not have a title for every classified permlink (out-of-sync,
-    deleted on chain, etc.) — those entries drop out rather than rendering an
-    empty <a></a>."""
-    from project.db.crud import get_author_recent_posts
-
-    with patch("project.hafsql.get_post_titles", return_value={}):
-        async with _TestSession() as session:
-            result = await get_author_recent_posts(session, "alice")
-    assert result == []
-
-
-async def test_get_author_recent_posts_orders_by_created_desc(seeded_db):
-    """Most recent classified post comes first — that's what SEO needs."""
-    from datetime import datetime, timezone
-    from project.db.crud import get_author_recent_posts, create_post
-
-    async with _TestSession() as session:
-        await create_post(session, {
-            "author": "alice",
-            "permlink": "newer-post",
-            "created": datetime(2026, 5, 1, tzinfo=timezone.utc),
-            "categories": [seeded_db["leaf_name"]],
-            "languages": ["en"],
-            "sentiment": "neutral",
-            "sentiment_score": 0.0,
-        })
-
-    titles = {"test-post-one": "Old", "newer-post": "New"}
-    with patch("project.hafsql.get_post_titles", return_value=titles):
-        async with _TestSession() as session:
-            result = await get_author_recent_posts(session, "alice")
-
-    assert [p["permlink"] for p in result] == ["newer-post", "test-post-one"]
-
-
-async def test_get_author_recent_posts_caches_empty_results(seeded_db):
-    """Empty-HAFSQL result is cached so a HAFSQL incident doesn't re-hammer it
-    on every author-page hit."""
-    from project.db.crud import get_author_recent_posts
-
-    with patch("project.hafsql.get_post_titles", return_value={}) as titles_mock:
-        async with _TestSession() as session:
-            await get_author_recent_posts(session, "alice")
-            await get_author_recent_posts(session, "alice")
-    assert titles_mock.call_count == 1
-
-
 # ── get_recent_posts_for_seo (proposal 100, Phase 1) ───────────────────────
 
 
@@ -781,10 +702,10 @@ async def test_get_seo_eligible_language_counts_cached(seeded_db):
 
 
 # The cold-cache stampede-collapse guarantee (proposal 104 #3) lives in
-# cache.get_or_compute, which both get_recent_posts_for_seo and
-# get_author_recent_posts now route through. It's unit-tested directly (no DB
-# session) in test_cache.py::TestGetOrCompute — driving it here with concurrent
-# real asyncpg connections destabilises the suite's session-scoped event loop.
+# cache.get_or_compute, which get_recent_posts_for_seo routes through. It's
+# unit-tested directly (no DB session) in test_cache.py::TestGetOrCompute —
+# driving it here with concurrent real asyncpg connections destabilises the
+# suite's session-scoped event loop.
 
 
 # ── get_community_name ─────────────────────────────────────────────────────
