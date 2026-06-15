@@ -283,46 +283,14 @@ def get_post_body(author: str, permlink: str) -> str | None:
     return None
 
 
-def get_post_titles(author: str, permlinks: list[str]) -> dict[str, str]:
-    """Fetch titles for an author's permlinks from HAFSQL.
-
-    Returns a {permlink: title} dict. Permlinks the source has no row for are
-    absent from the result; empty/None titles are dropped. Returns {} on
-    HAFSQL error so callers can degrade to no title list rather than failing.
-    Used to enrich the server-rendered ``/@author`` recent-posts list — the
-    text Google indexes when prerender intermittently times out.
-    """
-    if not permlinks:
-        return {}
-    try:
-        with _cursor() as cur:
-            cur.execute("SET statement_timeout = '5s'")
-            # B5: exclude author-deleted posts (siblings do; there's no on-chain
-            # delete handler, so SEO enrichment could otherwise show their titles).
-            cur.execute(
-                "SELECT permlink, title FROM hafsql.comments "
-                "WHERE author = %s AND permlink = ANY(%s) AND deleted = false",
-                (author, list(permlinks)),
-            )
-            return {
-                r["permlink"]: r["title"]
-                for r in cur.fetchall()
-                if r["title"]
-            }
-    except Exception as exc:
-        _warn_degraded("get_post_titles", exc)
-    return {}
-
-
 def get_posts_titles_and_excerpts(
     pairs: list[tuple[str, str]]
 ) -> dict[tuple[str, str], dict]:
     """Batch-fetch title + body for ``(author, permlink)`` pairs from HAFSQL.
 
-    Unlike ``get_post_titles`` (single author, many permlinks) this looks up an
-    arbitrary set of author/permlink pairs in one round-trip — recent posts for
-    the server-rendered SEO lists on ``/``, ``/c/``, ``/lang/``, ``/community/``
-    span many different authors.
+    Looks up an arbitrary set of author/permlink pairs in one round-trip —
+    recent posts for the server-rendered SEO lists on ``/``, ``/c/``,
+    ``/lang/``, ``/community/`` span many different authors.
 
     Returns ``{(author, permlink): {"title": str, "body": str}}``. The body is
     truncated to 2000 chars in SQL (the caller only needs a short plain-text
@@ -340,8 +308,8 @@ def get_posts_titles_and_excerpts(
             cur.execute("SET statement_timeout = '5s'")
             # unnest the two arrays in lockstep into (author, permlink) rows,
             # then join — a composite-key lookup without a giant OR/IN list.
-            # B5: exclude author-deleted posts (matches get_post_titles + the
-            # backfill/sitemap deleted filters).
+            # B5: exclude author-deleted posts (matches the backfill/sitemap
+            # deleted filters).
             cur.execute(
                 "SELECT c.author, c.permlink, c.title, LEFT(c.body, 2000) AS body "
                 "FROM hafsql.comments c "

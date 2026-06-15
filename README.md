@@ -260,14 +260,14 @@ No HTTP calls to the CombFlow API — the worker talks only to Hive nodes, HAFSQ
 - `ix_posts_primary_language` — language filter queries
 - `ix_community_mappings_category_slug` — community suggestion queries
 - `ix_posts_created_desc` — descending date sort
-- `ix_posts_author` — author filter queries + delete by author
+- `uq_author_permlink` — unique `(author, permlink)`; its leading column also serves author-filter + delete-by-author lookups
 - `ix_post_reports_post_id` — report lookups by post
 - `ix_post_reports_reporter` — report lookups by reporter
 - `ix_post_reports_created_at` — paginated report listing
 
 ### Migration
 
-Migrations `001_initial_schema.py` (base schema), `002_post_reports.py` (misclassification reports), `003_schema_cleanup.py` (indexes, CASCADE DELETE, nullable fixes), `004_schema_integrity.py`, `005_browse_performance.py` (partial indexes), and `006_denormalize_categories_languages.py` (denormalize category IDs and language codes onto posts, drop junction tables). Verified by `alembic/verify_migration.py` on startup.
+Migrations `001_initial_schema.py` (base schema), `002_post_reports.py` (misclassification reports), `003_schema_cleanup.py` (indexes, CASCADE DELETE, nullable fixes), `004_schema_integrity.py`, `005_browse_performance.py` (partial indexes), `006_denormalize_categories_languages.py` (denormalize category IDs and language codes onto posts, drop junction tables), `007_community_post_count.py` (denormalize `post_count` onto `community_mappings`), `008_author_recent_posts_index.py` (partial index `ix_posts_author_recent` for the `/@author` author-summary query), and `009_drop_orphaned_author_index.py` (drop the redundant plain `ix_posts_author` index — `uq_author_permlink`'s leading column covers author lookups). Verified by `alembic/verify_migration.py` on startup.
 
 ### Persistence
 
