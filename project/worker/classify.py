@@ -44,6 +44,9 @@ _NEGATIVE_ANCHORS = [
 _LANG_HIGH_CONFIDENCE = 0.60
 _LANG_MIN_CONFIDENCE = 0.15
 
+# ISO-639-style language code: 2-3 ASCII letters (e.g. "en", "de", "ceb").
+_META_LANG_RE = re.compile(r"[a-z]{2,3}")
+
 _LID_MODEL_PATH = Path("/tmp/lid.176.ftz")
 _LID_MODEL = None
 _lid_lock = threading.Lock()
@@ -188,8 +191,11 @@ def _detect_languages(text: str, meta_langs: list[str] | None = None) -> list[st
     if meta_langs:
         primary_conf = detected[0][1] if detected else 0.0
         for code in meta_langs:
-            c = str(code).strip().lower()[:10]
-            if not c or c in langs:
+            c = str(code).strip().lower()
+            # json_metadata.language is client-supplied free text. Accept only
+            # ISO-639-style codes (2-3 letters) so full names ("english") and
+            # junk ("discutio-e") don't leak in as bogus filter options.
+            if not _META_LANG_RE.fullmatch(c) or c in langs:
                 continue
             if c in detected_codes or primary_conf < _LANG_HIGH_CONFIDENCE:
                 langs.append(c)

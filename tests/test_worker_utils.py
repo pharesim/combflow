@@ -43,6 +43,27 @@ class TestDetectLanguages:
         langs = _detect_languages("Hello, how are you doing today?", meta_langs=["en"])
         assert langs.count("en") == 1
 
+    def test_meta_full_name_rejected(self):
+        # "english" is a full name, not an ISO code — must never leak in even
+        # when detection is weak (lorem-ipsum text → no confident detection).
+        with patch("project.worker.classify._detect_languages_ft", return_value=[]):
+            langs = _detect_languages("ok", meta_langs=["english"])
+        assert "english" not in langs
+        assert langs == []
+
+    def test_meta_malformed_code_rejected(self):
+        # Truncated/junk codes (hyphens, >3 chars, digits) are dropped; the
+        # valid sibling code in the same metadata is still kept.
+        with patch("project.worker.classify._detect_languages_ft", return_value=[]):
+            langs = _detect_languages("ok", meta_langs=["discutio-e", "en", "x", "e2"])
+        assert langs == ["en"]
+
+    def test_meta_three_letter_code_allowed(self):
+        # Cebuano ("ceb") has no 2-letter ISO-639-1 code — 3 letters is valid.
+        with patch("project.worker.classify._detect_languages_ft", return_value=[]):
+            langs = _detect_languages("ok", meta_langs=["ceb"])
+        assert langs == ["ceb"]
+
     def test_empty_text(self):
         result = _detect_languages("")
         assert isinstance(result, list)
