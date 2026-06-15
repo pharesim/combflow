@@ -32,7 +32,7 @@ body{overflow-x:hidden}
 .author-card .post-count, .author-card .top-cats,
 .author-recent-posts li time,
 .seo-post-meta, .post-body-fallback .post-meta,
-.settings-section-title
+.settings-section-title, .report-btn
 { font-size:12px; color:var(--text-dim) }
 
 /* Dim secondary text — 13px */
@@ -622,7 +622,7 @@ button.hex-community,button.modal-community{background:none;border:none;cursor:p
 .muted-user-name{font-size:13px;color:var(--hive-red)}
 .followed-user-name{font-size:13px;color:var(--gold)}
 .muted-user-unmute,.followed-user-unfollow{padding:4px 10px;font-size:11px}
-.report-btn{background:none;border:1px solid var(--border-medium);color:var(--text-dim);padding:4px 10px;border-radius:12px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center}
+.report-btn{background:none;border:1px solid var(--border-medium);padding:4px 10px;border-radius:12px;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .report-btn:hover{color:var(--hive-red);border-color:var(--hive-red)}
 .report-btn-sm{padding:2px 7px;border-radius:10px}
 .report-overlay{background:rgba(0,0,0,.6);z-index:300}
