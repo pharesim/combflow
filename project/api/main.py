@@ -164,9 +164,15 @@ app = FastAPI(
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
+# Public read-only API: with no explicit CORS_ORIGINS configured, default to a
+# wildcard so any site can consume the API from the browser. Auth is pure
+# client-side (Hive Keychain → localStorage); the server holds no cookies or
+# sessions, so `*` with credentials disabled is both correct and safe. Operators
+# can still pin explicit origins via CORS_ORIGINS to opt into credentialed
+# requests (Access-Control-Allow-Origin: * is invalid alongside credentials).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins or ["*"],
     allow_credentials=bool(settings.cors_origins),
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],

@@ -7,8 +7,10 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 20
 
-    # CORS
-    cors_origins: list[str] = []  # e.g. ["https://combflow.app"]
+    # CORS — empty (default) = public wildcard: Access-Control-Allow-Origin: *
+    # with credentials disabled (safe; auth is client-side Keychain, no cookies).
+    # Set explicitly (e.g. ["https://combflow.app"]) to restrict + enable credentials.
+    cors_origins: list[str] = []
 
     # HAFSQL (public Hive PostgreSQL)
     hafsql_host: str = "hafsql-sql.mahdiyari.info"

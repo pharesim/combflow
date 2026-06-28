@@ -75,13 +75,18 @@ async def test_get_post_not_found(client, seeded_db):
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
-async def test_cors_rejects_unknown_origin(client):
-    """With no configured CORS origins, unknown origins should not get allow-origin header."""
+async def test_cors_allows_any_origin_by_default(client):
+    """Public API: with no configured CORS origins, any origin is allowed via wildcard.
+
+    The server has no cookies/sessions (auth is client-side Hive Keychain), so the
+    wildcard pairs with credentials disabled — a valid, safe combination.
+    """
     resp = await client.options(
         "/health",
         headers={"Origin": "http://example.com", "Access-Control-Request-Method": "GET"},
     )
-    assert "access-control-allow-origin" not in resp.headers
+    assert resp.headers.get("access-control-allow-origin") == "*"
+    assert "access-control-allow-credentials" not in resp.headers
 
 
 # ── OpenAPI ──────────────────────────────────────────────────────────────────
